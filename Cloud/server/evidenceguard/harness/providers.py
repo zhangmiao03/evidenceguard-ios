@@ -38,4 +38,3 @@ class OpenAICompatibleProvider:
             raise
         except (httpx.HTTPError, KeyError, ValueError, IndexError) as error:
             raise ProviderError("模型请求超时或响应格式不兼容，请重试。") from error
-
