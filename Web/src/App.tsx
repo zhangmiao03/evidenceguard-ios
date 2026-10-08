@@ -127,7 +127,10 @@ export function App() {
     };
   }, [conv]);
   useEffect(() => {
-    if (tab === "ai") bottom.current?.scrollIntoView({ behavior: "smooth" });
+    if (tab === "ai") {
+      const messages = bottom.current?.parentElement;
+      messages?.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+    }
   }, [runs.length, currentRun?.status, tab]);
   function write(text: string) {
     setMessage(text);
