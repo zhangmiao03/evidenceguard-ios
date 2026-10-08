@@ -1,0 +1,160 @@
+from __future__ import annotations
+from pydantic import BaseModel, ConfigDict, Field
+import time
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from collections import Counter
+from typing import Literal
+from ..schemas import SkillRules
+from ..skill_capabilities import assess, CATALOG
+from ..deployment import SitePreparation
+
+class Arguments(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+class Empty(Arguments): pass
+class SkillID(Arguments): skill_id: str | None = None
+class EvidenceQuery(SkillID):
+    start_at: float | None = Field(default=None,ge=0)
+    end_at: float | None = Field(default=None,ge=0)
+    period: Literal['today','yesterday','last_24_hours'] | None = None
+class StoredImage(Arguments): evidence_id: str
+class RecordingQuery(Arguments):
+    query: str = Field(min_length=2,max_length=1000)
+    period: Literal['today','yesterday','last_24_hours'] | None = Field(default=None, description='仅本轮用户明确限定日期时填写。只问什么时候不代表今天，默认 null 查询所有已存录像。')
+class CaptureArguments(Arguments):
+    device_id: str | None = None
+    purpose: str = Field(default='查看当前画面', max_length=120)
+class DraftArguments(Arguments):
+    prompt: str = Field(min_length=2,max_length=2000)
+    devices: list[str] = Field(min_length=1,max_length=2)
+    name: str = Field(min_length=1,max_length=80)
+    target_description: str = Field(min_length=1,max_length=200)
+    rules: SkillRules
+    replaces_id: str | None = None
+
+class ToolRegistry:
+    def __init__(self): self._tools={}; self._specs={}; self.for_context=None; self.camera_service=None
+    def register(self,name,tool,schema=Empty,description=''):
+        if name in self._tools: raise ValueError('duplicate tool: '+name)
+        self._tools[name]=tool; self._specs[name]=(schema,description)
+    async def call(self,tool_name,**arguments):
+        if tool_name not in self._tools: raise ValueError('工具未授权：'+tool_name)
+        args=self._specs[tool_name][0].model_validate(arguments)
+        return await self._tools[tool_name](**args.model_dump())
+    @property
+    def names(self): return sorted(self._tools)
+    @property
+    def schemas(self):
+        return [dict(type='function',function=dict(name=n,description=d,parameters=s.model_json_schema())) for n,(s,d) in self._specs.items()]
+
+def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,execution_mode='live',video_service=None,history_scope=None,progress=None):
+    registry=ToolRegistry(); registry.camera_service=camera_service
+    registry.for_context=lambda sid,cid,mode='live',scope=None,notify=None: build_tools(store,cameras,camera_service,sid,cid,mode,video_service,scope,notify)
+    def resolve(requested=None):
+        if skill_id and requested and requested != skill_id:
+            raise ValueError('当前对话绑定另一项 Skill，请从对应任务进入对话')
+        sid = requested or skill_id
+        if not sid: raise ValueError('请先选择要查看或复核的任务')
+        value=store.skill(sid)
+        if not value: raise ValueError('没有这项任务')
+        return value
+    async def list_camera_capabilities():
+        allowed=set(resolve()['devices']) if skill_id else None
+        return [m.api_dict() for m in await cameras.manifests() if allowed is None or m.id in allowed]
+    async def draft_visual_skill(**args):
+        known={m.id for m in await cameras.manifests()}
+        if not set(args['devices']) <= known: raise ValueError('unknown camera device')
+        if skill_id:
+            source=resolve(args.get('replaces_id'))
+            args['replaces_id']=source['id']
+            if not set(args['devices']) <= set(source['devices']):
+                raise ValueError('新增摄像头请在草案编辑页由用户选择')
+        # Capability assessment happens before persistence, even if the model omits a catalog call.
+        previous=store.skill(args.get('replaces_id')) if args.get('replaces_id') else None
+        preview=dict(rules=args['rules'],devices=args['devices'],target={'cameraId':args['devices'][0]},replay=previous.get('replay') if previous else None)
+        capability=assess(preview,video_service,await cameras.manifests())
+        draft=store.create_draft(**args)
+        store.event(draft['id'],'capability_checked',{'status':capability['status'],'executor':capability['executor']})
+        return draft | {'capability':capability}
+    async def assess_camera_task_fit(skill_id=None):
+        return SitePreparation(store).read(resolve(skill_id),await cameras.manifests())
+    async def get_task_state(skill_id=None):
+        s=resolve(skill_id)
+        return s | {'capability':assess(s,video_service,await cameras.manifests())}
+    async def list_tasks(): return [resolve()] if skill_id else store.skills()
+    async def search_evidence(skill_id=None,start_at=None,end_at=None,period=None):
+        zone=ZoneInfo('Asia/Shanghai')
+        now=datetime.now(zone)
+        if history_scope is not None:
+            start_at,end_at=history_scope['startAt'],history_scope['endAt']
+            period=None
+        if period:
+            if start_at is not None or end_at is not None: raise ValueError('相对日期与自定义时间范围不能同时传入')
+            midnight=now.replace(hour=0,minute=0,second=0,microsecond=0)
+            start_at=(midnight-timedelta(days=1) if period=='yesterday' else now-timedelta(hours=24) if period=='last_24_hours' else midnight).timestamp()
+            end_at=midnight.timestamp()-.000001 if period=='yesterday' else now.timestamp()
+        if start_at is not None and end_at is not None and start_at>end_at: raise ValueError('开始时间不能晚于结束时间')
+        sid=resolve(skill_id)['id'] if skill_id or registry.bound_skill else None
+        items,truncated=store.historical_evidence(sid,camera_id if execution_mode=='history' else None,start_at,end_at)
+        for item in items:
+            item.pop('videoPath',None)
+            item['capturedAtText']=datetime.fromtimestamp(item['capturedAt'],zone).isoformat()
+            if item.get('sourceType')=='replay': item['timeMeaning']='回放测试记录生成时间，不是原录像采集时间'
+        return dict(items=items,count=len(items),countsByRelation=dict(Counter(e['relation'] for e in items)),
+                    serverNow=now.isoformat(),timezone='Asia/Shanghai',truncated=truncated,requestedRange={'from':start_at,'to':end_at},
+                    availableRange={'from':min((e['capturedAt'] for e in items),default=None),'to':max((e['capturedAt'] for e in items),default=None)},
+                    coverage='仅为已保存的离散图片和事件，时间范围不代表连续录像覆盖；没有记录不等于没有发生')
+    async def read_stored_image(evidence_id):
+        sid=resolve()['id'] if skill_id else None
+        # Query by immutable evidence ID, never fetch from a camera or a model-supplied URL.
+        with store.lock:
+            row=store.db.execute('SELECT payload FROM evidence WHERE id=?',(evidence_id,)).fetchone()
+        import json
+        e=json.loads(row[0]) if row else None
+        if not e or (sid and e['skillId']!=sid) or (camera_id and e['cameraId']!=camera_id):
+            raise ValueError('此证据不属于当前查询范围')
+        if e and history_scope and history_scope['startAt'] is not None and not history_scope['startAt']<=e['capturedAt']<history_scope['endAt']:
+            raise ValueError('此图片不在本次选定的时间范围内')
+        if e.get('mediaStatus')!='saved' or not e.get('imageUrl','').startswith('/api/media/'):
+            raise ValueError('这条记录没有已保存的图片，不能从实时摄像头补取历史画面')
+        key=e['imageUrl'].rsplit('/',1)[1]; store.media(key)
+        return dict(id=e['id'],cameraId=e['cameraId'],skillId=e['skillId'],status='completed',
+                    reason='读取已保存的历史图片',requestedAt=time.time(),capturedAt=e['capturedAt'],
+                    imageUrl=e['imageUrl'],mediaId=key,sourceType=e['sourceType'],frameId=e['frameId'],historical=True)
+    async def request_camera_snapshot(device_id=None,purpose='查看当前画面'):
+        chosen=device_id or camera_id
+        if skill_id:
+            skill=resolve(); chosen=chosen or skill['target']['cameraId']
+            if chosen not in skill['devices']: raise ValueError('该摄像头未绑定当前 Skill')
+        if not chosen: raise ValueError('请先选择摄像头')
+        if not camera_service: raise ValueError('摄像头截图服务未就绪')
+        owner=store.owner(chosen)
+        # Generic chat joins the current owner's read-only capture path; it cannot take over.
+        return await camera_service.capture(chosen,skill_id or (owner['id'] if owner else None),purpose)
+    async def request_recheck(skill_id=None):
+        skill=resolve(skill_id)
+        s=store.recheck(skill['id'])
+        store.event(s['id'],'recheck_requested',{'notBefore':s['notBefore']})
+        # Worker schedules fresh captures; replying to the user does not wait on two devices.
+        return dict(skill=s,status='queued',reason='已请求复核，等待当前任务的新画面与连续观察')
+    async def search_recordings(query,period=None):
+        return await video_service.search(query,camera_id,skill_id,period,history_scope=history_scope,progress=progress)
+    registry.bound_skill=skill_id
+    async def list_skill_capabilities(): return CATALOG
+    registry.register('assess_camera_task_fit',assess_camera_task_fit,SkillID,'检查已有草案的摄像头适配与用户配合清单；屋檐远景和门铃近景只是候选用途。只能读取准备方案，不能批准验收或发布。')
+    registry.register('list_skill_capabilities',list_skill_capabilities,Empty,'创建任务前查看经过实现验证的执行能力；不支持的行为必须追问或保留需求，不能冒充包裹规则。')
+    registry.register('list_camera_capabilities',list_camera_capabilities,Empty,'查询当前上下文内的设备能力及在线状态；型号不是能力证明。')
+    registry.register('request_camera_snapshot',request_camera_snapshot,CaptureArguments,'实际请求指定摄像头在此刻之后采集新画面，返回设备回执和图片。用户要求看画面或视觉判断时使用。截图成功不代表任务安全，不支持时不要伪造。')
+    registry.register('draft_visual_skill',draft_visual_skill,DraftArguments,'创建待用户编辑和确认的草案。当前任务对话自动关联修改源并保留圈选；不会自动启用。')
+    registry.register('get_task_state',get_task_state,SkillID,'读取任务当前结果、原因和规则；任务对话可省略 ID。')
+    registry.register('list_tasks',list_tasks,Empty,'查询已有任务；任务对话只返回当前任务，临时查询不要创建草案。')
+    registry.register('search_evidence',search_evidence,EvidenceQuery,'查询已保存证据。今天/昨天/过去24小时必须用 period=today/yesterday/last_24_hours，由服务器计算范围，不要自行换算时间戳。任务对话限定当前任务；返回数量、位置分类、带时区日期及资料缺口。inside/outside 是位置，不代表进入/离开动作。')
+    registry.register('request_recheck',request_recheck,SkillID,'请求任务重新观察，先进入 unknown，不声称已安全。')
+    registry.register('read_stored_image',read_stored_image,StoredImage,'读取 search_evidence 返回的某张已保存图片；图片属于过去，不代表当前现场。')
+    if video_service:
+        registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后 Lite 观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
+    if execution_mode=='history':
+        allowed={'search_evidence','read_stored_image','search_recordings'}
+        registry._tools={k:v for k,v in registry._tools.items() if k in allowed}
+        registry._specs={k:v for k,v in registry._specs.items() if k in allowed}
+    return registry

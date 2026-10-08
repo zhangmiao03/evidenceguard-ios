@@ -1,0 +1,97 @@
+import Foundation
+
+private struct ConflictBody: Decodable { var conflicts: [CameraOccupancy] }
+struct APIProblem: LocalizedError {
+    let message: String
+    var conflicts: [CameraOccupancy] = []
+    var errorDescription: String? { message }
+}
+private struct TrialRequestBody: Encodable { var revision: Int; var expectedOutcome: String }
+private struct PreparationRequestBody: Encodable { var revision: Int; var action: String; var completed: Bool }
+struct APIClient {
+    static var defaultBaseURL: URL {
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "EGServiceBaseURL") as? String,
+           let url = URL(string: raw), url.scheme == "https", url.host != nil { return url }
+        #if DEBUG
+        return URL(string: "http://127.0.0.1:8790")!
+        #else
+        return URL(string: "https://unconfigured.invalid")!
+        #endif
+    }
+    var baseURL: URL
+    init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    func capability(_ id: String) async throws -> SkillCapability { try await get("/api/skills/\(id)/capability") }
+    func trials(_ id: String) async throws -> [SkillTrial] { try await get("/api/skills/\(id)/trials") }
+    func trial(_ id: String) async throws -> SkillTrial { try await get("/api/skill-trials/\(id)") }
+    func deployment(_ id: String) async throws -> DeploymentPlan { try await get("/api/skills/\(id)/deployment") }
+    func prepareSite(_ id: String, revision: Int, action: String, completed: Bool) async throws -> DeploymentPlan { try await send("/api/skills/\(id)/deployment/preparation", body: PreparationRequestBody(revision: revision, action: action, completed: completed)) }
+    func startTrial(_ skill: VisualSkill, expectedOutcome: String) async throws -> SkillTrial { try await send("/api/skills/\(skill.id)/trials", body: TrialRequestBody(revision: skill.revision, expectedOutcome: expectedOutcome)) }
+    func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
+    func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
+    func bootstrap() async throws -> Bootstrap { try await get("/api/bootstrap") }
+    func conversation(_ id: String) async throws -> [AgentRun] { try await get("/api/agent/conversations/\(id)") }
+    func events(_ id: String) async throws -> [RunEvent] { try await get("/api/runs/\(id)/events") }
+    func skillEvents(_ id: String) async throws -> [RunEvent] { try await get("/api/skills/\(id)/events") }
+    func recording(_ id: String) async throws -> VideoRecording { try await get("/api/recordings/\(id)") }
+    func replayRecording(_ id: String) async throws -> VideoRecording { try await get("/api/replay-evidence/\(id)") }
+    func acknowledgeReplay(_ id: String) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-acknowledge", body: [String: String]()) }
+    func replayTransport(_ id: String, online: Bool) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-transport", body: ["online": online]) }
+    func indexRecording(_ id: String) async throws -> VideoRecording { try await send("/api/recordings/\(id)/index", body: [String: String]()) }
+    func uploadRecording(_ file: URL, camera: String, recordedAt: Double?) async throws -> VideoRecording {
+        let resource = file.startAccessingSecurityScopedResource()
+        defer { if resource { file.stopAccessingSecurityScopedResource() } }
+        let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
+        guard size > 0 && size <= 150_000_000 else { throw APIProblem(message: "请选择不超过 150 MB 的录像") }
+        var url = URLComponents(url: baseURL.appendingPathComponent("api/recordings"), resolvingAgainstBaseURL: true)!
+        url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: file.deletingPathExtension().lastPathComponent)]
+        if let recordedAt { url.queryItems?.append(URLQueryItem(name: "recordedAt", value: String(recordedAt))) }
+        var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            throw APIProblem(message: json?["detail"] as? String ?? "录像上传失败，请重试")
+        }
+        return try JSONDecoder().decode(VideoRecording.self, from: data)
+    }
+    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil) async throws -> AgentRun {
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter? }
+        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter))
+    }
+    func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
+    func createDraft(camera: String, conversation: String, prompt: String, replacesID: String?) async throws -> VisualSkill {
+        struct Body: Encodable { var cameraId: String; var conversationId: String; var prompt: String; var replacesId: String? }
+        return try await send("/api/skills/drafts", body: Body(cameraId: camera, conversationId: conversation, prompt: prompt, replacesId: replacesID))
+    }
+    func save(_ skill: VisualSkill) async throws -> VisualSkill {
+        struct Edit: Encodable { var revision: Int; var name: String; var prompt: String; var target: SkillTarget; var regions: [String: ROI]; var devices: [String]; var rules: SkillRules; var replay: ReplayConfig? }
+        return try await send("/api/skills/\(skill.id)", method: "PATCH", body: Edit(revision: skill.revision, name: skill.name, prompt: skill.prompt, target: skill.target, regions: skill.regions, devices: skill.devices, rules: skill.rules ?? SkillRules(), replay: skill.replay))
+    }
+    func confirm(_ skill: VisualSkill, fixture: Bool, replay: Bool = false, trialId: String? = nil, trialReviewed: Bool = false, switchFrom: [String: String] = [:]) async throws -> VisualSkill {
+        struct Body: Encodable { var revision: Int; var fixtureAcknowledged: Bool; var replayAcknowledged: Bool; var trialId: String?; var trialReviewed: Bool; var switchFrom: [String: String] }
+        return try await send("/api/skills/\(skill.id)/confirm", body: Body(revision: skill.revision, fixtureAcknowledged: fixture, replayAcknowledged: replay, trialId: trialId, trialReviewed: trialReviewed, switchFrom: switchFrom))
+    }
+    func lifecycle(_ id: String, action: String, switchFrom: [String: String] = [:]) async throws -> VisualSkill {
+        struct Body: Encodable { var action: String; var switchFrom: [String: String] }
+        return try await send("/api/skills/\(id)/lifecycle", body: Body(action: action, switchFrom: switchFrom))
+    }
+    func recheck(_ id: String, acknowledged: Bool) async throws -> VisualSkill { try await send("/api/skills/\(id)/recheck", body: ["acknowledged": acknowledged]) }
+    func absoluteURL(_ path: String?) -> URL? {
+        guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
+    }
+    private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?) async throws -> T {
+        var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
+        req.httpMethod = method; req.timeoutInterval = 30
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let body { req.httpBody = try JSONEncoder().encode(body) }
+        let (data, response) = try await URLSession.shared.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            let conflicts = (try? JSONDecoder().decode(ConflictBody.self, from: data))?.conflicts ?? []
+            throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts)
+        }
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}

@@ -1,0 +1,11 @@
+{
+  "annotationMethod": "人工检查原录像联系表：t4 每0.5秒采样；d1/o1检查遮挡范围。事件边界是粗标注，需要团队复标。不是独立留出测试集。",
+  "cases": [
+    {"id":"removal-positive", "file":"t4.mp4", "query":"门廊上原有的长纸箱是否被拿起带走？如有，何时开始？", "expected":{"verdict":"matched","eventWindow":[4.5,5.5]}, "reviewNotes":"黑衣人物走到门廊，拿起长纸箱，带向白色SUV。需人工复核摘要不能混入蓝色集装箱等不存在的内容。"},
+    {"id":"placement-negative", "file":"t4.mp4", "query":"视频里是否有人将包裹从车上搬下来，放到门廊地面？", "expected":{"verdict":"not_matched"}, "reviewNotes":"长纸箱在开头已在门廊；可见过程是拿走，不能把动作方向说反。"},
+    {"id":"occluded-placement", "file":"d1.mp4", "query":"是否能直接看到包裹接触门廊地面、被放下的具体动作和时间？", "expected":{"verdict":"uncertain"}, "reviewNotes":"人抱包裹进入立柱后，再空手返回。放下动作被遮挡，不能从前后状态编造确定时间。"},
+    {"id":"occluded-door", "file":"o1.mp4", "query":"能否确认此人从门口地面拿走了一个原本放在那里的包裹？", "expected":{"verdict":"uncertain"}, "reviewNotes":"人持物到门前，手部操作被身体遮挡，不能确认拿走门口原有包裹。"}
+  ],
+  "retrieval":[{"query":"门廊上的长纸箱什么时候被人拿走？","expectedTop1":"t4.mp4"}],
+  "missingCoverage":["同一段连续录像的放下→等待→拿走", "经过而不拿的完整反例", "只在区域内移动包裹", "夜间和逆光", "T8171/T8214实机录像"]
+}

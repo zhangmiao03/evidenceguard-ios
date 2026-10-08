@@ -1,0 +1,11 @@
+logLevel: warn
+rtspAddress: 127.0.0.1:18554
+rtspTransports: [tcp]
+rtmp: no
+hls: no
+webrtc: no
+srt: no
+moq: no
+paths:
+  cam-a:
+  cam-b:
