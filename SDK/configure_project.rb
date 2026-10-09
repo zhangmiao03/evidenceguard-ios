@@ -4,10 +4,13 @@ root = File.expand_path('..', __dir__)
 project = Xcodeproj::Project.open(File.join(root, 'EvidenceGuard.xcodeproj'))
 app = project.targets.find { |target| target.name == 'EvidenceGuard' }
 group = project.main_group.find_subpath('EvidenceGuard', false)
-%w[OfficialSDKConnection.swift OfficialSDKSettingsView.swift].each do |name|
+%w[OfficialSDKConnection.swift OfficialSDKSettingsView.swift OfficialSDKInspectionView.swift].each do |name|
   reference = group.files.find { |file| file.path == name } || group.new_file(name)
   app.source_build_phase.add_file_reference(reference, true)
 end
+privacy_name = 'PrivacyInfo.xcprivacy'
+privacy = group.files.find { |file| file.path == privacy_name } || group.new_file(privacy_name)
+app.resources_build_phase.add_file_reference(privacy, true)
 
 target = project.targets.find { |item| item.name == 'EvidenceGuardSDK' }
 unless target
@@ -21,6 +24,8 @@ target.build_configurations.each do |configuration|
   configuration.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos'
   configuration.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.anker.evidenceguard.sdkdemo'
   configuration.build_settings['PRODUCT_NAME'] = 'EvidenceGuardSDK'
+  conditions = original.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] || '$(inherited)'
+  configuration.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = "#{conditions} EVIDENCEGUARD_OFFICIAL_SDK"
   configuration.build_settings['FRAMEWORK_SEARCH_PATHS'] = [
     '$(inherited)', '$(PROJECT_DIR)/SDK/Vendor/ESIotKit-DemoApp-iOS/libs/ios-frameworks'
   ]

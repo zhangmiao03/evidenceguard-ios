@@ -1,46 +1,54 @@
-# EvidenceGuard · Web / iOS / Cloud
+# EvidenceGuard · iOS / Cloud
 
-团队共用仓库：Web 与原生 SwiftUI App 使用同一套 Cloud API、harness、Skill 校验和录像索引。`Cloud/fixture-lab` 继续作为模拟摄像头工具。iOS 保留原生产品交互；Web 是新增客户端。
+当前主要开发原生 iOS App；Cloud Agent、miimiao 参考的 harness、Skill 校验和录像索引由此仓库维护。Web 原型已拆到独立仓库，暂缓开发，不影响 iOS 编译。
 
-## 当前开发入口
+- [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
+- [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
+- [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
+
+## 当前进度
+
+2026-10-09：`EvidenceGuardSDK` 的 iPhone arm64 Debug 编译和未签名 Release 归档已通过，实际 SDK 框架及 Compose 资源已打包；普通 iOS Simulator 也通过编译。App 增加官方设备发现、事件查询与缩略图联调入口。
+
+这些是构建检查，不代表安装、设备联调或守护验收通过。摄像头及赛事 User ID / Token 到决赛才提供。TestFlight 尚未上传；还需 HTTPS 后端、App Store Connect 应用记录和签名。流程见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
+
+## 项目目录
 
 | 目录 | 用途 |
 | --- | --- |
-| `Web/` | 首页、AI 对话、圈选编辑、试跑确认、录像证据、官方 Web SDK 联调 |
-| `EvidenceGuard/`、`EvidenceGuard.xcodeproj` | 原生 iOS；Simulator 和 SDK 真机方案分别构建 |
-| `Cloud/server/` | 共用 Agent harness、工具、任务/设备占用、录像检索 |
-| `SDK/Bridge/`、`SDK/prepare.py` | 自有 SDK 桥接与本地构建准备 |
-| `scripts/` | 恢复官方 SDK、准备 iOS 归档 |
+| `EvidenceGuard/`、`EvidenceGuard.xcodeproj` | 原生 SwiftUI App；首页保留设计，其余页使用紧凑标题与返回 |
+| `Cloud/server/` | Agent harness、工具、录像检索、草案试跑与设备占用 |
+| `Cloud/fixture-lab/` | 双路模拟摄像头与离线回归 |
+| `SDK/Bridge/`、`SDK/prepare.py` | 官方 App SDK 的自有桥接与本机构建准备 |
+| `scripts/` | SDK 恢复、iOS 归档 / 校验 / 上传 |
 
-先安装 Python 3.12、Node 22.12+ 和 FFmpeg，在仓库根目录运行：
+## 开发启动
+
+在 Xcode 打开 `EvidenceGuard.xcodeproj`，选择 `EvidenceGuard` 与 iPhone Simulator。SDK 方案需先恢复主办方资料包：
+
+```bash
+python3 scripts/import_sdk.py /绝对路径/工具资料包.zip
+python3 SDK/prepare.py --check
+python3 SDK/prepare.py
+```
+
+随后打开 `EvidenceGuard.xcworkspace`，选择 `EvidenceGuardSDK`。官方 SDK 仅支持 arm64 iPhone；凭证留在手机 Keychain，官方 SDK 二进制不入 Git。环境与依赖见 [CONTRIBUTING](CONTRIBUTING.md)。
+
+Cloud 需要 Python 3.12 与 FFmpeg：
 
 ```bash
 python3 -m venv Cloud/.venv
 Cloud/.venv/bin/pip install -r Cloud/server/requirements.txt
 cp .env.example .env
-# 按实际模型服务填写 .env；模型 Key 不交给浏览器。
+# 按实际模型服务填写 .env；模型 Key 仅供服务端使用。
 EG_ENV_FILE="$PWD/.env" Cloud/.venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/server --host 127.0.0.1 --port 8790
 ```
 
-另开终端启动 Web：
+这是本地单团队联调服务，公开部署还需 HTTPS、用户身份和媒体权限。默认不托管 Web；若日后需要同源部署独立 Web 构建，可显式设置 `EG_WEB_ROOT=/绝对路径/EvidenceGuard-Web/dist`。仓库分工见 [协作边界](Docs/WEB-APP-ARCHITECTURE.md)。
 
-```bash
-npm --prefix Web ci
-npm --prefix Web run dev
-# 打开 http://127.0.0.1:5173
-```
+## 既有功能与验证记录
 
-Web 开发服务器把 `/api` 代理到 8790。`npm --prefix Web run build` 后，重启 Cloud 可在 8790 同源托管 `Web/dist`。当前服务用于本地单团队联调，公网部署还需 HTTPS、身份与媒体权限。
-
-摄像头模拟器的启动方式见下方。真实摄像头需要赛事凭证和官方资料包，先恢复本地 SDK：
-
-```bash
-python3 scripts/import_sdk.py /绝对路径/工具资料包.zip --web-only
-```
-
-官方 SDK、密钥、数据库、录像和本地验收截图不入 Git。Web SDK 当前支持联调预览及 ≥3 s 抽帧，尚未进入正式守护 Worker；App SDK 新增设备发现桥接，实际 SDK 真机编译与现场验证仍待完成。
-
-团队分工、分支和检查见 [CONTRIBUTING](CONTRIBUTING.md)；双端边界见 [架构说明](Docs/WEB-APP-ARCHITECTURE.md)；iOS 外部分发见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
+下方记录原生 App / harness 的功能演进；模拟、公开视频回放与真实摄像头验证相互独立。
 
 ## 对话与圈选编辑 v1.0
 

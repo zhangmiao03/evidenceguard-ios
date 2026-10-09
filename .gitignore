@@ -29,6 +29,11 @@ SDK/vendor-manifest.local.json
 *.ipa
 *.xcarchive/
 Release/local.xcconfig
+Release/*.plist
+Release/validate/
+Release/export/
+Release/upload/
+EvidenceGuard.xcworkspace/xcuserdata/
 # Local validation captures can include conversations or camera frames.
 Docs/*.png
 Docs/*.json

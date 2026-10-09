@@ -12,11 +12,15 @@
 		21C35FE1B78E2B0042D84E2F /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* APIClient.swift */; };
 		243DA04C02F15F31D2E6FA23 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* ProfileView.swift */; };
 		360796DB98AB0A74F61BF3AC /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D33EC4F4E0AC45FF542D4F5E /* Foundation.framework */; };
+		396E5491A95C80D93DCC27F6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */; };
 		3D136FE55E0C7D322A628011 /* TeachAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* TeachAIView.swift */; };
 		482D36A55B57EE0C37DC5A91 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* RootView.swift */; };
 		4F52C162835048181591C805 /* AnkerWebRTC.framework in Embed AnkerWebRTC */ = {isa = PBXBuildFile; fileRef = F5AF25A92CAB301D04CFFFAC /* AnkerWebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		54B0215A3DBBF5FDF11885FE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */; };
 		5DBA0647E4277563805CB1E3 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* SpeechInput.swift */; };
 		647262E8F663A54E08B4622C /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* AppStore.swift */; };
+		722209C9EAF72A18DEFCA642 /* Pods_EvidenceGuardSDK.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F5A7CD630A3D4F90DFAE51B /* Pods_EvidenceGuardSDK.framework */; };
+		7D0BC24FC0F8F8BA3436875C /* OfficialSDKInspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */; };
 		84DCB6F0790367CACB8C854D /* EvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* EvidenceView.swift */; };
 		8584A7473D89CD4E8E9D7769 /* EvidenceGuardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* EvidenceGuardApp.swift */; };
 		9C86B739F143FFB4B9A53CAE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* HomeView.swift */; };
@@ -35,6 +39,7 @@
 		A1000000000000000000000C /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* ProfileView.swift */; };
 		A1000000000000000000000D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* Assets.xcassets */; };
 		A20000000000000000000001 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* SpeechInput.swift */; };
+		AAF3279B86FE017968D269DE /* OfficialSDKInspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */; };
 		AC4F89CD101B1763A7451E63 /* CreateSkillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* CreateSkillView.swift */; };
 		D7A973876C49E520042D8583 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* DesignSystem.swift */; };
 		DF3F94B327698F0B584A8707 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* AppModels.swift */; };
@@ -60,6 +65,11 @@
 
 /* Begin PBXFileReference section */
 		19CD50DD08657A3BA91F3763 /* EvidenceGuardSDK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EvidenceGuardSDK.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		337B2D3E1C048F94DF933737 /* Pods-EvidenceGuardSDK.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EvidenceGuardSDK.release.xcconfig"; path = "Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK.release.xcconfig"; sourceTree = "<group>"; };
+		4ADE68F80CE4014EA0FCE7AE /* Pods-EvidenceGuardSDK.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EvidenceGuardSDK.debug.xcconfig"; path = "Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK.debug.xcconfig"; sourceTree = "<group>"; };
+		505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfficialSDKInspectionView.swift; sourceTree = "<group>"; };
+		9F5A7CD630A3D4F90DFAE51B /* Pods_EvidenceGuardSDK.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EvidenceGuardSDK.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000001 /* EvidenceGuardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceGuardApp.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -89,6 +99,7 @@
 			files = (
 				360796DB98AB0A74F61BF3AC /* Foundation.framework in Frameworks */,
 				9CF3B21D4DBE5C1EE432F0A2 /* AnkerWebRTC.framework in Frameworks */,
+				722209C9EAF72A18DEFCA642 /* Pods_EvidenceGuardSDK.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,8 +117,19 @@
 			isa = PBXGroup;
 			children = (
 				9320F1D3E8753D1436EDDB39 /* iOS */,
+				9F5A7CD630A3D4F90DFAE51B /* Pods_EvidenceGuardSDK.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		2552596601FB253BC1D26768 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				337B2D3E1C048F94DF933737 /* Pods-EvidenceGuardSDK.release.xcconfig */,
+				4ADE68F80CE4014EA0FCE7AE /* Pods-EvidenceGuardSDK.debug.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		9320F1D3E8753D1436EDDB39 /* iOS */ = {
@@ -125,6 +147,7 @@
 				D10000000000000000000003 /* Products */,
 				02A728DF31251E311A6CC6FA /* Frameworks */,
 				DC33DF37EDC748E397B5C11C /* SDK */,
+				2552596601FB253BC1D26768 /* Pods */,
 			);
 			sourceTree = "<group>";
 		};
@@ -148,6 +171,8 @@
 				B1000000000000000000000E /* Info.plist */,
 				B518902B51F961B41EBBE6B2 /* OfficialSDKConnection.swift */,
 				DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */,
+				556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */,
+				505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */,
 			);
 			path = EvidenceGuard;
 			sourceTree = "<group>";
@@ -177,10 +202,13 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = C92F40E124B269F31005E353 /* Build configuration list for PBXNativeTarget "EvidenceGuardSDK" */;
 			buildPhases = (
+				A50F329403CFB63FB48744DB /* [CP] Check Pods Manifest.lock */,
 				CEDA73C0764FEDB1C65B9F4B /* Sources */,
 				2900C465672FFEF669153818 /* Frameworks */,
 				AF98074C7807F4CE74A47587 /* Resources */,
 				070E30FB33B4EAFCE31CDF3E /* Embed AnkerWebRTC */,
+				721FAEB150F91065CC6A4741 /* [CP] Embed Pods Frameworks */,
+				EFA1A97F0C44A5A95F4CB756 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -248,6 +276,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				145DF8C0457707043D197721 /* Assets.xcassets in Resources */,
+				396E5491A95C80D93DCC27F6 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,10 +285,70 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000000000000000000000D /* Assets.xcassets in Resources */,
+				54B0215A3DBBF5FDF11885FE /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		721FAEB150F91065CC6A4741 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		A50F329403CFB63FB48744DB /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-EvidenceGuardSDK-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		EFA1A97F0C44A5A95F4CB756 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		C10000000000000000000002 /* Sources */ = {
@@ -281,6 +370,7 @@
 				A20000000000000000000001 /* SpeechInput.swift in Sources */,
 				FEE334583A87D919BD54C412 /* OfficialSDKConnection.swift in Sources */,
 				F6B530B6898B80401CC64A42 /* OfficialSDKSettingsView.swift in Sources */,
+				7D0BC24FC0F8F8BA3436875C /* OfficialSDKInspectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -303,6 +393,7 @@
 				5DBA0647E4277563805CB1E3 /* SpeechInput.swift in Sources */,
 				F77EBCF45EEABAD4EF9C7B78 /* OfficialSDKConnection.swift in Sources */,
 				022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */,
+				AAF3279B86FE017968D269DE /* OfficialSDKInspectionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -311,6 +402,7 @@
 /* Begin XCBuildConfiguration section */
 		0B12A3C3D3D613CF8668717E /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 337B2D3E1C048F94DF933737 /* Pods-EvidenceGuardSDK.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -332,6 +424,7 @@
 				PRODUCT_NAME = EvidenceGuardSDK;
 				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) EVIDENCEGUARD_OFFICIAL_SDK";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -340,6 +433,7 @@
 		};
 		6498F343FF1476ADD2BFB9B3 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4ADE68F80CE4014EA0FCE7AE /* Pods-EvidenceGuardSDK.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -361,6 +455,7 @@
 				PRODUCT_NAME = EvidenceGuardSDK;
 				SUPPORTED_PLATFORMS = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) EVIDENCEGUARD_OFFICIAL_SDK";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;

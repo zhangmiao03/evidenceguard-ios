@@ -30,7 +30,7 @@ struct OfficialSDKSettingsView: View {
                 }.disabled(!credentials.isComplete || connection.checking)
                 Button { connection.discover(credentials) } label: {
                     HStack { if connection.checking { ProgressView() }; Text("检查官方设备") }
-                }.disabled(!credentials.isComplete || connection.checking || !connection.canDiscover)
+                }.disabled(!credentials.isComplete || connection.checking || connection.inspecting || !connection.canDiscover)
                     .accessibilityIdentifier("sdk.discover")
                 if let feedback { Text(feedback).font(.caption) }
             }
@@ -47,14 +47,19 @@ struct OfficialSDKSettingsView: View {
                                  : "物模型尚未就绪，设备能力待验证")
                                 .font(.caption).foregroundStyle(Brand.muted)
                             if !camera.isCompetitionCamera { Text("此设备不属于本次接入的两款型号").font(.caption) }
+                            if camera.isCompetitionCamera {
+                                NavigationLink("检查图片与历史事件") {
+                                    OfficialSDKInspectionView(connection: connection, camera: camera)
+                                }
+                            }
                         }.padding(.vertical, 4)
                     }
                 }
             }
             Section("连接方式") {
-                Label("iPhone → Mac：USB 数据线，用于安装和调试", systemImage: "cable.connector")
-                Label("摄像头 → SDK：Wi‑Fi，用于查询与取画面", systemImage: "wifi")
-                Text("真机首次安装需在 Xcode 选择你的 Team，并在 iPhone 信任这台 Mac、开启开发者模式。设备已由主办方绑定时，直接使用账号查询。")
+                Label("iPhone：通过 TestFlight 安装测试包", systemImage: "airplane")
+                Label("摄像头 → SDK：网络连接，用于查询与读取媒体", systemImage: "wifi")
+                Text("TestFlight 安装不需要连接 Mac 或开启开发者模式。决赛拿到摄像头与赛事账号后再检查设备；USB 是可选的 Xcode 调试方式。")
                     .font(.caption).foregroundStyle(Brand.muted)
             }
             Section("设备验收") {

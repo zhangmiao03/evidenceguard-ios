@@ -2,7 +2,7 @@
 
 ## 为什么先固定合同
 
-2026-10-08 已收到 T8171、T8214 官方 App / Web SDK。最小业务合同继续保留，RTSP 夹具只用于模拟。App 增加原生 Kotlin 桥接；Web 增加直播与按秒抽帧联调入口。真实 SDK 会话到 Cloud 的命令/媒体转发尚未接通，不能把这些入口视为完整的真机 Adapter。双端边界见 [Web / App 协作架构](../Docs/WEB-APP-ARCHITECTURE.md)。
+2026-10-08 已收到 T8171、T8214 官方 App / Web SDK。最小业务合同继续保留，RTSP 夹具只用于模拟。App 增加原生 Kotlin 设备发现、事件列表和缩略图联调；Web 增加直播与按秒抽帧联调入口。官方 App SDK 的 AI 路径是事件触发后读取缩略图/录像，不提供持续视频帧供 AI 分析。真实 SDK 会话到 Cloud 的命令/媒体转发尚未接通，不能把这些入口视为完整的真机 Adapter。双端边界见 [Web / App 协作架构](../Docs/WEB-APP-ARCHITECTURE.md)。
 
 ## 设备能力清单
 
@@ -38,6 +38,8 @@ clockOffsetMs, uncertaintyMs, calibrationRef
 - `EufyT8214Adapter`：补证设备 `cam-b`。
 
 它们当前均返回 `connection=unknown` 和全量 `capability=unknown`，这是刻意的真实性保护。SDK 到手后的实现顺序：发现设备 → 绑定设备/通道身份 → 读取 capability manifest → 验证 stored/live 差异 → 验证事件推送 → 验证流分辨率切换 → 验证双机时间偏移。
+
+2026-10-09 仍无实机与赛事凭证。App 联调页展示 SDK 原始能力声明，不自动将它提升为 Cloud 的 `supported`；设备缩略图、缓存封面和事件图片只读结果均不能满足 `LIVE` 的新鲜度要求。
 
 ## v0.4：SDK Bridge 与摄像头占用
 

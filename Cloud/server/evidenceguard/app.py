@@ -336,8 +336,9 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         return Response(raw,media_type=mime,headers={'Cache-Control':'private, max-age=2'})
     # The same API serves SwiftUI and the optional Web build. API routes take
     # precedence; unknown API paths remain 404 rather than returning the SPA.
-    web_root = Path(os.getenv('EG_WEB_ROOT', str(root.parent/'Web/dist')))
-    if (web_root/'index.html').is_file():
+    web_setting = os.getenv('EG_WEB_ROOT')
+    web_root = Path(web_setting) if web_setting else None
+    if web_root is not None and (web_root/'index.html').is_file():
         app.mount('/', StaticFiles(directory=web_root, html=True), name='web')
     return app
 

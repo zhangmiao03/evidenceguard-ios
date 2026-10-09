@@ -12,6 +12,8 @@ root = sdk.parent
 parser = argparse.ArgumentParser()
 parser.add_argument('--tools', type=Path, default=sdk.parents[2] / 'work/anker-sdk-tools')
 parser.add_argument('--check', action='store_true')
+parser.add_argument('--archive-downloads', action='store_true',
+                    help='Download pinned public pod sources from official GitHub archives when git transport is unavailable')
 args = parser.parse_args()
 tools = args.tools.resolve()
 vendor = sdk / 'Vendor'
@@ -25,6 +27,8 @@ bundle = gem_home / 'bin/bundle'
 pod = shutil.which('pod')
 system_bundle = shutil.which('bundle')
 env = dict(os.environ)
+if args.archive_downloads:
+    env['EG_POD_ARCHIVE_DOWNLOADS'] = '1'
 if java:
     env.update(JAVA_HOME=java, PATH=str(Path(java) / 'bin') + ':' + os.environ['PATH'])
 if bundle.exists():
@@ -54,7 +58,36 @@ if not all(checks.values()):
     raise SystemExit('Prepare JDK 17 / CocoaPods and keep both vendor folders under SDK/Vendor before continuing.')
 tools_local = sdk / '.tools'
 tools_local.mkdir(exist_ok=True)
-(tools_local / 'java.env').write_text('export JAVA_HOME=' + shlex.quote(java) + '\nexport PATH="$JAVA_HOME/bin:$PATH"\n')
+runtime = ['export JAVA_HOME=' + shlex.quote(java)]
+for name in ['GEM_HOME', 'GEM_PATH', 'BUNDLE_GEMFILE', 'RUBYOPT']:
+    if name in env:
+        runtime.append('export ' + name + '=' + shlex.quote(env[name]))
+runtime.append('export PATH=' + shlex.quote(str(tools_local / 'bin')) + ':"$JAVA_HOME/bin:$PATH"')
+(tools_local / 'java.env').write_text('\n'.join(runtime) + '\n')
+pod_wrapper = tools_local / 'bin/pod'
+pod_wrapper.parent.mkdir(exist_ok=True)
+pod_loader = tools_local / 'pod-loader.rb'
+loader = ["require 'bundler/setup'"] if bundle.exists() or system_bundle else []
+loader.append("require 'cocoapods'")
+if args.archive_downloads:
+    loader.append('require ' + repr(str(sdk / 'pod_archive_downloads.rb')))
+loader.append('load Gem.bin_path("cocoapods", "pod")')
+pod_loader.write_text('\n'.join(loader) + '\n')
+pod_wrapper.write_text('#!/bin/sh\n. ' + shlex.quote(str(tools_local / 'java.env')) + '\nexec ' +
+                       shlex.join(ruby_command + [str(pod_loader)]) + ' "$@"\n')
+pod_wrapper.chmod(0o755)
+env['PATH'] = str(pod_wrapper.parent) + ':' + env['PATH']
+# Kotlin's synthetic CocoaPods project also needs the selected runtime. Keep
+# machine-specific paths inside ignored vendor files, never in team sources.
+properties = ios / 'kotlin/local.properties'
+existing = properties.read_text().splitlines() if properties.exists() else []
+existing = [line for line in existing if not line.startswith('kotlin.apple.cocoapods.bin=')]
+existing.append('kotlin.apple.cocoapods.bin=' + str(pod_wrapper).replace('\\', '\\\\').replace(' ', '\\ '))
+properties.write_text('\n'.join(existing) + '\n')
+build_file = common / 'build.gradle.kts'
+content = build_file.read_text()
+if 'pod("SSZipArchive")' in content:
+    build_file.write_text(content.replace('pod("SSZipArchive")', 'pod("SSZipArchive", "2.4.3")'))
 bridge = common / 'src/iosArm64Main/kotlin/com/anker/esiotkit/sample/evidenceguard/EvidenceGuardSDKBridge.kt'
 bridge.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(sdk / 'Bridge/EvidenceGuardSDKBridge.kt', bridge)

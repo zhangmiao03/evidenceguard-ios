@@ -1,0 +1,42 @@
+PODS:
+  - AWSCore (2.41.0)
+  - AWSIoT (2.41.0):
+    - AWSCore (= 2.41.0)
+  - SampleCore (2.2.7):
+    - SQLCipher (= 4.5.4)
+    - SSZipArchive
+  - SQLCipher (4.5.4):
+    - SQLCipher/standard (= 4.5.4)
+  - SQLCipher/common (4.5.4)
+  - SQLCipher/standard (4.5.4):
+    - SQLCipher/common
+  - SSZipArchive (2.4.3)
+
+DEPENDENCIES:
+  - AWSCore (= 2.41.0)
+  - AWSIoT (= 2.41.0)
+  - SampleCore (from `SDK/Vendor/ESIotKit-DemoApp-Common/sample-core/SampleCore.podspec`)
+  - SQLCipher (= 4.5.4)
+  - SSZipArchive (= 2.4.3)
+
+SPEC REPOS:
+  trunk:
+    - AWSCore
+    - AWSIoT
+    - SQLCipher
+    - SSZipArchive
+
+EXTERNAL SOURCES:
+  SampleCore:
+    :path: SDK/Vendor/ESIotKit-DemoApp-Common/sample-core/SampleCore.podspec
+
+SPEC CHECKSUMS:
+  AWSCore: ee7594bda3132cde8666328bf9a09d8770c1c100
+  AWSIoT: 186bd5c758b3331f2ad20e52477800ed7316399b
+  SampleCore: 6ef2c871e41ae23a623fccd97be009587204527e
+  SQLCipher: 905b145f65f349f26da9e60a19901ad24adcd381
+  SSZipArchive: fe6a26b2a54d5a0890f2567b5cc6de5caa600aef
+
+PODFILE CHECKSUM: d45758999d077902724cd81e9beb7c13b9399c54
+
+COCOAPODS: 1.15.2

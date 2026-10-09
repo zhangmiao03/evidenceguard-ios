@@ -11,10 +11,10 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def restore(archive: Path, web_only=False):
+def restore(archive: Path):
     count = 0
     total = 0
-    digests = {}
+    modules_found = set()
     with zipfile.ZipFile(archive) as bundle:
         for entry in bundle.infolist():
             name = entry.filename
@@ -32,16 +32,12 @@ def restore(archive: Path, web_only=False):
                 raise ValueError('SDK archive contains a symbolic link')
             parts = path.parts
             destination = None
-            if 'WebSDKDemo' in parts:
-                relative = parts[parts.index('WebSDKDemo') + 1:]
-                if relative[:2] == ('public', 'sdk'):
-                    destination = ROOT/'Web'/'public'/Path(*relative[1:])
-            if not web_only:
-                for module in ('ESIotKit-DemoApp-iOS', 'ESIotKit-DemoApp-Common'):
-                    if module in parts:
-                        relative = parts[parts.index(module)+1:]
-                        if not any(p in {'build', '.gradle', '.git', 'Pods', 'xcuserdata', 'node_modules'} for p in relative):
-                            destination = ROOT/'SDK'/'Vendor'/module/Path(*relative)
+            for module in ('ESIotKit-DemoApp-iOS', 'ESIotKit-DemoApp-Common'):
+                if module in parts:
+                    relative = parts[parts.index(module)+1:]
+                    if relative and not any(p in {'build', '.gradle', '.git', 'Pods', 'xcuserdata', 'node_modules'} for p in relative):
+                        destination = ROOT/'SDK'/'Vendor'/module/Path(*relative)
+                        modules_found.add(module)
             if destination is None:
                 continue
             total += entry.file_size
@@ -52,11 +48,11 @@ def restore(archive: Path, web_only=False):
                 shutil.copyfileobj(source, target)
             if destination.name == 'gradlew':
                 destination.chmod(0o755)
-            if destination.name == 'index.js' and destination.parent.name == 'sdk':
-                digests['webSDK'] = hashlib.sha256(destination.read_bytes()).hexdigest()
             count += 1
-    if not (ROOT/'Web/public/sdk/index.js').exists():
-        raise ValueError('Web SDK was not found in the supplied archive')
+    if modules_found != {'ESIotKit-DemoApp-iOS', 'ESIotKit-DemoApp-Common'}:
+        raise ValueError('The organizer archive must contain both iOS and Common SDK modules')
+    build = ROOT/'SDK/Vendor/ESIotKit-DemoApp-Common/sample-core/build.gradle.kts'
+    digests = {'sampleCoreBuild': hashlib.sha256(build.read_bytes()).hexdigest()} if build.is_file() else {}
     (ROOT/'SDK').mkdir(exist_ok=True)
     (ROOT/'SDK/vendor-manifest.local.json').write_text(json.dumps({'files': count, 'bytes': total, 'digests': digests}, indent=2)+'\n')
     return count
@@ -65,6 +61,5 @@ def restore(archive: Path, web_only=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', type=Path)
-    parser.add_argument('--web-only', action='store_true')
     args = parser.parse_args()
-    print(f'Restored {restore(args.archive, args.web_only)} local SDK files. These files are ignored by Git.')
+    print(f'Restored {restore(args.archive)} local iOS SDK files. These files are ignored by Git.')
