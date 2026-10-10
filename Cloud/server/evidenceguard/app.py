@@ -26,6 +26,7 @@ from .replay import ReplayWorker
 from .skill_capabilities import assess, CATALOG
 from .skill_trials import SkillTrials
 from .deployment import SitePreparation
+from .access import install_access
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -93,6 +94,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await scheduler.shutdown()
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
+    install_access(app)
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
     app.state.replay_worker=replay_worker

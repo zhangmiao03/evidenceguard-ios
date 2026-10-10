@@ -171,7 +171,8 @@ struct RecordingPlayerView: View {
                 ready = false; error = nil
                 let value = try await (trialEvidence ? store.client.trialRecording(id) : replayEvidence ? store.client.replayRecording(id) : store.client.recording(id)); recording = value
                 guard let url = store.client.absoluteURL(value.playbackUrl) else { throw APIProblem(message: "录像播放地址无效") }
-                let asset = AVURLAsset(url: url)
+                let cookies = HTTPCookieStorage.shared.cookies(for: url) ?? []
+                let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPCookiesKey: cookies])
                 guard try await asset.load(.isPlayable) else { throw APIProblem(message: "录像当前不可播放") }
                 guard !Task.isCancelled else { return }
                 player = AVPlayer(playerItem: AVPlayerItem(asset: asset))

@@ -16,6 +16,8 @@
 
 ## 当前外部条件
 
+2026-10-10：AWS Ubuntu 24.04 实例已创建，Cloud 已部署为仅监听 loopback 的 systemd 服务，并加入单团队 Bearer 鉴权和媒体 Cookie。匿名数据接口 401、鉴权 bootstrap 200、实际模型对话调用成功；100 项 Cloud 测试和 iOS Simulator 编译通过。公网 HTTP 暂只开放健康检查及证书验证，HTTPS 证书签发等待订户协议确认，不能据此声称真机已连通。App Store Connect 应用记录、签名分发、上传和真实摄像头验收仍未完成。
+
 2026-10-09：开发机已有 Apple Developer Team 与开发证书，但 App Store Connect 应用记录、正式 Bundle ID、可访问的 HTTPS 后端尚未准备。`com.zhangmiao.evidenceguard` 是建议标识，尚未确认注册。摄像头及官方账号凭证到决赛才提供。目前没有完成签名分发、TestFlight 上传、Beta App Review 或真实设备验收。
 
 SDK 公共依赖已安装，实际 `EvidenceGuardSDK` 的 iPhone arm64 Debug 构建、未签名 Release 归档和普通 iOS Simulator 构建均已通过；真实框架与 Compose 资源已打包。未签名归档仅作构建验证，不能安装或上传 TestFlight。`generateDummyFramework` 只是 CocoaPods 初始化占位框架，不能用它证明官方 SDK 已编译。

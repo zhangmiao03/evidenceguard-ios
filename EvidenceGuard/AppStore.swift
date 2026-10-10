@@ -57,15 +57,21 @@ import Foundation
         do {
             data = try await client.bootstrap(); isConnected = true; lastError = nil
         } catch is CancellationError { }
+        catch let problem as APIProblem { isConnected = false; lastError = problem.message }
         catch { isConnected = false; lastError = "服务暂时未连接，已显示的记录不代表当前状态。" }
     }
-    func configure(_ url: String) async -> Bool {
-        guard let parsed = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)), ["http", "https"].contains(parsed.scheme), parsed.host != nil else {
+    func configure(_ url: String, accessToken: String? = nil) async -> Bool {
+        errorMessage = nil
+        guard let parsed = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)), ["http", "https"].contains(parsed.scheme), parsed.host != nil, parsed.user == nil, parsed.password == nil, parsed.query == nil, parsed.fragment == nil, ["", "/"].contains(parsed.path) else {
             errorMessage = "请输入完整的 http:// 或 https:// 服务地址。"; return false
         }
         #if !DEBUG
         guard parsed.scheme == "https" else { errorMessage = "测试分发版本需要可访问的 HTTPS 服务地址。"; return false }
         #endif
+        if let accessToken {
+            do { try ServiceAccess.save(accessToken.trimmingCharacters(in: .whitespacesAndNewlines), for: parsed) }
+            catch { errorMessage = error.localizedDescription; return false }
+        }
         client = APIClient(baseURL: parsed); data = .empty
         UserDefaults.standard.set(parsed.absoluteString, forKey: "serviceURL")
         await refresh(); return isConnected

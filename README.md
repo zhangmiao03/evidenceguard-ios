@@ -8,6 +8,8 @@
 
 ## 当前进度
 
+2026-10-10：AWS Ubuntu 24.04 服务器已创建，云端加入单团队访问令牌与只读媒体 Cookie，iOS「服务连接」支持 Keychain 保存令牌。Cloud 100 项测试和 iOS Simulator 编译通过。服务器部署与 HTTPS 状态需按实际验收记录；TestFlight 尚未上传。见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。
+
 2026-10-09：`EvidenceGuardSDK` 的 iPhone arm64 Debug 编译和未签名 Release 归档已通过，实际 SDK 框架及 Compose 资源已打包；普通 iOS Simulator 也通过编译。App 增加官方设备发现、事件查询与缩略图联调入口。
 
 这些是构建检查，不代表安装、设备联调或守护验收通过。摄像头及赛事 User ID / Token 到决赛才提供。TestFlight 尚未上传；还需 HTTPS 后端、App Store Connect 应用记录和签名。流程见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
@@ -44,7 +46,7 @@ cp .env.example .env
 EG_ENV_FILE="$PWD/.env" Cloud/.venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/server --host 127.0.0.1 --port 8790
 ```
 
-这是本地单团队联调服务，公开部署还需 HTTPS、用户身份和媒体权限。默认不托管 Web；若日后需要同源部署独立 Web 构建，可显式设置 `EG_WEB_ROOT=/绝对路径/EvidenceGuard-Web/dist`。仓库分工见 [协作边界](Docs/WEB-APP-ARCHITECTURE.md)。
+本地联调默认不启用鉴权；公网单团队测试必须使用 HTTPS、`EG_REQUIRE_AUTH=1` 和随机 `EG_ACCESS_TOKEN`，部署步骤见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。多租户账号尚未实现。默认不托管 Web；若日后需要同源部署独立 Web 构建，可显式设置 `EG_WEB_ROOT=/绝对路径/EvidenceGuard-Web/dist`。仓库分工见 [协作边界](Docs/WEB-APP-ARCHITECTURE.md)。
 
 ## 既有功能与验证记录
 

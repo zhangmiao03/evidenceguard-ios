@@ -1,4 +1,34 @@
 import Foundation
+import Security
+
+enum ServiceAccess {
+    private static func query(_ url: URL) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "com.evidenceguard.cloud-access",
+         kSecAttrAccount as String: "\(url.scheme ?? "")://\(url.host ?? ""):\(url.port ?? (url.scheme == "https" ? 443 : 80))"]
+    }
+    static func token(for url: URL) -> String {
+        var q = query(url); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+    static func save(_ token: String, for url: URL) throws {
+        let q = query(url)
+        let status: OSStatus
+        if token.isEmpty {
+            status = SecItemDelete(q as CFDictionary)
+        } else {
+            let attributes: [String: Any] = [kSecValueData as String: Data(token.utf8), kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+            let update = SecItemUpdate(q as CFDictionary, attributes as CFDictionary)
+            status = update == errSecItemNotFound ? SecItemAdd(q.merging(attributes) { _, new in new } as CFDictionary, nil) : update
+        }
+        guard status == errSecSuccess || (token.isEmpty && status == errSecItemNotFound) else { throw APIProblem(message: "无法保存团队访问令牌，请解锁手机后重试。") }
+        for cookie in HTTPCookieStorage.shared.cookies(for: url) ?? [] where cookie.name == "eg_media" {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
+        }
+    }
+}
 
 private struct ConflictBody: Decodable { var conflicts: [CameraOccupancy] }
 struct APIProblem: LocalizedError {
@@ -19,6 +49,7 @@ struct APIClient {
         #endif
     }
     var baseURL: URL
+    var accessToken: String { ServiceAccess.token(for: baseURL) }
     init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
     func capability(_ id: String) async throws -> SkillCapability { try await get("/api/skills/\(id)/capability") }
     func trials(_ id: String) async throws -> [SkillTrial] { try await get("/api/skills/\(id)/trials") }
@@ -46,6 +77,7 @@ struct APIClient {
         url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: file.deletingPathExtension().lastPathComponent)]
         if let recordedAt { url.queryItems?.append(URLQueryItem(name: "recordedAt", value: String(recordedAt))) }
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
+        try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
@@ -82,6 +114,7 @@ struct APIClient {
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
     private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
+        try authorize(&req)
         req.httpMethod = method; req.timeoutInterval = 30
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -93,5 +126,13 @@ struct APIClient {
             throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts)
         }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+    private func authorize(_ request: inout URLRequest) throws {
+        let token = accessToken
+        guard !token.isEmpty else { return }
+        guard baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") else {
+            throw APIProblem(message: "团队访问令牌只能通过 HTTPS 发送，请检查服务地址。")
+        }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 }
