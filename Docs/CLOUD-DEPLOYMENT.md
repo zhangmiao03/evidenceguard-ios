@@ -38,8 +38,8 @@ IP 证书约 6 天有效，必须配置自动续期及 Nginx reload hook，并�
 ## 验证边界
 
 服务器可用、模型配置就绪、模型实际调用、iOS 编译、iPhone 安装、视频播放、真实 SDK 摄像头验收需分别记录。
-TestFlight 仍需签名归档、App Store Connect 应用记录、隐私资料和上传；HTTPS 成功不代表已完成这些步骤。
+HTTPS 检查与 TestFlight 分发分别验收。2026-10-11 已创建 App Store Connect 应用记录并成功上传 `1.0 (1)`，后续 Beta App Review、iPhone 安装和真实摄像头验收仍待完成；详见 [TestFlight](TESTFLIGHT.md)。
 
-2026-10-10：AWS 后台服务与真实文本模型调用已验证；公网 HTTP 数据接口返回 426，匿名后台 API 返回 401。
+2026-10-10：受信任 HTTPS 地址为 `https://34.218.51.85`；后台服务与真实文本模型调用已验证。HTTP 跳转 HTTPS；匿名数据 API 返回 401，带团队令牌返回 200。媒体 Cookie 的 Range/206、HEAD 与 JPEG 缩略图通过公网检查。媒体验证使用临时合成 H.264 视频，只验证传输，结束后已删除；没有将它用作识别或真实摄像头验收。证书自动续期每六小时检查，演练成功。
 后端 100 项测试通过，iOS 模拟器及包含官方 SDK 的 generic iOS Debug 目标均编译通过（真机目标未签名）。
-尚未完成受信任 HTTPS、iPhone 安装与真实摄像头验收。
+尚未完成 iPhone 安装与真实摄像头验收。

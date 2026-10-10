@@ -24,7 +24,7 @@ enum ServiceAccess {
             status = update == errSecItemNotFound ? SecItemAdd(q.merging(attributes) { _, new in new } as CFDictionary, nil) : update
         }
         guard status == errSecSuccess || (token.isEmpty && status == errSecItemNotFound) else { throw APIProblem(message: "无法保存团队访问令牌，请解锁手机后重试。") }
-        for cookie in HTTPCookieStorage.shared.cookies(for: url) ?? [] where cookie.name == "eg_media" {
+        for cookie in HTTPCookieStorage.shared.cookies(for: url.appendingPathComponent("api")) ?? [] where cookie.name == "eg_media" {
             HTTPCookieStorage.shared.deleteCookie(cookie)
         }
     }

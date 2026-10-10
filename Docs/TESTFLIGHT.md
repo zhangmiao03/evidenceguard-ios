@@ -16,9 +16,13 @@
 
 ## 当前外部条件
 
-2026-10-10：AWS Ubuntu 24.04 实例已创建，Cloud 已部署为仅监听 loopback 的 systemd 服务，并加入单团队 Bearer 鉴权和媒体 Cookie。匿名数据接口 401、鉴权 bootstrap 200、实际模型对话调用成功；100 项 Cloud 测试和 iOS Simulator 编译通过。公网 HTTP 暂只开放健康检查及证书验证，HTTPS 证书签发等待订户协议确认，不能据此声称真机已连通。App Store Connect 应用记录、签名分发、上传和真实摄像头验收仍未完成。
+2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。带真实 SDK 的 `1.0 (1)` 已签名归档、通过 Xcode 分发校验，并返回 `Upload succeeded` / `EXPORT SUCCEEDED`。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。上传完成后 Apple 正在处理；尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
 
-2026-10-09：开发机已有 Apple Developer Team 与开发证书，但 App Store Connect 应用记录、正式 Bundle ID、可访问的 HTTPS 后端尚未准备。`com.zhangmiao.evidenceguard` 是建议标识，尚未确认注册。摄像头及官方账号凭证到决赛才提供。目前没有完成签名分发、TestFlight 上传、Beta App Review 或真实设备验收。
+分发警告：官方 `AnkerWebRTC.framework` 没有匹配的 dSYM（UUID `4C4C4445-5555-3144-A1F4-EEDE4345040C`）。此警告未阻断校验或上传，但会限制厂商库崩溃定位；需向主办方索取匹配符号，不能生成空文件冒充。
+
+2026-10-10：AWS Cloud 已部署，受信任 HTTPS 地址为 `https://34.218.51.85`。匿名数据接口 401、鉴权 bootstrap 200、实际文本模型对话调用成功；媒体 Cookie 的 Range/206、HEAD 和缩略图访问通过公网检查。IP 证书每六小时检查续期，续期演练通过。100 项 Cloud 测试及 iOS 编译通过。
+
+历史记录（2026-10-09）：当时仅有 Apple Developer Team 与开发证书，尚未准备 App Store Connect 应用记录、正式 Bundle ID 和 HTTPS 后端。该阶段未完成签名分发或上传；以上状态已由 10 月 11 日记录更新。摄像头及官方账号凭证仍待决赛提供。
 
 SDK 公共依赖已安装，实际 `EvidenceGuardSDK` 的 iPhone arm64 Debug 构建、未签名 Release 归档和普通 iOS Simulator 构建均已通过；真实框架与 Compose 资源已打包。未签名归档仅作构建验证，不能安装或上传 TestFlight。`generateDummyFramework` 只是 CocoaPods 初始化占位框架，不能用它证明官方 SDK 已编译。
 
@@ -36,9 +40,19 @@ xcodebuild -workspace EvidenceGuard.xcworkspace \
 
 Podfile 对齐官方 SampleCore 的 Mach-O 最低 iOS 版本与 Info.plist，保留 Release 的正常符号处理。App 已声明自身 UserDefaults 的 CA92.1 用途（保存本 App 服务地址与会话 ID），图标已无透明通道。AWS 依赖带有其隐私清单；官方 SDK / 其他原生库的完整清单和符号仍需核实，不能用 App 的声明代替厂商声明，也不自动填写未经核实的加密豁免。依据：[Apple required reason API](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)。
 
+## 首包测试说明草案
+
+Beta 描述：EvidenceGuard 是安克黑客松的原生 iOS 视觉任务原型。测试内容包括助手文字输入与语音转文字、摄像头选择、Skill 草案编辑和区域圈选，以及手动导入录像后的检索、复核与证据播放。云端需要团队提供的测试访问方式；录像识别结论需查看原片核对。官方摄像头入口已集成 SDK，但实体设备与赛事账号尚未到位，本轮不验证真实摄像头或持续实时守护。
+
+测试顺序：安装 →「我的 → 服务连接」配置测试地址及令牌 → AI 输入文字 → 查看草案并进入编辑 → 导入公开或自有非敏感短片 → 在历史回顾中查询 → 点击证据定位播放。记录服务连接失败、输入/返回/圈选交互问题、时间定位与原片不一致，以及崩溃；同时标明 Wi-Fi 或蜂窝网络、iOS 版本及 App 构建号。尚未用安装后的 iPhone 跑通此顺序，不能据此承诺验收完成。
+
+提交 Beta App Review 前仍需联系人姓名、电话、反馈/联系邮箱，以及 Apple 审核员实际可用的访问方式。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问应使用隔离测试数据并单独准备，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。以上描述与步骤是待核验草案，未提交审核。
+
+加密信息需按实际 SDK 回答：[Apple 加密文稿说明](https://developer.apple.com/help/app-store-connect/manage-app-information/determine-and-upload-app-encryption-documentation/)。依赖中有 SQLCipher 和 AnkerWebRTC，不能仅根据 App 使用 HTTPS 就勾选“仅使用 Apple 操作系统加密”；还需确认厂商 SDK 的加密实现与适用的分发范围。
+
 ## 正式归档与上传
 
-1. 部署带用户身份和媒体访问控制的 HTTPS Cloud，验证蜂窝网络也能访问。现有本地 API 没有公网鉴权，不能直接暴露。
+1. 使用已配置访问令牌与媒体权限的 HTTPS Cloud；仍需用安装后的 iPhone 验证蜂窝网络连接。
 2. 在 Apple Developer / App Store Connect 建立本 Team 下的 Bundle ID 和 iOS 应用记录。配置签名、应用图标、Beta 描述、反馈邮箱、审核联系信息及实际可用的测试访问方式。
 3. 使用真实服务地址归档：
 
@@ -46,11 +60,11 @@ Podfile 对齐官方 SampleCore 的 Mach-O 最低 iOS 版本与 Info.plist，保
 python3 scripts/archive_ios.py \
   --team YOURTEAMID \
   --bundle-id com.yourteam.evidenceguard \
-  --api-url https://你的真实服务域名 \
+  --api-url https://34.218.51.85 \
   --build 1
 ```
 
-默认 dry run；核对后加 `--execute` 执行本地签名归档。`YOURTEAMID` 需替换为 10 位 Team ID。
+默认 dry run；核对后加 `--execute` 执行本地签名归档。`YOURTEAMID` 需替换为 10 位 Team ID。脚本仅通过 `EG_APP_BUNDLE_ID` 设置 App 标识，保留第三方 framework 的自身标识。
 
 4. 校验归档，再导出或上传：
 

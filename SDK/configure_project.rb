@@ -22,7 +22,8 @@ target.build_configurations.each do |configuration|
   original = app.build_configurations.find { |item| item.name == configuration.name }
   configuration.build_settings = original.build_settings.dup
   configuration.build_settings['SUPPORTED_PLATFORMS'] = 'iphoneos'
-  configuration.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.anker.evidenceguard.sdkdemo'
+  configuration.build_settings['EG_APP_BUNDLE_ID'] = 'com.anker.evidenceguard.sdkdemo'
+  configuration.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = '$(EG_APP_BUNDLE_ID)'
   configuration.build_settings['PRODUCT_NAME'] = 'EvidenceGuardSDK'
   conditions = original.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] || '$(inherited)'
   configuration.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = "#{conditions} EVIDENCEGUARD_OFFICIAL_SDK"

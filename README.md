@@ -8,11 +8,13 @@
 
 ## 当前进度
 
-2026-10-10：AWS Ubuntu 24.04 服务器已创建，云端加入单团队访问令牌与只读媒体 Cookie，iOS「服务连接」支持 Keychain 保存令牌。Cloud 100 项测试和 iOS Simulator 编译通过。服务器部署与 HTTPS 状态需按实际验收记录；TestFlight 尚未上传。见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。
+2026-10-11：`com.zhangmiao.evidenceguard` 已注册，App Store Connect 的 EvidenceGuard 记录已建立（Apple App ID `6821409514`）。带官方 SDK、配置正式 HTTPS 服务的 `1.0 (1)` 已通过 Xcode 分发校验并成功上传，等待 Apple 处理；尚未完成 Beta App Review 或 iPhone 安装。厂商 AnkerWebRTC 缺少 dSYM，Apple 返回非阻断警告。见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
+
+2026-10-10：AWS Cloud 已部署，受信任 HTTPS 地址为 `https://34.218.51.85`；单团队鉴权、媒体 Range/206 与缩略图访问通过公网检查。IP 证书自动续期已配置并通过演练。iOS「服务连接」支持 Keychain 保存令牌；100 项 Cloud 测试和 iOS 编译通过。见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。
 
 2026-10-09：`EvidenceGuardSDK` 的 iPhone arm64 Debug 编译和未签名 Release 归档已通过，实际 SDK 框架及 Compose 资源已打包；普通 iOS Simulator 也通过编译。App 增加官方设备发现、事件查询与缩略图联调入口。
 
-这些是构建检查，不代表安装、设备联调或守护验收通过。摄像头及赛事 User ID / Token 到决赛才提供。TestFlight 尚未上传；还需 HTTPS 后端、App Store Connect 应用记录和签名。流程见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
+构建和上传成功不代表安装、设备联调或守护验收通过。摄像头及赛事 User ID / Token 到决赛才提供；外部测试仍需审核信息、可用的测试访问方式及出口合规确认。流程见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
 
 ## 项目目录
 

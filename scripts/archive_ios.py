@@ -21,7 +21,7 @@ if url.scheme != 'https' or not url.hostname or url.username or url.password or 
     parser.error('--api-url must be a reachable HTTPS origin without credentials, query or fragment')
 if not re.fullmatch(r'[A-Z0-9]{10}', args.team) or not re.fullmatch(r'[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+', args.bundle_id) or not re.fullmatch(r'\d+(\.\d+){1,2}', args.version) or args.build < 1:
     parser.error('Invalid Team ID, Bundle ID, version or build number')
-command = ['xcodebuild', '-workspace', 'EvidenceGuard.xcworkspace', '-scheme', 'EvidenceGuardSDK', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', str(root/'Release/EvidenceGuard.xcarchive'), f'DEVELOPMENT_TEAM={args.team}', f'PRODUCT_BUNDLE_IDENTIFIER={args.bundle_id}', f'EG_SERVICE_BASE_URL={args.api_url.rstrip("/")}', f'MARKETING_VERSION={args.version}', f'CURRENT_PROJECT_VERSION={args.build}', '-allowProvisioningUpdates', 'archive']
+command = ['xcodebuild', '-workspace', 'EvidenceGuard.xcworkspace', '-scheme', 'EvidenceGuardSDK', '-configuration', 'Release', '-destination', 'generic/platform=iOS', '-archivePath', str(root/'Release/EvidenceGuard.xcarchive'), f'DEVELOPMENT_TEAM={args.team}', f'EG_APP_BUNDLE_ID={args.bundle_id}', f'EG_SERVICE_BASE_URL={args.api_url.rstrip("/")}', f'MARKETING_VERSION={args.version}', f'CURRENT_PROJECT_VERSION={args.build}', '-allowProvisioningUpdates', 'archive']
 if not args.execute:
     print('Dry run: '+shlex.join(command))
     print('This prepares an archive only. Upload and Beta App Review are separate steps.')

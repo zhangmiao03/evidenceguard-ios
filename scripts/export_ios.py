@@ -26,7 +26,7 @@ archive = args.archive.resolve()
 output = root / 'Release' / args.action
 options_path = output / 'ExportOptions.plist'
 options = {'method': 'validation' if args.action == 'validate' else 'app-store-connect',
-           'destination': 'upload' if args.action == 'upload' else 'export',
+           'destination': 'export' if args.action == 'export' else 'upload',
            'teamID': args.team, 'signingStyle': 'automatic',
            'manageAppVersionAndBuildNumber': False, 'uploadSymbols': True,
            'testFlightInternalTestingOnly': False}
