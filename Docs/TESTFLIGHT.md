@@ -16,13 +16,13 @@
 
 ## 当前外部条件
 
-2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。`1.0 (1)` 虽然返回上传成功，随后被 Apple 的处理邮件以 ITMS-90683 拒绝。已补齐四项用途说明，带真实 SDK 的 `1.0 (2)` 已签名归档、通过分发校验，上传返回 `Upload succeeded` / `EXPORT SUCCEEDED`；Apple 处理已完成，TestFlight 列出构建 2，状态为“缺少出口合规证明”。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
+2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。`1.0 (1)` 虽然返回上传成功，随后被 Apple 的处理邮件以 ITMS-90683 拒绝。已补齐四项用途说明，带真实 SDK 的 `1.0 (2)` 已签名归档、通过分发校验，上传返回 `Upload succeeded` / `EXPORT SUCCEEDED`；Apple 处理已完成。随后通过 SDK 静态核查及用户确认的分发范围保存加密问卷，解除“缺少出口合规证明”。构建 2 已提交 Beta App Review，[外部测试群组](https://appstoreconnect.apple.com/teams/5151fc77-8a5a-4d6f-b0f9-40e28f979db0/apps/6821409514/testflight/groups/2cb84fc9-6660-4b83-a513-f46f3fd35cdb) 实际显示“正在等待审核”。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。Apple 审核通过、iPhone 安装及真实摄像头验收尚未完成。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
 
 首包邮件的阻断项为 `NSContactsUsageDescription`、`NSMotionUsageDescription`，警告项为 `NSLocationWhenInUseUsageDescription`、`NSBluetoothAlwaysUsageDescription`。App 没有新增通讯录或 CoreMotion 授权调用，对应说明明确本测试版不需要这两项授权。位置和蓝牙说明参考官方 demo 的 Wi-Fi 发现与 IoT 设备配网用途；摄像头画面中的移动检测不等于手机运动与健身数据。`export_ios.py` 会检查实际归档中的用途字符串非空，再执行分发操作。
 
 09:12 本机时间，TestFlight 的“构建版本上传”列表已出现 `1.0 (2)`，状态为“正在处理”；`1.0 (1)` 显示“失败”。可测试的构建列表当时仍为空，不能把上传列表的记录当成已可安装的测试包。
 
-随后上传状态变为“完成”，构建 2 出现在正式构建表中。打开“管理”后，Apple 问卷要求区分专有/非标准算法、非 Apple 系统实现的标准算法、两者兼用、均不属于。四项均未选择，也未保存未经核实的加密声明。
+随后上传状态变为“完成”，构建 2 出现在正式构建表中。初次打开“管理”时，Apple 问卷要求区分专有/非标准算法、非 Apple 系统实现的标准算法、两者兼用、均不属于；当时未选择未经核实的声明。后续 SDK 核查和实际保存结果见下文。
 
 分发警告：官方 `AnkerWebRTC.framework` 没有匹配的 dSYM（UUID `4C4C4445-5555-3144-A1F4-EEDE4345040C`）。此警告未阻断校验或上传，但会限制厂商库崩溃定位；需向主办方索取匹配符号，不能生成空文件冒充。
 
@@ -52,15 +52,37 @@ Beta 描述：EvidenceGuard 是安克黑客松的原生 iOS 视觉任务原型�
 
 测试顺序：安装 →「我的 → 服务连接」配置测试地址及令牌 → AI 输入文字 → 查看草案并进入编辑 → 导入公开或自有非敏感短片 → 在历史回顾中查询 → 点击证据定位播放。记录服务连接失败、输入/返回/圈选交互问题、时间定位与原片不一致，以及崩溃；同时标明 Wi-Fi 或蜂窝网络、iOS 版本及 App 构建号。尚未用安装后的 iPhone 跑通此顺序，不能据此承诺验收完成。
 
-用户在测试信息页自行填写审核联系人后，已核对并保存；反馈邮箱使用同一联系邮箱，中国手机号码规范为 +86。联系信息不写入版本库。独立审核访问已准备并验证。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问已使用隔离测试数据和单独的令牌，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。Beta 描述、审核操作说明、审核访问和联系人资料均已保存到 App Store Connect，未提交 Beta App Review。
+用户在测试信息页自行填写审核联系人后，已核对并保存；反馈邮箱使用同一联系邮箱，中国手机号码规范为 +86。联系信息不写入版本库。独立审核访问已准备并验证。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问已使用隔离测试数据和单独的令牌，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。Beta 描述、审核操作说明、审核访问和联系人资料均已保存到 App Store Connect，并随构建 2 提交 Beta App Review。
 
 已在同一 EC2 准备独立审核服务 `https://review.34.218.51.85.sslip.io`：独立 Unix 用户、数据库、录像目录、进程和令牌，与团队服务使用不同 HTTPS 主机名。公网验证已通过 TLS、匿名 401、两个令牌互用 401，以及审核媒体 Cookie 的 Range/206、HEAD 和 JPEG；媒体 Cookie 不能读取普通数据接口。用户明确授权仅供 Apple 审核后，专用令牌已填写到 App Store Connect 的审核登录信息；页面返回“已保存”。令牌不写入仓库，审核备注解释 App 使用服务地址和令牌、用户名仅为审核标签。
 
 审核库只预置一段自生成的 10 s 水印视频，标题与来源明确标为合成测试，不复制团队录像或许可不明的公开视频；采集日期未知。实际 Embedding 索引已完成，但不代表真实场景识别或守护验收。实际历史对话已调用检索和视频模型复核，返回 uncertain 候选且未编造采集日期；这是传输与调用验证，不是现实场景识别验收。可先测试录像库播放、拖动定位和历史查询。实体摄像头不在线，实时能力限制保留。
 
-加密信息需按实际 SDK 回答：[Apple 加密文稿说明](https://developer.apple.com/help/app-store-connect/manage-app-information/determine-and-upload-app-encryption-documentation/)。依赖中有 SQLCipher 和 AnkerWebRTC，不能仅根据 App 使用 HTTPS 就勾选“仅使用 Apple 操作系统加密”；还需确认厂商 SDK 的加密实现与适用的分发范围。
+## 官方 SDK 加密核查（2026-10-11）
 
-向主办方核实：App SDK 是否只使用行业标准加密算法，是否包含自研或非标准算法，以及是否有供 TestFlight / App Store 使用的出口合规说明。现有 App 手册提到 `needEncrypt` 默认启用 SDK 加密，但没有给出算法或出口分类；Web 文档的 ECDH 描述不能代替 App SDK 的声明。
+对给定 SDK 包和实际上传的 `1.0 (2)` 归档进行了静态核查。本次证据支持选择 Apple 问卷的“代替在 Apple 操作系统中使用或访问加密，或与这些操作同时使用的标准加密算法”。不是仅使用 Apple 操作系统的加密。未发现专有或非标准加密算法的证据；这是依据已检查实现作出的技术判断，不是厂商出具的分类证书，也不是对所有闭源路径的完整证明。
+
+核查范围是 ESIotKit `2.2.7`、iOS `iot-crypto 2.2.6.7.dev.8`、P2P / 视频框架的官方头文件、Kotlin Native KLIB 中间表示，以及实际归档中 `SampleCore` 的符号和选定加密函数的反汇编。没有运行 SDK 二进制，也没有向外上传厂商代码或凭证。符号存在证明代码被打包；目前没有实体摄像头，不能据此断言两型号现场会选择哪条算法分支。
+
+| 检查对象 | 实际证据 | 对分类的意义 |
+| --- | --- | --- |
+| `iot-crypto` iOS KLIB | `IotAESImpl` 调用标准 AES provider；`getEcdh.ios.kt` 和 `EccEncryption.iosArm64.kt` 使用 ECDH / P-256、AES-CBC、HMAC；`AesUtil` 使用 AES-GCM；依赖包含 Apple / CryptoKit provider | 厂商对标准算法的封装；SDK 自有类名不等于自研加密算法 |
+| P2P 官方头文件 | `enc_decrypt_interface.h`、`eufy_enc_decrypt_interface.h`、`p2p_cryptography.h` 引用 OpenSSL AES / RSA，声明 AES-GCM 128 / 256；协议枚举注明 RSA + AES、AES-GCM / ECB | 提供 App SDK 自身的算法证据，不再仅依赖 Web 文档 |
+| 归档 `SampleCore` | `_aes_encrypt_eufy` 调用 OpenSSL `_AES_ecb_encrypt`；`_aes_gcm256_encrypt` 调用 `_EVP_aes_256_gcm`；`_p2p_agent_rsa_decrypt` 调用 `_RSA_private_decrypt` | 实际包包含非 Apple 系统实现的标准加密 |
+| 归档 `SampleCore` 的另一 P2P 路径 | `_aesEncryptByKey` 调用 `mbedtls_aes_crypt_ecb`；`_rsaEncryptByPubkey` 调用 `mbedtls_rsa_pkcs1_encrypt` | 再次确认不能选择“仅使用 Apple 系统加密” |
+| 厂商 ECC 媒体封装 | `_ecc_EncryptECC` / `_ecc_DecryptECC` 调用椭圆曲线点运算、KDF、HMAC-SHA256 和 AES-CBC；`_zx_ecc_encrypt` 调用 AES-GCM | 已检查的厂商封装建立在可识别的密码学算法上；没有把协议封装误判为独立密码算法 |
+| SQLCipher / SSZipArchive | SQLCipher 实际构建设置为 `SQLCIPHER_CRYPTO_CC`，源码调用 CommonCrypto AES-256 / PBKDF2 / HMAC；SSZipArchive 的 Apple crypto backend 调用 CommonCrypto AES | 这两项本身不能作为“自带 OpenSSL”的证据；非 Apple 实现的依据来自上述 P2P 实际调用 |
+
+头文件和协议枚举还包含 RC4 兼容路径，归档带有多种密码库兼容实现。它们的存在不证明当前摄像头正在使用，也不代表本次做过安全强度或协议安全性验收。本次没有找到 SDK 提供的 TestFlight 填写说明、CCATS 编号或加密声明文件。
+
+实际归档指纹（SHA-256）：
+
+- `SampleCore.framework/SampleCore`：`139c72b1e41a26e29228edeee51ae1647cc78595b777645d5bba1b5dd282ad5e`
+- `AnkerWebRTC.framework/AnkerWebRTC`：`d864865da029d31b7da406d4eec0765f12354ef84dd66230f15b2b88d4e772e9`
+
+用户明确确认目前不在法国分发，仅团队和赛事测试。已按“标准加密算法 → 不在法国分发”保存构建 2 的问卷，TestFlight 实际状态由“缺少出口合规证明”变为“准备提交”。依据：[Apple 加密文稿要求](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption/)。这次未修改 `ITSAppUsesNonExemptEncryption` 来跳过问卷，未移除官方 SDK，也没有填写未经提供的 CCATS / 法国声明。更换 SDK 或扩大分发范围，尤其涉及法国时，需要重新核查；主办方后续说明若与静态核查冲突，应及时更正。
+
+问卷保存后，按 [Apple 外部测试流程](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/) 先创建 `EvidenceGuard Internal` 内部群组，关闭自动分发，未添加测试员或构建；再创建 `EvidenceGuard Hackathon` 外部群组，添加 `1.0 (2)`、核对测试范围、关闭自动通知并提交审核。页面已确认“外部群组 ∙ 0 个测试员 ∙ 1 个构建版本”及“正在等待审核”。未发送邀请、未创建公开链接、未扩大审核令牌的授权范围。审核通过后才安排外部测试员安装与验收。
 
 ## 正式归档与上传
 
