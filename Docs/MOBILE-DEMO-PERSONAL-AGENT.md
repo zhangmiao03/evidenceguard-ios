@@ -53,6 +53,6 @@ Cloud/.venv/bin/python -m pytest Cloud/server/tests -q
 
 `cloud_demo_setup.sh` 在已部署的 Ubuntu 主机上创建隔离服务；源代码应先放到 `/opt/evidenceguard-demo/Cloud/server`。脚本复用已有 ACME 账号，不创建新的 EC2。`prepare_review_fixture.py --environment demo` 在 demo 目录生成并索引自有合成录像。
 
-本轮验证：105 项 Cloud 测试通过；Swift origin / 二维码输入边界检查通过；模拟器构建及带真实 SDK 的 arm64 签名归档通过。通过额外全新 Bundle ID 验证了首次安装即自动连接；原生 UI 已验证真实回复、记忆写入后可被模型读出、待连接设备记录和返回操作。归档文件扫描未发现团队主令牌或模型 Key。Apple 分发校验通过，仍有厂商 WebRTC dSYM 缺失警告。
+本轮验证：105 项 Cloud 测试通过；Swift origin / 二维码输入边界检查通过；模拟器构建及带真实 SDK 的 arm64 签名归档通过。通过额外全新 Bundle ID 验证了首次安装即自动连接；原生 UI 已验证真实回复、记忆写入后可被模型读出、待连接设备记录和返回操作。归档文件扫描未发现团队主令牌或模型 Key。Apple 分发校验通过，仍有厂商 WebRTC dSYM 缺失警告。1.0（3）已处理完成、补齐本轮出口合规信息并加入现有内部测试组；组内已显示“正在测试”。
 
 后续必须分别验收：TestFlight 新包在用户手机上的网络与权限、官方 SDK 实物绑定 / 采集、APNs 后台送达、其他 Anker 产品适配，以及 Codex 执行器与当前模型协议兼容性。它们不由这次模拟器和模型连通测试代替。
