@@ -38,9 +38,11 @@ struct BrandHeader: View {
                 HStack {
                     Spacer()
                     VStack(alignment: .leading, spacing: 7) {
-                        Text("更安心的\n生活，从看见开始").font(.system(size: 13, weight: .medium, design: .serif)).italic().lineSpacing(4).foregroundStyle(Brand.muted)
+                        Text("更安心的\n生活，从看见开始").font(.system(size: 13, weight: .medium)).lineSpacing(4).foregroundStyle(Brand.dark)
                         Capsule().fill(Brand.blue).frame(width: 68, height: 2)
-                    }.rotationEffect(.degrees(-9)).padding(.top, 14).padding(.trailing, 4)
+                    }.padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.top, 10).padding(.trailing, 4)
                 }
             }.padding(.horizontal, 22).padding(.top, 13)
         }.frame(height: 220).accessibilityElement(children: .contain)

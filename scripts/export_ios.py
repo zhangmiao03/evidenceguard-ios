@@ -49,6 +49,8 @@ if info.get('CFBundleIdentifier') != args.bundle_id:
 url = urlsplit(info.get('EGServiceBaseURL', ''))
 if url.scheme != 'https' or not url.hostname or url.hostname in {'localhost', '127.0.0.1', 'unconfigured.invalid'}:
     parser.error('Archive has no configured HTTPS service. Prepare the release configuration first.')
+if info.get('EGInternalDemo') == 'YES' and not re.fullmatch(r'[A-Za-z0-9_-]{32,}',info.get('EGDemoAccessToken','')):
+    parser.error('Internal demo archive has no automatic service credential; refuse to upload.')
 if not (app / 'Frameworks/SampleCore.framework/SampleCore').is_file():
     parser.error('Archive does not include the official SDK framework; do not substitute a simulator build.')
 required_purposes = [

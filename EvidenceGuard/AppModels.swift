@@ -66,6 +66,7 @@ struct Bootstrap: Codable, Equatable {
     var evidence: [EvidenceItem]; var agent: AgentInfo; var integration: IntegrationInfo
     var recordings: [VideoRecording]?
     var videoModels: VideoModelInfo?
+    var personal: PersonalSnapshot?
     static let empty = Bootstrap(now: 0, summary: .init(activeSkills: 0, openAlerts: 0, unknownSkills: 0), skills: [], cameras: [], evidence: [], agent: .init(provider: "待连接", mode: "", ready: false, tools: []), integration: .init(lab: "", officialSdk: "已收到，待真机验证", physicalDevicesValidated: false))
 }
 struct ToolReceipt: Codable, Equatable { var tool: String; var status: String }
@@ -102,6 +103,7 @@ struct RunEvent: Decodable, Identifiable {
 enum AppRoute: Hashable {
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
     case conversation(String, String?), settings, officialSDK, notificationSettings, voiceSettings, privacy, help, profile
+    case addDevice, personalAgent, personalInbox
     case recordings, video(String, Double), replayVideo(String, Double)
 }
 struct VideoModelInfo: Codable, Equatable {
@@ -174,4 +176,26 @@ struct PreparationAction: Codable, Identifiable { var id: String; var instructio
 struct DeploymentPlan: Codable {
     var status: String; var canPublish: Bool; var summary: String; var cameras: [DeploymentCamera]
     var actions: [PreparationAction]; var blockers: [String]; var sampleIntervalSeconds: Int; var confirmationSeconds: Int; var note: String
+}
+
+
+struct PersonalPreferences: Codable, Equatable {
+    var enabled = false
+    var dailySummary = false
+    var summaryHour = 18
+    var quietStart = 22
+    var quietEnd = 8
+    var timezone = TimeZone.current.identifier
+}
+struct PersonalMemory: Codable, Identifiable, Equatable {
+    var id: String; var content: String; var source: String; var createdAt: Double; var expiresAt: Double?
+}
+struct PersonalNotice: Codable, Identifiable, Equatable {
+    var id: String; var kind: String; var title: String; var body: String
+    var createdAt: Double; var read: Bool; var skillId: String?
+    var kindLabel: String { ["event":"事件触发", "schedule":"定时概况", "followup":"后续提醒"][kind] ?? "助手提醒" }
+}
+struct PersonalSnapshot: Codable, Equatable {
+    var preferences: PersonalPreferences; var revision: Int
+    var memories: [PersonalMemory]; var inbox: [PersonalNotice]; var delivery: String; var lastError: String?
 }

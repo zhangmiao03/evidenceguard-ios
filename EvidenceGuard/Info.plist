@@ -22,6 +22,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>EGServiceBaseURL</key>
 	<string>$(EG_SERVICE_BASE_URL)</string>
+	<key>EGInternalDemo</key>
+	<string>$(EG_INTERNAL_DEMO)</string>
+	<key>EGDemoAccessToken</key>
+	<string>$(EG_DEMO_ACCESS_TOKEN)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -30,7 +34,7 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>用于连接安克摄像头、预览实时画面并设置守护区域。</string>
+	<string>使用手机相机扫描摄像头设备二维码，识别需要添加的设备。</string>
 	<key>NSContactsUsageDescription</key>
 	<string>本测试版不提供通讯录功能，无需授权通讯录即可使用摄像头预览和守护；如出现访问请求，可以选择不允许。</string>
 	<key>NSMotionUsageDescription</key>

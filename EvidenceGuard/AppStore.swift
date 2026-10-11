@@ -28,7 +28,7 @@ import Foundation
     private var polling = false
     init() {
         let defaults = UserDefaults.standard
-        let base = defaults.string(forKey: "serviceURL") ?? APIClient.defaultBaseURL.absoluteString
+        let base = MobileServiceConfiguration.current.isInternalDemo ? APIClient.defaultBaseURL.absoluteString : (defaults.string(forKey: "serviceURL") ?? APIClient.defaultBaseURL.absoluteString)
         client = APIClient(baseURL: URL(string: base) ?? APIClient.defaultBaseURL)
         generalConversation = defaults.string(forKey: "conversationID") ?? "chat-\(UUID().uuidString)"
         defaults.set(generalConversation, forKey: "conversationID")
@@ -52,7 +52,7 @@ import Foundation
     }
     func refresh() async {
         guard client.baseURL.host != "unconfigured.invalid" else {
-            isConnected = false; lastError = "请在“我的 → 服务连接”设置云端 HTTPS 地址。"; return
+            isConnected = false; lastError = MobileServiceConfiguration.current.isInternalDemo ? "此测试版本连接配置不完整，请联系团队更新。" : "请在“我的 → 服务连接”设置云端 HTTPS 地址。"; return
         }
         do {
             data = try await client.bootstrap(); isConnected = true; lastError = nil
@@ -62,6 +62,7 @@ import Foundation
     }
     func configure(_ url: String, accessToken: String? = nil) async -> Bool {
         errorMessage = nil
+        guard !MobileServiceConfiguration.current.isInternalDemo else { await refresh(); return isConnected }
         guard let parsed = URL(string: url.trimmingCharacters(in: .whitespacesAndNewlines)), ["http", "https"].contains(parsed.scheme), parsed.host != nil, parsed.user == nil, parsed.password == nil, parsed.query == nil, parsed.fragment == nil, ["", "/"].contains(parsed.path) else {
             errorMessage = "请输入完整的 http:// 或 https:// 服务地址。"; return false
         }

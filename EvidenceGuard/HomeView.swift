@@ -28,6 +28,8 @@ struct HomeView: View {
                     overview.padding(.horizontal, 16)
                 }
                 VStack(spacing: 16) {
+                    NavigationLink(value: AppRoute.addDevice) { Label("扫描添加设备", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity, alignment: .leading).padding(16).cardStyle() }
+                    NavigationLink(value: AppRoute.personalInbox) { HStack { Label("助手提醒", systemImage: "sparkles"); Spacer(); Text("\(store.data.personal?.inbox.filter { !$0.read }.count ?? 0) 条未读").font(.caption); Image(systemName: "chevron.right").font(.caption) }.padding(16).cardStyle() }
                     HStack { Text("正在守护的 Skill").font(.title3.bold()); Spacer(); Button { store.selectedTab = 1 } label: { HStack(spacing: 4) { Text("查看全部"); Image(systemName: "chevron.right") }.font(.subheadline) } }
                     if active.isEmpty { EmptyState(title: "还没有运行中的守护", detail: "创建草案、圈选区域并确认后，任务才会开始观察。", icon: "shield") }
                     ForEach(active.prefix(3)) { skill in NavigationLink(value: AppRoute.skill(skill.id)) { SkillRow(skill: skill) }.buttonStyle(.plain) }

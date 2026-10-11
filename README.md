@@ -8,6 +8,8 @@
 
 ## 当前进度
 
+2026-10-12：手机内部演示包改为自动连接独立的云端服务，不再向使用者展示服务器、模型或访问令牌配置。补齐扫码识别 / 待连接设备流程，修复首页文字叠在背景树上的问题；新增明确确认的记忆、临时上下文、云端定时概况和应用内提醒箱。原生 App 已实测直接发消息并收到模型回复，保存的偏好也能进入后续对话；105 项 Cloud 测试通过。真机 `1.0 (3)` 已归档、通过 Apple 分发校验并上传，Apple 正在处理；尚未把上传成功当成手机可更新。详见 [手机演示与 Personal Agent](Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。以下日期为此前版本记录。
+
 2026-10-11：`com.zhangmiao.evidenceguard` 已注册，App Store Connect 的 EvidenceGuard 记录已建立（Apple App ID `6821409514`）。首包的 ITMS-90683 权限用途说明缺失已修复；带官方 SDK 的 `1.0 (2)` 已完成签名归档、分发校验、上传和 Apple 处理。核查 SDK 的 KLIB、头文件及实际归档的加密函数后，按“标准加密算法 → 不在法国分发”保存问卷，出口合规阻塞已解除；用户确认当前仅团队和赛事测试。Beta 描述、审核操作说明、独立审核访问和联系人资料已保存，构建已提交 Beta App Review，实际状态为“正在等待审核”。测试群组尚无测试员，未创建公开邀请链接或安装到 iPhone。厂商 AnkerWebRTC 缺少 dSYM 的非阻断警告仍待主办方提供符号。见 [TestFlight 准备与 SDK 核查](Docs/TESTFLIGHT.md)。
 
 2026-10-10：AWS Cloud 已部署，受信任 HTTPS 地址为 `https://34.218.51.85`；单团队鉴权、媒体 Range/206 与缩略图访问通过公网检查。IP 证书自动续期已配置并通过演练。iOS「服务连接」支持 Keychain 保存令牌；100 项 Cloud 测试和 iOS 编译通过。见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。
@@ -94,7 +96,7 @@ AI 对话固定显示草案入口，摄像头图片可直接进入独立圈选�
 
 ## 运行
 
-在 Xcode 打开 `EvidenceGuard.xcodeproj`，选择 iPhone Simulator，点击 Run。默认服务地址是 `http://127.0.0.1:8790`，可在“我的 → 服务连接”修改，无须修改源码。
+开发构建在 Xcode 打开 `EvidenceGuard.xcodeproj`，选择 iPhone Simulator，默认连接 `http://127.0.0.1:8790`。内部演示发布必须使用私有 demo xcconfig，打开即连接云端，手机没有配置表单；见 [构建说明](Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。
 
 服务未连接时显示连接状态和空状态，不伪造运行任务、证据或 AI 回复。
 

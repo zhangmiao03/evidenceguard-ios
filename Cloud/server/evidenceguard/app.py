@@ -27,6 +27,7 @@ from .skill_capabilities import assess, CATALOG
 from .skill_trials import SkillTrials
 from .deployment import SitePreparation
 from .access import install_access
+from .personal import PersonalAgent, Preferences, MemoryInput, installation
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -68,6 +69,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     root=Path(__file__).resolve().parents[2]
     store=Store(db_path or Path(os.getenv('EG_DATABASE',str(root/'data/evidenceguard.sqlite3'))))
     store.recover_ownership()
+    personal = PersonalAgent(store)
     camera=CameraRegistry(camera_adapter or FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')))
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
@@ -83,8 +85,11 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     @asynccontextmanager
     async def lifespan(_):
         task=asyncio.create_task(worker.run()) if start_worker else None
+        personal_task=asyncio.create_task(personal.run()) if start_worker else None
         try: yield
         finally:
+            if personal_task:
+                personal_task.cancel(); await asyncio.gather(personal_task, return_exceptions=True)
             await trials.shutdown()
             await agent.shutdown()
             if task:
@@ -99,6 +104,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.videos=videos
     app.state.replay_worker=replay_worker
     app.state.trials=trials
+    app.state.personal=personal
     @app.exception_handler(KeyError)
     async def missing(request,error):
         from fastapi.responses import JSONResponse
@@ -114,10 +120,21 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     @app.get('/api/health')
     async def health(): return dict(status='ok',workerError=worker.last_error,modelReady=agent.ready)
     @app.get('/api/bootstrap')
-    async def bootstrap():
+    async def bootstrap(request: Request):
         manifests=await camera.manifests()
         skills=[s | {'capability':assess(s,videos,manifests)} for s in store.skills()]
-        return dict(now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+        return dict(personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+    def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
+    @app.get('/api/personal')
+    async def personal_read(request: Request): return personal.snapshot(personal_client(request))
+    @app.put('/api/personal/preferences')
+    async def personal_preferences(request: Request, body: Preferences): return personal.preferences(personal_client(request), body)
+    @app.post('/api/personal/memories', status_code=201)
+    async def personal_remember(request: Request, body: MemoryInput): return personal.remember(personal_client(request), body)
+    @app.delete('/api/personal/memories/{key}')
+    async def personal_forget(request: Request, key: str): return personal.forget(personal_client(request), key)
+    @app.post('/api/personal/inbox/{key}/read')
+    async def personal_mark_read(request: Request, key: str): return personal.read(personal_client(request), key)
     @app.get('/api/recordings/{recording_id}')
     async def recording(recording_id:str):
         r=videos.db.recording(recording_id)
@@ -304,8 +321,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         store.event(skill_id,'recheck_requested',{'notBefore':value['notBefore']})
         return store.skill(skill_id)
     @app.post('/api/agent/runs',status_code=202)
-    async def start(body:AgentRequest):
-        return agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None)
+    async def start(body:AgentRequest,request:Request):
+        return agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None, personal_context=personal.context(personal_client(request)) if request.headers.get('X-EG-Installation-ID') else None)
     @app.get('/api/agent/conversations/{conversation_id}')
     async def conversation(conversation_id:str): return store.runs(conversation_id)
     @app.get('/api/runs/{run_id}')

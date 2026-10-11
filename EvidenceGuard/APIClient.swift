@@ -8,6 +8,7 @@ enum ServiceAccess {
          kSecAttrAccount as String: "\(url.scheme ?? "")://\(url.host ?? ""):\(url.port ?? (url.scheme == "https" ? 443 : 80))"]
     }
     static func token(for url: URL) -> String {
+        if let token = MobileServiceConfiguration.current.demoToken(for: url) { return token }
         var q = query(url); q[kSecReturnData as String] = true; q[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return "" }
@@ -40,8 +41,7 @@ private struct TrialRequestBody: Encodable { var revision: Int; var expectedOutc
 private struct PreparationRequestBody: Encodable { var revision: Int; var action: String; var completed: Bool }
 struct APIClient {
     static var defaultBaseURL: URL {
-        if let raw = Bundle.main.object(forInfoDictionaryKey: "EGServiceBaseURL") as? String,
-           let url = URL(string: raw), url.scheme == "https", url.host != nil { return url }
+        if let url = MobileServiceConfiguration.current.origin { return url }
         #if DEBUG
         return URL(string: "http://127.0.0.1:8790")!
         #else
@@ -59,6 +59,13 @@ struct APIClient {
     func startTrial(_ skill: VisualSkill, expectedOutcome: String) async throws -> SkillTrial { try await send("/api/skills/\(skill.id)/trials", body: TrialRequestBody(revision: skill.revision, expectedOutcome: expectedOutcome)) }
     func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
     func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
+    func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
+    func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
+        struct Body: Encodable { var content: String; var temporary: Bool }
+        return try await send("/api/personal/memories", body: Body(content: content, temporary: temporary))
+    }
+    func forget(_ id: String) async throws -> PersonalSnapshot { try await send("/api/personal/memories/\(id)", method: "DELETE", body: Optional<String>.none) }
+    func readNotice(_ id: String) async throws -> PersonalSnapshot { try await send("/api/personal/inbox/\(id)/read", body: [String:String]()) }
     func bootstrap() async throws -> Bootstrap { try await get("/api/bootstrap") }
     func conversation(_ id: String) async throws -> [AgentRun] { try await get("/api/agent/conversations/\(id)") }
     func events(_ id: String) async throws -> [RunEvent] { try await get("/api/runs/\(id)/events") }
@@ -119,15 +126,35 @@ struct APIClient {
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body { req.httpBody = try JSONEncoder().encode(body) }
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let data: Data
+        let response: URLResponse
+        do { (data, response) = try await URLSession.shared.data(for: req) }
+        catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            let message: String
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost: message = "网络暂时断开，恢复后会自动重连。输入的消息仍然保留。"
+            case .timedOut: message = "连接超时，请稍后重试。输入的消息仍然保留。"
+            default: message = "暂时无法连接服务，正在自动重试。"
+            }
+            throw APIProblem(message: message)
+        }
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            if (response as? HTTPURLResponse)?.statusCode == 401, MobileServiceConfiguration.current.isInternalDemo {
+                throw APIProblem(message: "演示版本的连接授权已失效，请更新测试版本或联系团队。无需自行配置。")
+            }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let conflicts = (try? JSONDecoder().decode(ConflictBody.self, from: data))?.conflicts ?? []
             throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts)
         }
-        return try JSONDecoder().decode(T.self, from: data)
+        do { return try JSONDecoder().decode(T.self, from: data) }
+        catch { throw APIProblem(message: "当前版本无法读取服务返回的数据，请更新测试版本。") }
     }
     private func authorize(_ request: inout URLRequest) throws {
+        guard let url = request.url, MobileServiceConfiguration.sameOrigin(baseURL, url) else {
+            throw APIProblem(message: "请求地址不属于当前服务，已停止发送。")
+        }
+        request.setValue(MobileServiceConfiguration.installationID, forHTTPHeaderField: "X-EG-Installation-ID")
         let token = accessToken
         guard !token.isEmpty else { return }
         guard baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") else {

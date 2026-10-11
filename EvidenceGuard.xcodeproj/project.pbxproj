@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */; };
+		03AE49A9BBD66F7270098AAA /* DeviceQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */; };
 		145DF8C0457707043D197721 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* Assets.xcassets */; };
 		21C35FE1B78E2B0042D84E2F /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* APIClient.swift */; };
 		243DA04C02F15F31D2E6FA23 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000C /* ProfileView.swift */; };
@@ -15,14 +16,17 @@
 		396E5491A95C80D93DCC27F6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */; };
 		3D136FE55E0C7D322A628011 /* TeachAIView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000009 /* TeachAIView.swift */; };
 		482D36A55B57EE0C37DC5A91 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* RootView.swift */; };
+		4E92923996E6FE685D760330 /* PersonalAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B50D79E0C2DC99915945B1A /* PersonalAgentView.swift */; };
 		4F52C162835048181591C805 /* AnkerWebRTC.framework in Embed AnkerWebRTC */ = {isa = PBXBuildFile; fileRef = F5AF25A92CAB301D04CFFFAC /* AnkerWebRTC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		54B0215A3DBBF5FDF11885FE /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */; };
 		5DBA0647E4277563805CB1E3 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* SpeechInput.swift */; };
 		647262E8F663A54E08B4622C /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* AppStore.swift */; };
 		722209C9EAF72A18DEFCA642 /* Pods_EvidenceGuardSDK.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F5A7CD630A3D4F90DFAE51B /* Pods_EvidenceGuardSDK.framework */; };
+		77512798C953FEEFF9EFF98F /* PersonalAgentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B50D79E0C2DC99915945B1A /* PersonalAgentView.swift */; };
 		7D0BC24FC0F8F8BA3436875C /* OfficialSDKInspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */; };
 		84DCB6F0790367CACB8C854D /* EvidenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000B /* EvidenceView.swift */; };
 		8584A7473D89CD4E8E9D7769 /* EvidenceGuardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* EvidenceGuardApp.swift */; };
+		981EC957B1FBD8C49707B4D3 /* MobileServiceConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */; };
 		9C86B739F143FFB4B9A53CAE /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* HomeView.swift */; };
 		9CF3B21D4DBE5C1EE432F0A2 /* AnkerWebRTC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F5AF25A92CAB301D04CFFFAC /* AnkerWebRTC.framework */; };
 		A10000000000000000000001 /* EvidenceGuardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000001 /* EvidenceGuardApp.swift */; };
@@ -41,8 +45,12 @@
 		A20000000000000000000001 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* SpeechInput.swift */; };
 		AAF3279B86FE017968D269DE /* OfficialSDKInspectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */; };
 		AC4F89CD101B1763A7451E63 /* CreateSkillView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000A /* CreateSkillView.swift */; };
+		B411F1FC587474F93CB3002F /* AddDeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3019FB82F4BB868EE7C50EB0 /* AddDeviceView.swift */; };
+		BBFAE9FC133B81373AB1A1F2 /* MobileServiceConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */; };
 		D7A973876C49E520042D8583 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* DesignSystem.swift */; };
+		DE92062AD0AB7063953374A7 /* AddDeviceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3019FB82F4BB868EE7C50EB0 /* AddDeviceView.swift */; };
 		DF3F94B327698F0B584A8707 /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* AppModels.swift */; };
+		E99AEB5F31BB14A5C96D01B0 /* DeviceQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */; };
 		EE111F30229AC282E806937E /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000008 /* SkillsView.swift */; };
 		F6B530B6898B80401CC64A42 /* OfficialSDKSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */; };
 		F77EBCF45EEABAD4EF9C7B78 /* OfficialSDKConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B518902B51F961B41EBBE6B2 /* OfficialSDKConnection.swift */; };
@@ -64,11 +72,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileServiceConfiguration.swift; sourceTree = "<group>"; };
+		1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceQRCode.swift; sourceTree = "<group>"; };
 		19CD50DD08657A3BA91F3763 /* EvidenceGuardSDK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EvidenceGuardSDK.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3019FB82F4BB868EE7C50EB0 /* AddDeviceView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AddDeviceView.swift; sourceTree = "<group>"; };
 		337B2D3E1C048F94DF933737 /* Pods-EvidenceGuardSDK.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EvidenceGuardSDK.release.xcconfig"; path = "Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK.release.xcconfig"; sourceTree = "<group>"; };
 		4ADE68F80CE4014EA0FCE7AE /* Pods-EvidenceGuardSDK.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-EvidenceGuardSDK.debug.xcconfig"; path = "Target Support Files/Pods-EvidenceGuardSDK/Pods-EvidenceGuardSDK.debug.xcconfig"; sourceTree = "<group>"; };
 		505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfficialSDKInspectionView.swift; sourceTree = "<group>"; };
+		6B50D79E0C2DC99915945B1A /* PersonalAgentView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PersonalAgentView.swift; sourceTree = "<group>"; };
 		9F5A7CD630A3D4F90DFAE51B /* Pods_EvidenceGuardSDK.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_EvidenceGuardSDK.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B10000000000000000000001 /* EvidenceGuardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvidenceGuardApp.swift; sourceTree = "<group>"; };
 		B10000000000000000000002 /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
@@ -173,6 +185,10 @@
 				DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */,
 				556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */,
 				505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */,
+				017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */,
+				1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */,
+				3019FB82F4BB868EE7C50EB0 /* AddDeviceView.swift */,
+				6B50D79E0C2DC99915945B1A /* PersonalAgentView.swift */,
 			);
 			path = EvidenceGuard;
 			sourceTree = "<group>";
@@ -371,6 +387,10 @@
 				FEE334583A87D919BD54C412 /* OfficialSDKConnection.swift in Sources */,
 				F6B530B6898B80401CC64A42 /* OfficialSDKSettingsView.swift in Sources */,
 				7D0BC24FC0F8F8BA3436875C /* OfficialSDKInspectionView.swift in Sources */,
+				981EC957B1FBD8C49707B4D3 /* MobileServiceConfiguration.swift in Sources */,
+				03AE49A9BBD66F7270098AAA /* DeviceQRCode.swift in Sources */,
+				B411F1FC587474F93CB3002F /* AddDeviceView.swift in Sources */,
+				4E92923996E6FE685D760330 /* PersonalAgentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -394,6 +414,10 @@
 				F77EBCF45EEABAD4EF9C7B78 /* OfficialSDKConnection.swift in Sources */,
 				022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */,
 				AAF3279B86FE017968D269DE /* OfficialSDKInspectionView.swift in Sources */,
+				BBFAE9FC133B81373AB1A1F2 /* MobileServiceConfiguration.swift in Sources */,
+				E99AEB5F31BB14A5C96D01B0 /* DeviceQRCode.swift in Sources */,
+				DE92062AD0AB7063953374A7 /* AddDeviceView.swift in Sources */,
+				77512798C953FEEFF9EFF98F /* PersonalAgentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -409,6 +433,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/SDK/Vendor/ESIotKit-DemoApp-iOS/libs/ios-frameworks",
@@ -420,7 +445,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(EG_APP_BUNDLE_ID)";
 				PRODUCT_NAME = EvidenceGuardSDK;
 				SUPPORTED_PLATFORMS = iphoneos;
@@ -441,6 +465,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
+				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"$(PROJECT_DIR)/SDK/Vendor/ESIotKit-DemoApp-iOS/libs/ios-frameworks",
@@ -452,7 +477,6 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(EG_APP_BUNDLE_ID)";
 				PRODUCT_NAME = EvidenceGuardSDK;
 				SUPPORTED_PLATFORMS = iphoneos;

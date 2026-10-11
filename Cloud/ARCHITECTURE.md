@@ -31,7 +31,7 @@ flowchart LR
 
 ## Harness 参考
 
-Harness 参考本地 MiiMiao v1.0 对照仓库提交 `fe43a78` 的三项结构：集中式 Tool Registry、Provider 边界、按 run 分配的 durable sequence events。这里实现的是黑客松需要的最小子集，没有复制 MiiMiao 的大型通用 Runtime。
+2026-10-12 对照已安装的 MiiMiao v1.0 对照版源码 `c225f46465aaadf460bfc5e736a648192205323e`（Codex 0.153.4）。桌面端由 MiiMiao 管理上下文和权限，由 Codex 执行；它不是已经完成的 Personal Agent。手机云端本次增加冻结的 ExecutionContract、工具权限复核、18,000 字符历史窗口和已确认的用户上下文快照。当前执行器仍是 `bounded-chat-v1`；尚未接入 Codex 二进制或 App Server，不能把本次改动表述为完整移植。
 
 工具包括：
 
@@ -49,12 +49,21 @@ Harness 参考本地 MiiMiao v1.0 对照仓库提交 `fe43a78` 的三项结构�
 
 App 每个标签使用独立 NavigationStack，AI 标签直接显示对话与底部输入框；详情复用对话组件并带任务上下文。语音使用 Apple Speech 转写，用户编辑确认后才发送。
 
+## Personal Agent 与手机演示
+
+手机输入或已确认偏好 → Personal Context 快照 → Harness 执行合同 → 受限工具 → Skill 草案或已存录像查询 → 执行回执。Skill 正式启用仍走用户确认、能力检查、试跑验收和摄像头占用检查。
+
+事件、定时和未处理事项跟进由云端 `PersonalAgent` 每 30 s 检查一次，写入持久化的应用内提醒箱；这是提醒调度频率，不改变摄像头最低 3 s 的检测规则。当前三个 recipe 只读取任务事实，不调用模型或操作设备。后续通用编排应由 Personal Agent 产出受限计划，再经过 Harness 审核权限和执行，不把记忆当成权限。
+
+本次手机内部包自动连接专用演示服务。真实模型 Key 仅保留在云端。演示、原团队服务及 Apple 审核服务使用不同数据库与访问令牌；后两者未替换。详见 [手机演示与 Personal Agent](../Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。
+
 ## 下一阶段替换点
 
-1. 主办方提供 SDK 后实现两个正式 Adapter，并通过设备握手生成 capability manifest。
-2. 使用真实设备记录 `capturedAt / receivedAt / clockOffsetMs / uncertaintyMs / viewRevision / calibrationRef`。
-3. 将目标检测替换为通用视觉模型，同时保持 Skill/证据合同不变。
-4. 把 FastAPI 和对象存储部署到公网，为 App 配置正式 API 地址与鉴权。
+1. 官方 SDK 的配网、绑定、持续采集或云端事件能力需实物与账号验收；当前原生 SDK 桥接已有设备发现、事件查询、缩略图。
+2. 云端继续守护所需的媒体入口不能依赖 iPhone 始终前台运行。确认官方云事件 / 网关路径后再接 CameraService。
+3. 先验证当前模型服务与 Codex App Server 的协议适配，再迁移执行器；保留取消、幂等、工具范围与回执语义。
+4. 接入 APNs，把云端提醒送到后台手机。多用户发布前补齐真实账号、设备所有权和租户隔离。
+
 
 
 ## v0.3 联动更新

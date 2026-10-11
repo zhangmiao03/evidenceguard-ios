@@ -29,6 +29,7 @@ SDK/vendor-manifest.local.json
 *.ipa
 *.xcarchive/
 Release/local.xcconfig
+Release/internal-demo.xcconfig
 Release/*.plist
 Release/validate/
 Release/export/

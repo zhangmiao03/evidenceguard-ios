@@ -4,6 +4,12 @@
 
 依据：[Developer Mode](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device)、[TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/)、[上传构建](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)。
 
+## 手机内部演示更新
+
+2026-10-12：`1.0 (3)` 使用独立手机演示服务，安装后自动鉴权连接，不要求测试者填写 URL 或 Token；原模型 Key 仍只在服务器。已完成签名归档、Apple 分发校验及上传；App Store Connect 在 02:09 接收并显示“正在处理”（官方 WebRTC 的 dSYM 警告仍存在）。可安装状态以构建处理和测试组分配为准；旧的 `1.0 (2)` 不会因为云端部署自动获得新启动流程，手机需要安装新构建。
+
+内部演示隐藏 SDK 账号配置页面，提供扫码识别与“待官方绑定核验”流程。旧开发构建继续保留工程联调入口。见 [手机演示构建说明](MOBILE-DEMO-PERSONAL-AGENT.md)。
+
 ## 工程与联调入口
 
 - `EvidenceGuard`：不链接官方 SDK，用于 Simulator 和 CI。
