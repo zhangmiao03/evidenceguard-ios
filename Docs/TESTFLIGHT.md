@@ -16,7 +16,11 @@
 
 ## 当前外部条件
 
-2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。带真实 SDK 的 `1.0 (1)` 已签名归档、通过 Xcode 分发校验，并返回 `Upload succeeded` / `EXPORT SUCCEEDED`。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。上传完成后 Apple 正在处理；尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
+2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。`1.0 (1)` 虽然返回上传成功，随后被 Apple 的处理邮件以 ITMS-90683 拒绝，因此 TestFlight 没有构建。已补齐四项用途说明，带真实 SDK 的 `1.0 (2)` 已签名归档、通过分发校验，上传返回 `Upload succeeded` / `EXPORT SUCCEEDED`；仍需确认 Apple 处理结果。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
+
+首包邮件的阻断项为 `NSContactsUsageDescription`、`NSMotionUsageDescription`，警告项为 `NSLocationWhenInUseUsageDescription`、`NSBluetoothAlwaysUsageDescription`。App 没有新增通讯录或 CoreMotion 授权调用，对应说明明确本测试版不需要这两项授权。位置和蓝牙说明参考官方 demo 的 Wi-Fi 发现与 IoT 设备配网用途；摄像头画面中的移动检测不等于手机运动与健身数据。`export_ios.py` 会检查实际归档中的用途字符串非空，再执行分发操作。
+
+09:12 本机时间，TestFlight 的“构建版本上传”列表已出现 `1.0 (2)`，状态为“正在处理”；`1.0 (1)` 显示“失败”。可测试的构建列表当时仍为空，不能把上传列表的记录当成已可安装的测试包。
 
 分发警告：官方 `AnkerWebRTC.framework` 没有匹配的 dSYM（UUID `4C4C4445-5555-3144-A1F4-EEDE4345040C`）。此警告未阻断校验或上传，但会限制厂商库崩溃定位；需向主办方索取匹配符号，不能生成空文件冒充。
 
@@ -46,9 +50,15 @@ Beta 描述：EvidenceGuard 是安克黑客松的原生 iOS 视觉任务原型�
 
 测试顺序：安装 →「我的 → 服务连接」配置测试地址及令牌 → AI 输入文字 → 查看草案并进入编辑 → 导入公开或自有非敏感短片 → 在历史回顾中查询 → 点击证据定位播放。记录服务连接失败、输入/返回/圈选交互问题、时间定位与原片不一致，以及崩溃；同时标明 Wi-Fi 或蜂窝网络、iOS 版本及 App 构建号。尚未用安装后的 iPhone 跑通此顺序，不能据此承诺验收完成。
 
-提交 Beta App Review 前仍需联系人姓名、电话、反馈/联系邮箱，以及 Apple 审核员实际可用的访问方式。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问应使用隔离测试数据并单独准备，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。以上描述与步骤是待核验草案，未提交审核。
+提交 Beta App Review 前仍需联系人姓名、电话、反馈/联系邮箱。独立审核访问已准备并验证。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问已使用隔离测试数据和单独的令牌，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。Beta 描述及审核操作说明已填写并保存到 App Store Connect，未提交 Beta App Review。
+
+已在同一 EC2 准备独立审核服务 `https://review.34.218.51.85.sslip.io`：独立 Unix 用户、数据库、录像目录、进程和令牌，与团队服务使用不同 HTTPS 主机名。公网验证已通过 TLS、匿名 401、两个令牌互用 401，以及审核媒体 Cookie 的 Range/206、HEAD 和 JPEG；媒体 Cookie 不能读取普通数据接口。用户明确授权仅供 Apple 审核后，专用令牌已填写到 App Store Connect 的审核登录信息；页面返回“已保存”。令牌不写入仓库，审核备注解释 App 使用服务地址和令牌、用户名仅为审核标签。
+
+审核库只预置一段自生成的 10 s 水印视频，标题与来源明确标为合成测试，不复制团队录像或许可不明的公开视频；采集日期未知。实际 Embedding 索引已完成，但不代表真实场景识别或守护验收。实际历史对话已调用检索和视频模型复核，返回 uncertain 候选且未编造采集日期；这是传输与调用验证，不是现实场景识别验收。可先测试录像库播放、拖动定位和历史查询。实体摄像头不在线，实时能力限制保留。
 
 加密信息需按实际 SDK 回答：[Apple 加密文稿说明](https://developer.apple.com/help/app-store-connect/manage-app-information/determine-and-upload-app-encryption-documentation/)。依赖中有 SQLCipher 和 AnkerWebRTC，不能仅根据 App 使用 HTTPS 就勾选“仅使用 Apple 操作系统加密”；还需确认厂商 SDK 的加密实现与适用的分发范围。
+
+向主办方核实：App SDK 是否只使用行业标准加密算法，是否包含自研或非标准算法，以及是否有供 TestFlight / App Store 使用的出口合规说明。现有 App 手册提到 `needEncrypt` 默认启用 SDK 加密，但没有给出算法或出口分类；Web 文档的 ECDH 描述不能代替 App SDK 的声明。
 
 ## 正式归档与上传
 
@@ -61,7 +71,7 @@ python3 scripts/archive_ios.py \
   --team YOURTEAMID \
   --bundle-id com.yourteam.evidenceguard \
   --api-url https://34.218.51.85 \
-  --build 1
+  --build 2
 ```
 
 默认 dry run；核对后加 `--execute` 执行本地签名归档。`YOURTEAMID` 需替换为 10 位 Team ID。脚本仅通过 `EG_APP_BUNDLE_ID` 设置 App 标识，保留第三方 framework 的自身标识。
@@ -75,7 +85,7 @@ python3 scripts/export_ios.py --team YOURTEAMID \
   --bundle-id com.yourteam.evidenceguard --action upload
 ```
 
-同样默认 dry run；加 `--execute` 才执行。脚本检查归档的 Bundle ID、HTTPS 配置、SDK 框架和签名。上传只发送二进制，不自动提交 Beta App Review、接受协议或邀请测试者；也可用 Xcode Organizer 执行。
+同样默认 dry run；加 `--execute` 才执行。脚本检查归档的 Bundle ID、HTTPS 配置、SDK 框架、权限用途字符串和签名。上传只发送二进制，不自动提交 Beta App Review、接受协议或邀请测试者；也可用 Xcode Organizer 执行。
 
 5. App Store Connect 处理完成后内部 TestFlight 验证安装、输入、语音权限与服务连接。外部测试提交首包 Beta App Review，通过后再邀请。还没有摄像头时，只能说明界面和构建验证范围，不能声称完整 SDK 功能已验收。
 6. 决赛设备到位后，用官方凭证验证设备发现、事件时间、缩略图、真实录像、断流与恢复。主办方 demo 建议手机和设备使用同一 2.4 GHz Wi-Fi、关闭 AP 隔离；按现场实际配置核实。每项能力验证后才允许对应 Skill 发布。

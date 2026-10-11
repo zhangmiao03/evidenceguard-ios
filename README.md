@@ -8,7 +8,7 @@
 
 ## 当前进度
 
-2026-10-11：`com.zhangmiao.evidenceguard` 已注册，App Store Connect 的 EvidenceGuard 记录已建立（Apple App ID `6821409514`）。带官方 SDK、配置正式 HTTPS 服务的 `1.0 (1)` 已通过 Xcode 分发校验并成功上传，等待 Apple 处理；尚未完成 Beta App Review 或 iPhone 安装。厂商 AnkerWebRTC 缺少 dSYM，Apple 返回非阻断警告。见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
+2026-10-11：`com.zhangmiao.evidenceguard` 已注册，App Store Connect 的 EvidenceGuard 记录已建立（Apple App ID `6821409514`）。`1.0 (1)` 上传后被 Apple 以 ITMS-90683 拒绝，原因是 SDK 敏感 API 引用对应的权限用途说明缺失；现已补齐通讯录、手机运动、位置和蓝牙说明，`1.0 (2)` 已签名归档、通过分发校验并成功上传，仍需确认 Apple 处理结果。尚未完成 Beta App Review 或 iPhone 安装。厂商 AnkerWebRTC 缺少 dSYM 的非阻断警告仍待主办方提供符号。见 [TestFlight 准备](Docs/TESTFLIGHT.md)。
 
 2026-10-10：AWS Cloud 已部署，受信任 HTTPS 地址为 `https://34.218.51.85`；单团队鉴权、媒体 Range/206 与缩略图访问通过公网检查。IP 证书自动续期已配置并通过演练。iOS「服务连接」支持 Keychain 保存令牌；100 项 Cloud 测试和 iOS 编译通过。见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。
 

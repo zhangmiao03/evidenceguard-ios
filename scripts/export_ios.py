@@ -51,6 +51,18 @@ if url.scheme != 'https' or not url.hostname or url.hostname in {'localhost', '1
     parser.error('Archive has no configured HTTPS service. Prepare the release configuration first.')
 if not (app / 'Frameworks/SampleCore.framework/SampleCore').is_file():
     parser.error('Archive does not include the official SDK framework; do not substitute a simulator build.')
+required_purposes = [
+    'NSCameraUsageDescription', 'NSMicrophoneUsageDescription',
+    'NSSpeechRecognitionUsageDescription', 'NSLocalNetworkUsageDescription',
+    # Apple ITMS-90683 also checks sensitive API references in the bundled SDK,
+    # even when EvidenceGuard does not request those permissions itself.
+    'NSContactsUsageDescription', 'NSMotionUsageDescription',
+    'NSLocationWhenInUseUsageDescription', 'NSBluetoothAlwaysUsageDescription',
+]
+missing_purposes = [key for key in required_purposes
+                    if not isinstance(info.get(key), str) or not info[key].strip()]
+if missing_purposes:
+    parser.error('Archive is missing privacy purpose strings: ' + ', '.join(missing_purposes))
 subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
 output.mkdir(parents=True, exist_ok=True)
 options_path.write_bytes(plistlib.dumps(options))

@@ -31,6 +31,14 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>用于连接安克摄像头、预览实时画面并设置守护区域。</string>
+	<key>NSContactsUsageDescription</key>
+	<string>本测试版不提供通讯录功能，无需授权通讯录即可使用摄像头预览和守护；如出现访问请求，可以选择不允许。</string>
+	<key>NSMotionUsageDescription</key>
+	<string>本测试版不使用手机运动与健身数据，无需授权即可使用摄像头预览和守护；如出现访问请求，可以选择不允许。</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>在添加摄像头时，用于发现附近的 Wi-Fi 网络并将摄像头连接到你选择的网络。</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>在添加摄像头时，用于扫描、连接并配置附近的摄像头设备。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于在比赛现场连接摄像头模拟器或局域网内的云端 Agent。</string>
 	<key>NSMicrophoneUsageDescription</key>
