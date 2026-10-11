@@ -38,7 +38,7 @@ IP 证书约 6 天有效，必须配置自动续期及 Nginx reload hook，并�
 ## 验证边界
 
 服务器可用、模型配置就绪、模型实际调用、iOS 编译、iPhone 安装、视频播放、真实 SDK 摄像头验收需分别记录。
-HTTPS 检查与 TestFlight 分发分别验收。2026-10-11 首包 `1.0 (1)` 上传后被 Apple 以 ITMS-90683 拒绝；四项权限用途说明已补齐，`1.0 (2)` 已完成签名归档、分发校验并成功上传，仍需确认 Apple 处理结果。后续 Beta App Review、iPhone 安装和真实摄像头验收仍待完成；详见 [TestFlight](TESTFLIGHT.md)。
+HTTPS 检查与 TestFlight 分发分别验收。2026-10-11 首包 `1.0 (1)` 上传后被 Apple 以 ITMS-90683 拒绝；四项权限用途说明已补齐，`1.0 (2)` 已完成签名归档、分发校验、上传和 Apple 处理，TestFlight 当前显示“缺少出口合规证明”。后续需核实 SDK 加密分类，再完成 Beta App Review、iPhone 安装和真实摄像头验收；详见 [TestFlight](TESTFLIGHT.md)。
 
 2026-10-10：受信任 HTTPS 地址为 `https://34.218.51.85`；后台服务与真实文本模型调用已验证。HTTP 跳转 HTTPS；匿名数据 API 返回 401，带团队令牌返回 200。媒体 Cookie 的 Range/206、HEAD 与 JPEG 缩略图通过公网检查。媒体验证使用临时合成 H.264 视频，只验证传输，结束后已删除；没有将它用作识别或真实摄像头验收。证书自动续期每六小时检查，演练成功。
 后端 100 项测试通过，iOS 模拟器及包含官方 SDK 的 generic iOS Debug 目标均编译通过（真机目标未签名）。

@@ -16,11 +16,13 @@
 
 ## 当前外部条件
 
-2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。`1.0 (1)` 虽然返回上传成功，随后被 Apple 的处理邮件以 ITMS-90683 拒绝，因此 TestFlight 没有构建。已补齐四项用途说明，带真实 SDK 的 `1.0 (2)` 已签名归档、通过分发校验，上传返回 `Upload succeeded` / `EXPORT SUCCEEDED`；仍需确认 Apple 处理结果。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
+2026-10-11：Team `996JX76BJT` 下已注册显式 Bundle ID `com.zhangmiao.evidenceguard`，并创建 [EvidenceGuard 应用记录](https://appstoreconnect.apple.com/apps/6821409514/distribution)。`1.0 (1)` 虽然返回上传成功，随后被 Apple 的处理邮件以 ITMS-90683 拒绝。已补齐四项用途说明，带真实 SDK 的 `1.0 (2)` 已签名归档、通过分发校验，上传返回 `Upload succeeded` / `EXPORT SUCCEEDED`；Apple 处理已完成，TestFlight 列出构建 2，状态为“缺少出口合规证明”。归档嵌入 `https://34.218.51.85`，App 和各依赖 framework 保留不同 Bundle ID。尚未完成出口合规确认、Beta App Review、iPhone 安装或真实摄像头验收。先前网页登录和 `Error Downloading App Information` 问题已在应用记录建立后解除。
 
 首包邮件的阻断项为 `NSContactsUsageDescription`、`NSMotionUsageDescription`，警告项为 `NSLocationWhenInUseUsageDescription`、`NSBluetoothAlwaysUsageDescription`。App 没有新增通讯录或 CoreMotion 授权调用，对应说明明确本测试版不需要这两项授权。位置和蓝牙说明参考官方 demo 的 Wi-Fi 发现与 IoT 设备配网用途；摄像头画面中的移动检测不等于手机运动与健身数据。`export_ios.py` 会检查实际归档中的用途字符串非空，再执行分发操作。
 
 09:12 本机时间，TestFlight 的“构建版本上传”列表已出现 `1.0 (2)`，状态为“正在处理”；`1.0 (1)` 显示“失败”。可测试的构建列表当时仍为空，不能把上传列表的记录当成已可安装的测试包。
+
+随后上传状态变为“完成”，构建 2 出现在正式构建表中。打开“管理”后，Apple 问卷要求区分专有/非标准算法、非 Apple 系统实现的标准算法、两者兼用、均不属于。四项均未选择，也未保存未经核实的加密声明。
 
 分发警告：官方 `AnkerWebRTC.framework` 没有匹配的 dSYM（UUID `4C4C4445-5555-3144-A1F4-EEDE4345040C`）。此警告未阻断校验或上传，但会限制厂商库崩溃定位；需向主办方索取匹配符号，不能生成空文件冒充。
 
@@ -50,7 +52,7 @@ Beta 描述：EvidenceGuard 是安克黑客松的原生 iOS 视觉任务原型�
 
 测试顺序：安装 →「我的 → 服务连接」配置测试地址及令牌 → AI 输入文字 → 查看草案并进入编辑 → 导入公开或自有非敏感短片 → 在历史回顾中查询 → 点击证据定位播放。记录服务连接失败、输入/返回/圈选交互问题、时间定位与原片不一致，以及崩溃；同时标明 Wi-Fi 或蜂窝网络、iOS 版本及 App 构建号。尚未用安装后的 iPhone 跑通此顺序，不能据此承诺验收完成。
 
-提交 Beta App Review 前仍需联系人姓名、电话、反馈/联系邮箱。独立审核访问已准备并验证。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问已使用隔离测试数据和单独的令牌，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。Beta 描述及审核操作说明已填写并保存到 App Store Connect，未提交 Beta App Review。
+用户在测试信息页自行填写审核联系人后，已核对并保存；反馈邮箱使用同一联系邮箱，中国手机号码规范为 +86。联系信息不写入版本库。独立审核访问已准备并验证。当前 Cloud 是单团队共享数据空间，不能把现有团队令牌直接当成公开测试账号；审核访问已使用隔离测试数据和单独的令牌，不把模型 Key、摄像头 Token 或成员私密录像交给审核员。Beta 描述、审核操作说明、审核访问和联系人资料均已保存到 App Store Connect，未提交 Beta App Review。
 
 已在同一 EC2 准备独立审核服务 `https://review.34.218.51.85.sslip.io`：独立 Unix 用户、数据库、录像目录、进程和令牌，与团队服务使用不同 HTTPS 主机名。公网验证已通过 TLS、匿名 401、两个令牌互用 401，以及审核媒体 Cookie 的 Range/206、HEAD 和 JPEG；媒体 Cookie 不能读取普通数据接口。用户明确授权仅供 Apple 审核后，专用令牌已填写到 App Store Connect 的审核登录信息；页面返回“已保存”。令牌不写入仓库，审核备注解释 App 使用服务地址和令牌、用户名仅为审核标签。
 
