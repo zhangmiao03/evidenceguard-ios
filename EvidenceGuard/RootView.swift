@@ -7,7 +7,7 @@ struct RootView: View {
         TabView(selection: $store.selectedTab) {
             tab(0) { HomeView() }.tabItem { Label("首页", systemImage: "house.fill") }.tag(0)
             tab(1) { SkillsView() }.tabItem { Label("Skill", systemImage: "square.3.layers.3d") }.tag(1)
-            tab(2) { TeachAIView() }.tabItem { Label("AI", systemImage: "sparkles") }.tag(2)
+            tab(2) { TeachAIView() }.tabItem { Label("AI", systemImage: "sparkles") }.badge(store.unreadAssistantCount).tag(2)
             tab(3) { EvidenceView() }.tabItem { Label("证据", systemImage: "doc.text.image") }.tag(3)
             tab(4) { ProfileView() }.tabItem { Label("我的", systemImage: "person.fill") }.tag(4)
         }
@@ -28,6 +28,7 @@ struct RootView: View {
     }
     @ViewBuilder private func destination(_ route: AppRoute) -> some View {
         switch route {
+        case .demoScene: DemoSceneView()
         case .skill(let id): SkillDetailView(id: id)
         case .evidence(let id): EvidenceDetailView(id: id)
         case .evidenceList(let skill): EvidenceView(skillID: skill)
@@ -38,6 +39,7 @@ struct RootView: View {
         case .camera(let id): CameraDetailView(id: id)
         case .alerts: AlertsView()
         case .conversation(let id, let skill): ConversationView(conversationID: id, skillID: skill)
+        case .evidenceConversation(let id): ConversationView(conversationID: "evidence-" + id, skillID: nil, historyEvidenceID: id)
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)
         case .notificationSettings: NotificationSettingsView()

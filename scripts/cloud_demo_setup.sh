@@ -28,7 +28,7 @@ names = ['EG_MODEL_VISION', 'EG_MODEL_BASE_URL', 'EG_MODEL_ID', 'EG_MODEL_API_KE
 values = {name: source[name] for name in names if source.get(name)}
 values.update(EG_REQUIRE_AUTH='1', EG_ACCESS_TOKEN=existing.get('EG_ACCESS_TOKEN') or secrets.token_urlsafe(48),
               EG_DATABASE='/var/lib/evidenceguard-demo/evidenceguard.sqlite3',
-              EG_VIDEO_ROOT='/var/lib/evidenceguard-demo/recordings',
+              EG_VIDEO_ROOT='/var/lib/evidenceguard-demo/recordings', EG_ENABLE_SYNTHETIC_DEMO='1',
               EVIDENCEGUARD_FIXTURE_URL='http://127.0.0.1:18789')
 target.write_text(''.join(f'{key}={json.dumps(value)}\n' for key,value in values.items()))
 os.chmod(target, 0o640)

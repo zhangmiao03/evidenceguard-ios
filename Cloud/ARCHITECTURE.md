@@ -1,70 +1,122 @@
-# EvidenceGuard 技术架构
+# EvidenceGuard 当前后端与对话架构
 
-## 纵向链路
+核对日期：2026-10-13。手机独立 demo 云端已部署本轮代码；iOS 签名、Apple 处理和安装状态分别记录于 TestFlight 文档，不把源码部署等同于手机升级。
+
+## 1. 当前部署形态与职责
+
+一个 Python / FastAPI ASGI 进程包含 API、Harness、后台观察、视觉核验、主动提醒。队列是进程内 asyncio，任务、回执、去重信息持久化在 SQLite；录像文件落在服务磁盘。不是多个独立微服务，也不是每位用户一台独立 VM。
 
 ```mermaid
-flowchart LR
-  A[原生 SwiftUI iPhone App] -->|HTTPS JSON| B[FastAPI API]
-  B --> C[Agent Runtime]
-  C --> D[Tool Registry]
-  D --> E[Skill Store / Events]
-  B --> F[Observation Worker]
-  F --> L[CameraService: 设备互斥与执行凭据]
-  D --> L
-  L --> G[Camera Registry]
-  G --> H[fixture-lab adapter]
-  G -. SDK 到手后切换 .-> I[T8171 adapter]
-  G -. SDK 到手后切换 .-> J[T8214 adapter]
-  H --> K[RTSP Camera Lab]
-  F --> E
+flowchart TD
+  App[SwiftUI iPhone App] --> API[FastAPI：服务鉴权与安装实例命名空间]
+  API --> Sessions[Conversations：主对话 / 独立话题 / 历史流]
+  Sessions --> Context[本话题历史 + 已确认的 Personal Context]
+  Context --> Harness[Harness：冻结权限合同 / 调度 / 工具循环 / 回执]
+  Harness --> Tools[受限 Tool Registry]
+  Tools --> Video[VideoService：Embedding 检索 + Lite 复核]
+  Tools --> Camera[CameraService：设备互斥与执行凭据]
+  Tools --> Draft[Skill 草案]
+  Draft --> Confirm[用户编辑 → 能力检查 → 试跑验收 → 确认]
+  Confirm --> Worker[ObservationWorker / ReplayWorker]
+  Worker --> Camera
+  Video --> DB[(SQLite + 媒体文件)]
+  Worker --> DB
+  Harness --> DB
+  SDK[iOS 官方 SDK：设备事件与缩略图] --> Ingest[SDKIngest：校验 / 去重 / 合并]
+  Ingest --> Visual[VisualReview：批量看图 / 缓存 / 调用额度]
+  Visual --> DB
+  DB --> Trigger[事件 / 定时摘要 / 未处理事项跟进]
+  Trigger --> Proactive[ProactiveEngine → 同一个受限 Harness]
+  Proactive --> Score[模型输出价值分 / 理由 / 消息草稿 / 来源]
+  Score --> Policy[确定性策略：免打扰 / 上限 / 去重 / 合并 / 时效]
+  Policy --> Inbox[assistant_messages：助手主动消息]
+  Inbox --> App
 ```
 
-原生 iPhone App 不直接依赖摄像头厂商 API。Camera Registry 输出设备能力清单和统一 FrameRef；Worker 只处理新鲜度、设备/通道身份、视角版本和证据。这样 SDK 的 P2P、云端、HomeBase 或局域网差异被限制在适配器内。
+API Token 在云端服务接入层验证；模型 Key 只在云端。当前安装 ID 是内部演示的命名空间，不是正式用户身份认证。摄像头、Skill、证据仍属于演示家庭共享数据；会话目录和主动提醒按安装实例隔离，尚未完成生产级多租户设备授权。
 
-## Skill 状态模型
+## 2. 对话入口，本轮已实现
 
-- `status`：`draft / active / paused / stopped / completed`，表示任务生命周期。
-- `result`：`initializing / confirmed / needs_attention / unknown`，表示最近一次可解释结果。
-- `alert`：`none / open / acknowledged / resolved`，表示告警处理进度。
+原来 App 只保存一个固定的 generalConversation；没有独立会话目录。顶部“新建草案”实际创建 Skill，不能开始新聊天。
 
-三者分开保存。目标离区只打开告警，不结束持续任务；重新检查先回到 `unknown`，拿到新证据后才确认恢复。
+现在使用“长期主对话 + 独立话题”：
 
-## Harness 参考
+- 助手主对话保留原 ID、旧消息和主动提醒，不因新建聊天而换绑。
+- 右上角新对话：创建独立 topic ID，在当前 AI 标签切换到空白话题；第一条用户消息作为默认标题，不额外调用模型。
+- 左上角会话列表：主对话置顶、独立话题按最近活动排序，支持标题/摘要搜索、重命名、继续对话。
+- 每段话题分别保存聊天记录；切换保留未发送草稿。会话 ID、草稿、模式和未确认发送请求在手机持久化，并按服务 origin 隔离；重开 App 可恢复，只有确认服务器已接收后才清理请求。相同内容及范围重试复用 requestId，修改内容则产生新请求。
+- 同一话题的“实时守护 / 历史回顾”对应独立工具作用域和独立 transcript 流；历史流带 `-history` 后缀，列表只展示一个话题。切换或重开话题时恢复持久化的模式选择。
+- 新话题不会停止 Skill、不清空用户确认的偏好与记忆，也不会把前一个话题的聊天正文加入新话题上下文。它不是无痕模式；共享家庭事实仍可通过受限工具查询。
+- 一个对话流同时只能有一个 run；可以切换到其他话题继续工作。切换页面不等于取消后台 run，取消需要点“停止本次回复”。
+- 没有待编辑草案时收起顶部提示；新建 Skill、取新图、展开摄像头放进输入框上方的操作菜单。已有草案仍直接显示编辑/圈选按钮。
 
-2026-10-12 对照已安装的 MiiMiao v1.0 对照版源码 `c225f46465aaadf460bfc5e736a648192205323e`（Codex 0.153.4）。桌面端由 MiiMiao 管理上下文和权限，由 Codex 执行；它不是已经完成的 Personal Agent。手机云端本次增加冻结的 ExecutionContract、工具权限复核、18,000 字符历史窗口和已确认的用户上下文快照。当前执行器仍是 `bounded-chat-v1`；尚未接入 Codex 二进制或 App Server，不能把本次改动表述为完整移植。
+API：
 
-工具包括：
+| 方法与路径 | 行为 |
+|---|---|
+| `PUT /api/personal/conversation` | 注册固定助手主对话，不能被独立话题替换 |
+| `GET /api/agent/conversations` | 当前安装实例的会话目录、标题、摘要、运行状态 |
+| `POST /api/agent/conversations` | 用 requestId 幂等创建独立话题 |
+| `PATCH /api/agent/conversations/{id}` | 重命名独立话题 |
+| `GET /api/agent/conversations/{id}` | 读取该会话流中的 runs |
+| `POST /api/agent/runs` | 发起一次对话执行 |
 
-- `list_camera_capabilities`
-- `request_camera_snapshot`
-- `draft_visual_skill`
-- `list_tasks`
-- `get_task_state`
-- `search_recordings`（Embedding 召回、Lite 视频复核）
-- `search_evidence`
-- `read_stored_image`
-- `request_recheck`
+新目录在 `conversations.py`，原记录仍在 `runs` 表；迁移不清空旧主对话。新话题及其 history 流均校验所属安装实例。历史 Skill / 证据详情对话仍使用原有入口，不在本轮目录中批量迁移。
 
-每次 Agent 请求持久化为 run，记录 `run_queued → run_started → model_started → tool_started → tool_completed/failed → response_completed` 等有序事件。Provider 通过配置的 OpenAI-compatible Chat Completions 接口调用当前配置的方舟 Lite。单次运行最多 8 轮，实时对话最多 3 个、历史分析最多 2 个并发，支持取消、超时、请求 ID 去重与重启中断标记。工具只能生成待确认草案，不能代替用户启用任务。历史模式的工具注册表只有 `search_evidence / read_stored_image / search_recordings`，即使模型请求其他工具也会被拒绝。
+## 3. Harness、Personal Agent、Skill 的实际顺序
 
-App 每个标签使用独立 NavigationStack，AI 标签直接显示对话与底部输入框；详情复用对话组件并带任务上下文。语音使用 Apple Speech 转写，用户编辑确认后才发送。
+用户发送消息 → 会话查找 → 加入该话题最近历史与已确认记忆 → 冻结 ExecutionContract → TaskScheduler 入队 → 模型提出工具调用 → 注册表校验参数与权限 → 执行工具 → 保存回执 → 返回回答或草案。
 
-## Personal Agent 与手机演示
+- `ExecutionContract`：固化工具白名单、摄像头、Skill、实时/历史范围；模型、记忆和图中文字不能扩权。
+- `AgentRuntime`：当前执行器是 `bounded-chat-v1`，最多 8 轮；历史上下文最多最近 16 次 run、总计 18,000 字符。具备超时、取消、请求 ID 幂等、持久化事件与重启中断标记。
+- `TaskScheduler`：进程内总容量 24；实时对话并发 3，历史 2，观察 1，摄像头请求 2，主动分析 1。
+- `Tool Registry`：查询设备/任务/证据、读取图片、检索录像、取新图、起草 Skill、请求复核。历史模式仅开放 search_evidence / read_stored_image / search_recordings。主动模式仅开放 read_proactive_context / read_observation_image。
+- `Skill`：受约束配置，不是生成出的新程序。草案还要编辑对象、区域、条件，经过能力检查、试跑与人工核验才允许适用范围内的执行；真机部署验收未完成不能冒充已发布。
+- `CameraService`：按物理设备互斥，并以 executionEpoch 复核旧任务是否过期；一个摄像头只能有一个 active 实时 Skill。历史分析不取得摄像头执行权。
 
-手机输入或已确认偏好 → Personal Context 快照 → Harness 执行合同 → 受限工具 → Skill 草案或已存录像查询 → 执行回执。Skill 正式启用仍走用户确认、能力检查、试跑验收和摄像头占用检查。
+本项目借鉴 MiiMiao 的上下文、冻结权限、任务封装和可追踪执行。此前对照版本为 `c225f46465aaadf460bfc5e736a648192205323e`（Codex 0.153.4）；本轮没有重新审计桌面仓库最新提交。手机云端没有运行 Codex 二进制或 App Server，不能声称完整移植了桌面 Harness。
 
-事件、定时和未处理事项跟进由云端 `PersonalAgent` 每 30 s 检查一次，写入持久化的应用内提醒箱；这是提醒调度频率，不改变摄像头最低 3 s 的检测规则。当前三个 recipe 只读取任务事实，不调用模型或操作设备。后续通用编排应由 Personal Agent 产出受限计划，再经过 Harness 审核权限和执行，不把记忆当成权限。
+## 4. 摄像头事件与主动提醒
 
-本次手机内部包自动连接专用演示服务。真实模型 Key 仅保留在云端。演示、原团队服务及 Apple 审核服务使用不同数据库与访问令牌；后两者未替换。详见 [手机演示与 Personal Agent](../Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。
+官方 SDK 在 iOS 内，通过桥接查询设备/事件并获取事件缩略图。手机上传后，SDKIngest 校验设备、事件、时间、图片来源，去重持久化；不把 SDK 缩略图当作刚拍的新图。
 
-## 下一阶段替换点
+- 设备结构化事件用代码分类，无图或未知类型先保存，不每条都调用模型。
+- 同摄像头、同类型按 10 s 时间桶合并，等新增内容稳定后核验。最多取 3 张实际图片合成一次视觉调用。
+- 自动视觉核验当前上限：每摄像头每天 100 次（UTC），同一事件最多 2 次尝试；失败也消耗预算，重复结果走缓存。它是成本保护，不是检测准确率的证明，也不是手动聊天全部调用的统一预算。
+- 已核验且在时效内的事件、已有任务告警、定时摘要、未处理事项跟进进入 ProactiveEngine。当前为明确的有限触发规则，尚非任意目标的自主计划生成器。
+- 模型输出 valueScore / reason / 来源 / 消息草稿。普通主动事项低于 50 静默，50–79 进入摘要候选，80 及以上也要通过确定性策略。用户单独订阅的每日概况允许 50 及以上的有用汇总，仍受免打扰、频率、来源和当前状态检查约束；低价值空概况也可静默。汇总附带原始证据及视觉回执，不只传上次模型草稿。
+- 代码决定最终投递：已开启、当前事实仍有效、来源可核验、免打扰、每日最多 6 条新主动消息、最短 300 s 间隔、同类 600 s 内合并。模型不能选择推送时间或绕过这些规则。
+- 消息单独写 assistant_messages，不伪造一条用户消息来启动对话。App 主对话合并显示，支持已读、已处理、忽略、1 小时后再看。
+- 目前只有 App 内轮询与角标。没有接 APNs，因此 App 关闭后的系统远程通知未实现。
 
-1. 官方 SDK 的配网、绑定、持续采集或云端事件能力需实物与账号验收；当前原生 SDK 桥接已有设备发现、事件查询、缩略图。
-2. 云端继续守护所需的媒体入口不能依赖 iPhone 始终前台运行。确认官方云事件 / 网关路径后再接 CameraService。
-3. 先验证当前模型服务与 Codex App Server 的协议适配，再迁移执行器；保留取消、幂等、工具范围与回执语义。
-4. 接入 APNs，把云端提醒送到后台手机。多用户发布前补齐真实账号、设备所有权和租户隔离。
+这些分值是演示的产品策略起点，尚未做真实安防场景校准。视觉“是否可靠”、任务“是否满足条件”、消息“是否值得打扰”是三种判断，不能把 80 分理解为“事件有 80% 概率发生”。
 
+实时 Skill 仍按秒抽样：最小 3 s，默认确认跨度 6 s，且不得小于采样间隔。官方事件缩略图上传不等于实现了真机每 3 s 取图，更不等于全天持续覆盖。
 
+## 5. 记忆与录像
+
+- Personal Context：用户明确保存的偏好/长期记忆/临时上下文，带来源和到期控制；聊天窗口属于短期上下文。还没有自动从所有聊天构建可靠的长期记忆，也不推断用户情绪为事实。
+- VideoService：上传 → 可播放副本和分段 → Embedding → SQLite 中向量精确余弦检索 → Lite 看候选复核 → 证据卡定位原片秒数。不是每次把全部录像交给模型，也不是全天视频索引。
+- 日历、Gmail、飞书尚未接入。未来结构化数据直接解析；邮件/消息先白名单、关键词、@ 等规则筛选，批量抽取，复用上述确定性提醒策略。
+
+## 6. 当前边界与下一步
+
+1. 2026-10-13，手机独立 demo 服务已部署会话目录、主动队列、视觉缓存预算、SDK 事件导入和合成测试场景；公网鉴权与真实模型调用已通过。iOS 构建上传状态见 [TestFlight 记录](../Docs/TESTFLIGHT.md)。
+2. 官方设备账号、摄像头实物、扫码完成真实绑定和全天媒体入口仍需联调。现有 iOS 前台事件同步不能保证手机关闭后继续接收新事件。
+3. 当前是一个内部演示家庭的数据模型。正式多人使用前补账号身份、设备所有权、租户隔离、分页、媒体保留策略和独立任务工作进程。
+4. 新版原生 UI 需安装新的 iOS 构建，现有 build 3 不会因云端部署自动获得新入口。
+
+## 7. 手机交互参考
+
+- [Muse 官方设计说明](https://introducing.muse.ai/)：长期主聊天、独立 side chats、主动消息、活动记录和确定性确认卡。采用会话组织原则，没有复制其 VM 或完整自主执行能力。
+- [ChatGPT iOS 历史列表](https://help.openai.com/en/articles/8980299-how-can-i-view-my-conversation-history-in-the-ios-app)：左上菜单进入最近对话并继续聊，参考为本 App 的会话列表。
+- [Claude iOS 快捷入口](https://support.claude.com/en/articles/10263469-use-claude-app-intents-shortcuts-and-widgets-on-ios)：将新对话、语音、拍照作为明确不同的操作。本轮把“新聊天”和“创建 Skill”分开；未实现 Widgets / App Intents。
+
+## 早期实现记录
+
+2026-10-12 阶段验证：138 项云端回归通过；当时尚未部署。2026-10-13 最新回归与部署结果见 [手机演示记录](../Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。
+
+以下为此前各阶段设计记录；当前能力与边界以上文为准。
 
 ## v0.3 联动更新
 

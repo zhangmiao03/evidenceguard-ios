@@ -51,6 +51,10 @@ struct APIClient {
     var baseURL: URL
     var accessToken: String { ServiceAccess.token(for: baseURL) }
     init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    func ingestSDKEvents(_ events: [SDKCloudEvent], review: Bool) async throws -> SDKImportReceipt {
+        struct Body: Encodable { var events: [SDKCloudEvent]; var reviewRequested: Bool }
+        return try await send("/api/sdk/events", body: Body(events: events, reviewRequested: review))
+    }
     func capability(_ id: String) async throws -> SkillCapability { try await get("/api/skills/\(id)/capability") }
     func trials(_ id: String) async throws -> [SkillTrial] { try await get("/api/skills/\(id)/trials") }
     func trial(_ id: String) async throws -> SkillTrial { try await get("/api/skill-trials/\(id)") }
@@ -67,7 +71,25 @@ struct APIClient {
     func forget(_ id: String) async throws -> PersonalSnapshot { try await send("/api/personal/memories/\(id)", method: "DELETE", body: Optional<String>.none) }
     func readNotice(_ id: String) async throws -> PersonalSnapshot { try await send("/api/personal/inbox/\(id)/read", body: [String:String]()) }
     func bootstrap() async throws -> Bootstrap { try await get("/api/bootstrap") }
+    func demoScenes() async throws -> DemoSceneSnapshot { try await get("/api/demo/scenes") }
+    func startDemoScene(requestID: String, scenario: String) async throws -> DemoScene {
+        try await send("/api/demo/scenes", body: ["requestId": requestID, "scenario": scenario])
+    }
+    func bindPersonalConversation(_ id: String) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/personal/conversation", method: "PUT", body: ["conversationId": id])
+    }
+    func messageFeedback(_ id: String, action: String) async throws -> PersonalSnapshot {
+        try await send("/api/personal/messages/\(id)/feedback", body: ["action": action])
+    }
     func conversation(_ id: String) async throws -> [AgentRun] { try await get("/api/agent/conversations/\(id)") }
+    func conversations() async throws -> [ConversationSummary] { try await get("/api/agent/conversations") }
+    func newConversation(requestID: String) async throws -> ConversationSummary {
+        try await send("/api/agent/conversations", body: ["requestId": requestID])
+    }
+    func renameConversation(_ id: String, title: String) async throws -> ConversationSummary {
+        try await send("/api/agent/conversations/\(id)", method: "PATCH", body: ["title": title])
+    }
     func events(_ id: String) async throws -> [RunEvent] { try await get("/api/runs/\(id)/events") }
     func skillEvents(_ id: String) async throws -> [RunEvent] { try await get("/api/skills/\(id)/events") }
     func recording(_ id: String) async throws -> VideoRecording { try await get("/api/recordings/\(id)") }
@@ -93,9 +115,9 @@ struct APIClient {
         }
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
-    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter? }
-        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter))
+    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String? }
+        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID))
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
     func createDraft(camera: String, conversation: String, prompt: String, replacesID: String?) async throws -> VisualSkill {

@@ -55,8 +55,8 @@ struct EvidenceItem: Codable, Identifiable, Equatable {
     var id: String; var skillId: String; var cameraId: String; var capturedAt: Double; var relation: String
     var reason: String; var imageUrl: String?; var revision: Int; var sourceType: String
     var recordingId: String?; var clipStart: Double?; var clipEnd: Double?; var seekSeconds: Double?; var originalEventTime: Double?; var videoUrl: String?
-    var title: String { if sourceType == "replay" { return "回放测试 · 区域状态提醒" }; return ["inside":"目标在区域内", "outside":"目标在区域外", "unknown":"无法确认目标位置"][relation] ?? "观察记录" }
-    var exportText: String { "EvidenceGuard 观察记录\n\(title)\n\(reason)\n\(sourceType == "replay" ? "记录生成时间（非原录像拍摄时间）" : "采集时间")：\(displayTime(capturedAt))\n设备：\(cameraId)\n任务：\(skillId) · 规则版本 \(revision)\n来源：\(sourceType)\n证据 ID：\(id)" }
+    var title: String { if sourceType == "synthetic_demo" { return "合成测试 · 画面核验" }; if sourceType == "official_sdk" { return "摄像头事件 · 画面核验" }; if sourceType == "replay" { return "回放测试 · 区域状态提醒" }; return ["inside":"目标在区域内", "outside":"目标在区域外", "unknown":"无法确认目标位置"][relation] ?? "观察记录" }
+    var exportText: String { "EvidenceGuard 观察记录\n\(title)\n\(reason)\n\(["replay", "synthetic_demo"].contains(sourceType) ? "记录生成时间（非原录像拍摄时间）" : "采集时间")：\(displayTime(capturedAt))\n设备：\(cameraId)\n任务：\(skillId) · 规则版本 \(revision)\n来源：\(sourceType)\n证据 ID：\(id)" }
 }
 struct BootstrapSummary: Codable, Equatable { var activeSkills: Int; var openAlerts: Int; var unknownSkills: Int }
 struct AgentInfo: Codable, Equatable { var provider: String; var mode: String; var ready: Bool; var tools: [String] }
@@ -78,6 +78,26 @@ struct CameraCapture: Codable, Identifiable, Equatable {
 struct CameraOccupancy: Codable, Identifiable, Equatable {
     var skillId: String; var name: String; var devices: [String]; var executionEpoch: String
     var id: String { skillId }
+}
+struct ConversationSummary: Codable, Identifiable, Equatable {
+    var id: String; var kind: String; var title: String; var preview: String
+    var createdAt: Double; var updatedAt: Double; var unreadCount: Int
+    var hasActiveRun: Bool; var lastMode: String
+}
+// Durable request identity survives a lost HTTP response or an App restart.
+struct PendingChatRequest: Codable {
+    var id: String; var message: String; var conversation: String
+    var skill: String?; var camera: String?; var mode: String
+    var filter: HistoryFilter?; var replyID: String?
+    func matches(message: String, camera: String?, mode: String, filter: HistoryFilter?, replyID: String?) -> Bool {
+        self.message == message && self.camera == camera && self.mode == mode && self.filter == filter && self.replyID == replyID
+    }
+}
+struct LocalChatState: Codable {
+    var drafts: [String: String] = [:]
+    var pending: [String: PendingChatRequest] = [:]
+    var modes: [String: String] = [:]
+    var newConversationRequestID: String?
 }
 struct AgentRun: Codable, Identifiable, Equatable {
     var id: String; var conversationId: String; var skillId: String?; var message: String; var status: String; var createdAt: Double
@@ -101,11 +121,23 @@ struct RunEvent: Decodable, Identifiable {
     var label: String { ["timing_review_required":"检测已升级为按秒抽样，需重新验收", "trial_reviewed":"已核验试跑报告", "capability_checked":"已检查任务执行能力", "replay_acknowledged":"已标记核验，证据保留", "camera_requested":"已请求新画面", "camera_completed":"已取得新画面", "camera_failed":"画面请求未完成", "recheck_requested":"已请求复核", "alert_opened":"触发提醒", "alert_resolved":"新证据确认恢复", "observation_recovered":"恢复观察，等待新画面", "result_changed":"观察结果更新", "skill_confirmed":"用户已确认启用", "skill_revised":"草案已更新", "skill_drafted":"已生成草案", "lifecycle_changed":"任务状态已变更", "skill_completed":"一次性任务已完成", "replay_observing":"正在分析已到达的回放片段", "replay_model_completed":"回放模型观察完成", "replay_model_failed":"回放模型复核失败", "replay_input_failed":"回放输入失败，已暂停", "replay_finished":"回放测试结束", "replay_interrupted":"回放中断，等待恢复", "replay_transport_changed":"回放输入连接已变化", "run_queued":"请求已排队", "run_started":"开始理解需求", "model_started":"AI 正在处理", "tool_started":"正在查询或生成草案", "tool_completed":"操作已完成", "tool_failed":"操作未完成", "frame_attached":"已附上所选摄像头画面", "frame_unavailable":"本次未取得画面", "response_completed":"回复已完成", "run_failed":"本次请求未完成", "run_cancelled":"已取消"][type] ?? type }
 }
 enum AppRoute: Hashable {
+    case demoScene
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
     case conversation(String, String?), settings, officialSDK, notificationSettings, voiceSettings, privacy, help, profile
     case addDevice, personalAgent, personalInbox
     case recordings, video(String, Double), replayVideo(String, Double)
+    case evidenceConversation(String)
 }
+struct DemoSceneSnapshot: Decodable { var enabled: Bool; var scenes: [DemoScene] }
+struct DemoScene: Decodable, Identifiable {
+    var id: String; var title: String; var status: String; var reason: String
+    var createdAt: Double; var samples: [DemoSceneSample]
+    var policyStatus: String?; var policyReason: String?; var valueScore: Int?; var messageId: String?; var assistantDraft: String?
+    var isRunning: Bool { status == "pending" || status == "running" }
+    var label: String { ["pending":"等待核验", "running":"视觉核验中", "completed":"视觉核验完成", "unavailable":"核验未完成", "budget_exhausted":"核验额度已用完"][status] ?? status }
+    var deliveryLabel: String { ["pending":"等待评估", "running":"正在评估", "retry":"等待重试", "deferred":"按偏好延后", "digest":"保留至已订阅的每日汇总", "sent":"已进入助手对话", "merged":"已合并同类提醒", "summarized":"已纳入汇总", "silent":"无需打扰", "cancelled":"已取消", "expired":"已过提醒时效", "failed":"评估未完成"][policyStatus ?? ""] ?? "尚未安排提醒" }
+}
+struct DemoSceneSample: Decodable, Identifiable { var id: String; var imageUrl: String; var relativeSeconds: Int }
 struct VideoModelInfo: Codable, Equatable {
     var visionModel: String; var embeddingModel: String; var embeddingReady: Bool
 }
@@ -198,4 +230,21 @@ struct PersonalNotice: Codable, Identifiable, Equatable {
 struct PersonalSnapshot: Codable, Equatable {
     var preferences: PersonalPreferences; var revision: Int
     var memories: [PersonalMemory]; var inbox: [PersonalNotice]; var delivery: String; var lastError: String?
+    var messages: [AssistantMessage]?
+    var activity: [ProactiveActivity]?
+}
+
+struct ProactiveSource: Codable, Identifiable, Equatable {
+    var id: String; var type: String
+    var name: String?; var title: String?; var reason: String?; var limitation: String?
+    var observedAt: Double?; var skillId: String?; var evidenceId: String?; var sourceType: String?
+}
+struct AssistantMessage: Codable, Identifiable, Equatable {
+    var id: String; var title: String; var body: String; var why: String
+    var createdAt: Double; var read: Bool; var feedback: String?; var skillId: String?
+    var sources: [ProactiveSource]
+}
+struct ProactiveActivity: Codable, Identifiable, Equatable {
+    var id: String; var status: String; var kind: String; var reason: String; var createdAt: Double
+    var statusLabel: String { ["pending":"等待检查", "running":"正在检查", "retry":"等待重试", "deferred":"稍后检查", "sent":"已发消息", "merged":"已合并同类事件", "digest":"等待每日汇总", "summarized":"已纳入汇总", "silent":"保持安静", "cancelled":"已取消", "expired":"已过期", "failed":"检查未完成"][status] ?? status }
 }

@@ -28,6 +28,11 @@ from .skill_trials import SkillTrials
 from .deployment import SitePreparation
 from .access import install_access
 from .personal import PersonalAgent, Preferences, MemoryInput, installation
+from .proactive import ProactiveEngine, Feedback, BindConversation
+from .visual_review import VisualReview
+from .camera.ingest import SDKIngest, SDKBatch
+from .conversations import Conversations, NewConversation, ConversationTitle
+from .demo_scene import DemoScenes, SceneRequest
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -48,6 +53,7 @@ class AgentRequest(BaseModel):
     cameraId: str | None = None
     executionMode: Literal['live','history'] = 'live'
     historyFilter: HistoryFilter | None = None
+    replyToMessageId: str | None = Field(default=None,max_length=100)
 class RecheckRequest(BaseModel): acknowledged: bool = False
 class ReplayTransport(BaseModel): online: bool
 class ManualDraftRequest(BaseModel):
@@ -81,13 +87,28 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     trials=SkillTrials(store,videos)
     preparation=SitePreparation(store)
     tools=build_tools(store,camera,captures,video_service=videos); agent=AgentRuntime(store,tools,provider,camera,scheduler)
+    proactive=ProactiveEngine(personal,agent)
+    conversations=Conversations(store,proactive)
+    visual_review=VisualReview(store,videos.vision)
+    agent.visual_review=visual_review
+    replay_worker.visual_budget=visual_review
+    ingest=SDKIngest(store,visual_review,personal)
+    proactive.ingest=ingest
+    demo=DemoScenes(store,visual_review,proactive)
+    proactive.demo=demo
     worker=ObservationWorker(store,camera,camera_service=captures,scheduler=scheduler,replay_worker=replay_worker)
     @asynccontextmanager
     async def lifespan(_):
         task=asyncio.create_task(worker.run()) if start_worker else None
-        personal_task=asyncio.create_task(personal.run()) if start_worker else None
+        personal_task=asyncio.create_task(proactive.run()) if start_worker else None
+        ingest_task=asyncio.create_task(ingest.run()) if start_worker else None
+        demo_task=asyncio.create_task(demo.run()) if start_worker and demo.enabled else None
         try: yield
         finally:
+            if demo_task:
+                demo_task.cancel(); await asyncio.gather(demo_task,return_exceptions=True)
+            if ingest_task:
+                ingest_task.cancel(); await asyncio.gather(ingest_task,return_exceptions=True)
             if personal_task:
                 personal_task.cancel(); await asyncio.gather(personal_task, return_exceptions=True)
             await trials.shutdown()
@@ -105,6 +126,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.replay_worker=replay_worker
     app.state.trials=trials
     app.state.personal=personal
+    app.state.proactive=proactive
+    app.state.ingest=ingest
+    app.state.visual_review=visual_review
+    app.state.demo=demo
     @app.exception_handler(KeyError)
     async def missing(request,error):
         from fastapi.responses import JSONResponse
@@ -125,6 +150,20 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         skills=[s | {'capability':assess(s,videos,manifests)} for s in store.skills()]
         return dict(personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
     def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
+    @app.get('/api/demo/scenes')
+    async def demo_scenes(request: Request): return demo.snapshot(personal_client(request))
+    @app.post('/api/demo/scenes',status_code=202)
+    async def demo_start(body: SceneRequest,request: Request): return demo.start(personal_client(request),body)
+    @app.post('/api/sdk/events',status_code=202)
+    async def sdk_ingest(request: Request):
+        client=personal_client(request)
+        raw=bytearray()
+        async for chunk in request.stream():
+            raw.extend(chunk)
+            if len(raw)>8_000_000: raise HTTPException(413,'单批事件上限为8MB，请分批上传')
+        return ingest.accept(SDKBatch.model_validate_json(bytes(raw)),client)
+    @app.get('/api/sdk/events/status')
+    async def sdk_status(): return ingest.status()
     @app.get('/api/personal')
     async def personal_read(request: Request): return personal.snapshot(personal_client(request))
     @app.put('/api/personal/preferences')
@@ -135,6 +174,12 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def personal_forget(request: Request, key: str): return personal.forget(personal_client(request), key)
     @app.post('/api/personal/inbox/{key}/read')
     async def personal_mark_read(request: Request, key: str): return personal.read(personal_client(request), key)
+    @app.put('/api/personal/conversation')
+    async def bind_personal_conversation(request: Request, body: BindConversation):
+        return conversations.bind_main(personal_client(request),body.conversationId)
+    @app.post('/api/personal/messages/{key}/feedback')
+    async def personal_feedback(request: Request, key: str, body: Feedback):
+        return proactive.feedback(personal_client(request),key,body.action)
     @app.get('/api/recordings/{recording_id}')
     async def recording(recording_id:str):
         r=videos.db.recording(recording_id)
@@ -320,23 +365,56 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         value=store.recheck(skill_id,body.acknowledged)
         store.event(skill_id,'recheck_requested',{'notBefore':value['notBefore']})
         return store.skill(skill_id)
-    @app.post('/api/agent/runs',status_code=202)
-    async def start(body:AgentRequest,request:Request):
-        return agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None, personal_context=personal.context(personal_client(request)) if request.headers.get('X-EG-Installation-ID') else None)
-    @app.get('/api/agent/conversations/{conversation_id}')
-    async def conversation(conversation_id:str): return store.runs(conversation_id)
-    @app.get('/api/runs/{run_id}')
-    async def run(run_id:str):
+    def conversation_access(conversation_id, request):
+        client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
+        conversations.check(conversation_id,client)
+    def run_access(run_id, request):
         value=store.run(run_id)
         if not value: raise KeyError(run_id)
+        if value.get('clientId') and value['clientId']!=personal_client(request): raise HTTPException(404,'请求不存在')
+        conversation_access(value['conversationId'],request)
         return value
+    @app.post('/api/agent/runs',status_code=202)
+    async def start(body:AgentRequest,request:Request):
+        conversation_access(body.conversationId,request)
+        if store.run(body.requestId): run_access(body.requestId,request)
+        client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
+        context=personal.context(client)
+        if context and proactive.owner(body.conversationId)==client:
+            # Independent assistant messages are actual history, not invented user prompts.
+            context['proactiveMessages']=[{k:m.get(k) for k in ('id','body','why','createdAt','feedback')} for m in proactive.messages(client)[-8:]]
+        if body.replyToMessageId:
+            reply=next((m for m in proactive.messages(client) if m['id']==body.replyToMessageId),None) if client else None
+            if not reply or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
+            context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId)
+        if client: value['clientId']=client; store.save_run(value)
+        return value
+    @app.get('/api/agent/conversations')
+    async def conversation_list(request:Request):
+        return conversations.listing(personal_client(request))
+    @app.post('/api/agent/conversations',status_code=201)
+    async def conversation_create(body:NewConversation,request:Request):
+        return conversations.create(personal_client(request),body.requestId)
+    @app.patch('/api/agent/conversations/{conversation_id}')
+    async def conversation_rename(conversation_id:str,body:ConversationTitle,request:Request):
+        return conversations.rename(conversation_id,personal_client(request),body.title)
+    @app.get('/api/agent/conversations/{conversation_id}')
+    async def conversation(conversation_id:str,request:Request):
+        conversation_access(conversation_id,request)
+        client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
+        return [r for r in store.runs(conversation_id) if not r.get('clientId') or r['clientId']==client]
+    @app.get('/api/runs/{run_id}')
+    async def run(run_id:str,request:Request): return run_access(run_id,request)
     @app.post('/api/runs/{run_id}/cancel')
-    async def cancel(run_id:str):
-        value=await agent.cancel(run_id)
-        if not value: raise KeyError(run_id)
-        return value
+    async def cancel(run_id:str,request:Request):
+        value=run_access(run_id,request)
+        if value.get('initiator')=='agent': raise ValueError('请在主动消息中选择处理方式，或关闭主动提醒')
+        return await agent.cancel(run_id)
     @app.get('/api/runs/{run_id}/events')
-    async def events(run_id:str,after:int=0): return store.events(run_id,after)
+    async def events(run_id:str,request:Request,after:int=0):
+        run_access(run_id,request)
+        return store.events(run_id,after)
     @app.get('/api/media/{media_id}')
     async def media(media_id:str):
         if not re.fullmatch(r'[a-f0-9]{64}',media_id): raise HTTPException(404,'media not found')

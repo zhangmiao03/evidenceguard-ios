@@ -16,18 +16,19 @@ extension View {
 }
 struct BrandHeader: View {
     @EnvironmentObject var store: AppStore
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         ZStack(alignment: .topLeading) {
             GeometryReader { geometry in
                 Image("HomeBackdrop").resizable().scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .bottom).clipped()
             }
-            LinearGradient(stops: [.init(color: .white.opacity(0.92), location: 0), .init(color: .white.opacity(0.68), location: 0.30), .init(color: .white.opacity(0.03), location: 0.70), .init(color: Brand.background.opacity(0.25), location: 1)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(stops: [.init(color: Brand.background, location: 0), .init(color: .white.opacity(0.88), location: 0.28), .init(color: .white.opacity(0.25), location: 0.55), .init(color: .clear, location: 0.78), .init(color: Brand.background.opacity(0.3), location: 1)], startPoint: .top, endPoint: .bottom)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top, spacing: 8) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("EvidenceGuard").font(.system(size: 27, weight: .bold)).tracking(-0.7).foregroundStyle(Brand.dark)
-                        Text("用 AI 守护你在乎的每一刻").font(.system(size: 14)).foregroundStyle(Brand.muted)
+                        Text("EvidenceGuard").font(.system(size: 27, weight: .bold)).tracking(-0.7).foregroundStyle(Brand.dark).lineLimit(1).minimumScaleFactor(0.75)
+                        Text("用 AI 守护你在乎的每一刻").font(.system(size: 12)).tracking(1).foregroundStyle(Brand.muted)
                     }
                     Spacer(minLength: 0)
                     Button { store.path.append(.alerts) } label: {
@@ -35,17 +36,19 @@ struct BrandHeader: View {
                             .font(.system(size: 21)).foregroundStyle(Brand.dark).frame(width: 44, height: 44)
                     }.accessibilityLabel("查看需要关注的事项").accessibilityIdentifier("home.notifications")
                 }
-                HStack {
-                    Spacer()
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text("更安心的\n生活，从看见开始").font(.system(size: 13, weight: .medium)).lineSpacing(4).foregroundStyle(Brand.dark)
-                        Capsule().fill(Brand.blue).frame(width: 68, height: 2)
-                    }.padding(.horizontal, 12).padding(.vertical, 10)
-                        .background(.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
-                        .padding(.top, 10).padding(.trailing, 4)
-                }
+                // Place the editorial caption over the bright window, clear of the tree.
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("更安心的生活，\n从看见开始。")
+                        .font(.custom("Kaiti SC", size: 17, relativeTo: .callout))
+                        .tracking(1.5).lineSpacing(4)
+                        .foregroundStyle(Color(red: 0.30, green: 0.39, blue: 0.50))
+                        .shadow(color: .white.opacity(0.9), radius: 8)
+                    UnevenRoundedRectangle(topLeadingRadius: 1, bottomLeadingRadius: 1, bottomTrailingRadius: 2, topTrailingRadius: 1)
+                        .fill(LinearGradient(colors: [Brand.blue.opacity(0.8), Brand.blue.opacity(0.05)], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: 88, height: 2).rotationEffect(.degrees(-4), anchor: .leading)
+                }.padding(.top, 19).padding(.leading, 2)
             }.padding(.horizontal, 22).padding(.top, 13)
-        }.frame(height: 220).accessibilityElement(children: .contain)
+        }.frame(height: typeSize.isAccessibilitySize ? 290 : 238).accessibilityElement(children: .contain)
     }
 }
 struct ConnectionBanner: View {

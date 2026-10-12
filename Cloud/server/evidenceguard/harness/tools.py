@@ -100,6 +100,8 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
             item.pop('videoPath',None)
             item['capturedAtText']=datetime.fromtimestamp(item['capturedAt'],zone).isoformat()
             if item.get('sourceType')=='replay': item['timeMeaning']='回放测试记录生成时间，不是原录像采集时间'
+            elif item.get('sourceType')=='official_sdk': item['timeMeaning']='设备事件时间，不保证是图片拍摄时间，也不代表实时现场'
+            elif item.get('sourceType')=='synthetic_demo': item['timeMeaning']='合成测试生成时间，不是摄像头拍摄时间'
         return dict(items=items,count=len(items),countsByRelation=dict(Counter(e['relation'] for e in items)),
                     serverNow=now.isoformat(),timezone='Asia/Shanghai',truncated=truncated,requestedRange={'from':start_at,'to':end_at},
                     availableRange={'from':min((e['capturedAt'] for e in items),default=None),'to':max((e['capturedAt'] for e in items),default=None)},
@@ -120,7 +122,9 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
         key=e['imageUrl'].rsplit('/',1)[1]; store.media(key)
         return dict(id=e['id'],cameraId=e['cameraId'],skillId=e['skillId'],status='completed',
                     reason='读取已保存的历史图片',requestedAt=time.time(),capturedAt=e['capturedAt'],
-                    imageUrl=e['imageUrl'],mediaId=key,sourceType=e['sourceType'],frameId=e['frameId'],historical=True)
+                    imageUrl=e['imageUrl'],mediaId=key,sourceType=e['sourceType'],frameId=e.get('frameId',e['id']),historical=True,
+                    timestampMeaning='generated' if e['sourceType']=='synthetic_demo' else e.get('timestampMeaning','capture'),
+                    limitation='合成测试样本，时间是生成时间而非摄像头采集；不证明连续动作' if e['sourceType']=='synthetic_demo' else '官方事件时间不保证是图片拍摄时间；仅分析已有图片' if e['sourceType']=='official_sdk' else '已保存的离散图片')
     async def request_camera_snapshot(device_id=None,purpose='查看当前画面'):
         chosen=device_id or camera_id
         if skill_id:

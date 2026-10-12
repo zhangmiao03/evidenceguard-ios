@@ -42,6 +42,16 @@ class ReplayWorker:
                 recording=self.videos.db.recording(skill['replay']['recordingId'])
                 if at>=recording['duration'] or state.get('modelCalls',0)>=20:
                     self.finish(skill,generation,'已完成全部计划采样' if at>=recording['duration'] else '达到20次采样预算');return
+                budget=getattr(self,'visual_budget',None)
+                if budget:
+                    reason=budget.reserve(skill['target']['cameraId'],f"replay:{skill['id']}:{generation}:{at}")
+                    if reason:
+                        with self.store.transaction():
+                            current=self.valid(skill,generation)
+                            if current:
+                                current.update(status='paused',result='unknown',resultReason=reason)
+                                self.store.save_skill(current);self.store.event(skill['id'],'visual_budget_exhausted',{})
+                        return
                 began=time.time();sample=await self.camera_service.replay_sample(skill,at)
                 baseline=not cp.get('armed')
                 self.store.event(skill['id'],'replay_observing',{'sampleAt':at,'sampleIntervalSeconds':period,'baseline':baseline})

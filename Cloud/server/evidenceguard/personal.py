@@ -51,6 +51,7 @@ class PersonalAgent:
     def __init__(self, store):
         self.store = store
         self.last_error = None
+        self.engine = None
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_profiles (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_memories (id TEXT PRIMARY KEY, client TEXT NOT NULL, payload TEXT NOT NULL)')
@@ -98,10 +99,12 @@ class PersonalAgent:
             if not row: raise KeyError(key)
             item = json.loads(row[0]); item['read'] = True
             self.store.db.execute('UPDATE personal_inbox SET payload=? WHERE client=? AND id=?', (json.dumps(item),client,key))
+            if self.engine:
+                self.store.db.execute("UPDATE assistant_messages SET payload=json_set(payload,'$.read',json('true')) WHERE client=? AND id=?",(client,key))
         return self.snapshot(client)
 
     def snapshot(self, client):
-        return self.profile(client) | dict(memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error)
+        return self.profile(client) | dict(memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error, messages=self.engine.messages(client) if self.engine else [], activity=self.engine.activity(client) if self.engine else [])
 
     def context(self, client):
         if not client: return None
@@ -110,6 +113,8 @@ class PersonalAgent:
                     scope='installation preferences; shared demo household observations', grantsPermissions=False)
 
     def emit(self, client, dedupe, kind, title, body, now, skill_id=None):
+        if self.engine:
+            return self.engine.enqueue(client,dedupe,kind,title,body,now,skill_id)
         item = dict(id=uuid.uuid4().hex, kind=kind, title=title, body=body, createdAt=now, read=False,
                     skillId=skill_id, delivery='in_app')
         self.store.db.execute('INSERT OR IGNORE INTO personal_inbox VALUES (?,?,?,?)', (item['id'],client,dedupe,json.dumps(item)))
@@ -128,6 +133,11 @@ class PersonalAgent:
                 quiet = (start <= hour < end) if start < end else (hour >= start or hour < end) if start != end else False
                 if quiet: continue  # Evaluate still-current facts when the quiet period ends.
                 for skill in skills:
+                    if self.engine and skill['status']=='active' and skill['result']=='unknown':
+                        # One concern per transition into unknown, not one per sampled frame.
+                        row=self.store.db.execute("SELECT id,at FROM events WHERE run_id=? AND type IN ('result_changed','skill_confirmed','lifecycle_changed') ORDER BY id DESC LIMIT 1",(skill['id'],)).fetchone()
+                        if row and now-row[1]>=60:
+                            self.emit(client,f'coverage:{skill["id"]}:{row[0]}','coverage','有一处画面需要确认',skill['name']+'：'+skill['resultReason'],now,skill['id'])
                     if skill.get('alert') != 'open': continue
                     # The alert event sequence identifies an episode, so reminders survive restart without duplicates.
                     with self.store.lock:

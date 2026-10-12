@@ -18,6 +18,9 @@ struct ProfileView: View {
                 if !MobileServiceConfiguration.current.isInternalDemo { NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入",systemImage: "link") } }
                 NavigationLink(value: AppRoute.personalAgent) { Label("助手记忆与提醒",systemImage: "sparkles") }
                 NavigationLink(value: AppRoute.personalInbox) { Label("助手提醒",systemImage: "tray") }
+                if MobileServiceConfiguration.current.isInternalDemo {
+                    NavigationLink(value: AppRoute.demoScene) { Label("测试主动守护场景",systemImage: "play.rectangle") }
+                }
                 NavigationLink(value: AppRoute.notificationSettings) { Label("通知与提醒",systemImage: "bell") }
                 NavigationLink(value: AppRoute.voiceSettings) { Label("语音与 AI",systemImage: "waveform") }
                 NavigationLink(value: AppRoute.settings) { Label(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接",systemImage: "network") }

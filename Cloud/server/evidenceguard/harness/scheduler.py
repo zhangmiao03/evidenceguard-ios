@@ -14,7 +14,7 @@ class TaskEnvelope:
 
 class TaskScheduler:
     def __init__(self, limits=None, capacity=24):
-        self.limits = limits or {'chat': 3, 'history': 2, 'observation': 1, 'camera': 2}
+        self.limits = limits or {'chat': 3, 'history': 2, 'observation': 1, 'camera': 2, 'proactive': 1}
         self.capacity = capacity
         self.gates = {lane: asyncio.Semaphore(size) for lane, size in self.limits.items()}
         self.jobs = {}

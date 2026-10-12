@@ -11,6 +11,7 @@ import com.anker.esiotkit.core.domain.repository.DeviceRepository
 import com.anker.esiotkit.domain_thing.api.internal.ESIotDeviceManagerImpl
 import com.anker.esiotkit.domain_thing.model.device.MegaDevice
 import com.anker.esiotkit.domain.model.MegaEvent
+import com.anker.esiotkit.core.entities.event.DetectionType
 import com.anker.esiotkit.event.model.EventCondition
 import com.anker.esiotkit.manager.MegaEventManager
 import com.anker.esiotkit.mega.category.Category
@@ -142,7 +143,17 @@ class EvidenceGuardSDKBridge {
                         put("id", event.megaEventId)
                         put("deviceSn", event.deviceSn)
                         put("startMs", event.startTimestamp)
-                        put("endMs", event.endTimestamp)
+                        put("endMs", maxOf(event.startTimestamp, event.endTimestamp))
+                        put("detectionType", when (event.thumbnail.detectionType) {
+                            DetectionType.PACKAGE_PUT.value -> "package_put"
+                            DetectionType.PACKAGE_TAKE.value -> "package_take"
+                            DetectionType.HUMAN.value, DetectionType.FACE.value -> "human"
+                            DetectionType.MOTION.value -> "motion"
+                            DetectionType.CAR.value -> "vehicle"
+                            DetectionType.PET.value -> "pet"
+                            DetectionType.RING.value -> "ring"
+                            else -> "unknown"
+                        })
                         put("hasVideo", event.videoPath.isNotBlank())
                         put("hasThumbnail", event.thumbnail.picturePath.isNotBlank() ||
                             event.pictures.any { it.picturePath.isNotBlank() })
