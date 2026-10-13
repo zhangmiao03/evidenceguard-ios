@@ -5,9 +5,11 @@
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
 - [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
-- [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、三个后端环境及新加坡迁移评估。
+- [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、新加坡三个后端环境与迁移状态。
 
 ## 当前进度
+
+2026-10-14：手机、团队与 Apple 审核服务已迁至新加坡，三个环境的数据与凭证保持隔离。build 5 已通过签名归档、Apple 校验与处理，内部组显示“正在测试”；新版会自动连接新加坡并保留本地会话与草稿。美国旧实例已删除；手机需在 TestFlight 直接更新到 `1.0 (5)`，无需卸载或填写服务器配置。见 [服务器状态](Docs/SERVER-ACCESS.md) 和 [TestFlight](Docs/TESTFLIGHT.md)。
 
 2026-10-13：`1.0 (4)` 已上传、完成 Apple 处理并加入现有内部组，组内显示“正在测试”。本轮包括独立对话、草稿恢复、摄像头事件与确定性主动提醒、合成场景及证据追问；手机 demo 云端已更新，146 项 Cloud 测试通过。手机功能与真实摄像头仍需分别验收。见 [TestFlight 记录与测试顺序](Docs/TESTFLIGHT.md)。
 

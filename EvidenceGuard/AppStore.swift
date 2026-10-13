@@ -47,6 +47,7 @@ import Foundation
     var unreadAssistantCount: Int { data.personal?.messages?.filter { !$0.read }.count ?? 0 }
     init() {
         let defaults = UserDefaults.standard
+        MobileServiceConfiguration.current.migrateLegacyChatState(in: defaults)
         let base = MobileServiceConfiguration.current.isInternalDemo ? APIClient.defaultBaseURL.absoluteString : (defaults.string(forKey: "serviceURL") ?? APIClient.defaultBaseURL.absoluteString)
         client = APIClient(baseURL: URL(string: base) ?? APIClient.defaultBaseURL)
         generalConversation = defaults.string(forKey: "conversationID") ?? "chat-\(UUID().uuidString)"

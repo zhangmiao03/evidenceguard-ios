@@ -1,5 +1,7 @@
 # 单团队 iOS 测试环境
 
+> 2026-10-14：三个生产环境现已迁入新加坡，当前地址和管理入口见 [SERVER-ACCESS](SERVER-ACCESS.md)。下文美国地址为历史部署记录，不应用于新的构建。
+
 现有实例已支持不依赖客户端固定 IP 的 SSM 会话连接；团队授权、SSH 备用入口与手机 demo 服务目录，见 [服务器访问与团队协作](SERVER-ACCESS.md)。本页下述鉴权配置指原团队服务；TestFlight 3/4 使用隔离的手机 demo 服务并自动连接，见 [手机演示](MOBILE-DEMO-PERSONAL-AGENT.md)。
 
 Ubuntu 24.04、Python 3.12、FFmpeg；单进程 Uvicorn 监听 127.0.0.1:8790，Nginx 对外提供 HTTPS。

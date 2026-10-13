@@ -25,9 +25,9 @@ if ! command -v aws >/dev/null 2>&1; then
 fi
 
 export AWS_PAGER="" AWS_CLI_AUTO_PROMPT=off
-aws_cmd=(aws --region us-west-2 --no-cli-pager)
+aws_cmd=(aws --region ap-southeast-1 --no-cli-pager)
 if [[ -n "${2:-}" ]]; then aws_cmd+=(--profile "$2"); fi
-instance_id=i-06744490347d73778
+instance_id=i-010907ed19e2cc23a
 expected_account=083151142234
 
 if ! account_id="$("${aws_cmd[@]}" sts get-caller-identity --query Account --output text)"; then
@@ -46,7 +46,7 @@ if [[ "$status" != connected ]]; then
   echo "SSM is not ready ($status). Keep the existing SSH fallback; check the instance role and agent." >&2
   exit 1
 fi
-echo "SSM Connected: $instance_id (us-west-2). This check is not a successful shell session."
+echo "SSM Connected: $instance_id (ap-southeast-1). This check is not a successful shell session."
 if [[ "$mode" == connect ]]; then
   if ! command -v session-manager-plugin >/dev/null 2>&1; then
     echo 'Session Manager plugin is missing. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html' >&2
