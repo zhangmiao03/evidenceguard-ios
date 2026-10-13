@@ -5,8 +5,11 @@
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
 - [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
+- [服务器 SSH 与团队协作](Docs/SERVER-ACCESS.md)：登录账号、密钥接入、新成员开通步骤及三个后端环境。
 
 ## 当前进度
+
+2026-10-13：`1.0 (4)` 已上传、完成 Apple 处理并加入现有内部组，组内显示“正在测试”。本轮包括独立对话、草稿恢复、摄像头事件与确定性主动提醒、合成场景及证据追问；手机 demo 云端已更新，146 项 Cloud 测试通过。手机功能与真实摄像头仍需分别验收。见 [TestFlight 记录与测试顺序](Docs/TESTFLIGHT.md)。
 
 2026-10-12：手机内部演示包改为自动连接独立的云端服务，不再向使用者展示服务器、模型或访问令牌配置。补齐扫码识别 / 待连接设备流程，修复首页文字叠在背景树上的问题；新增明确确认的记忆、临时上下文、云端定时概况和应用内提醒箱。原生 App 已实测直接发消息并收到模型回复，保存的偏好也能进入后续对话；105 项 Cloud 测试通过。真机 `1.0 (3)` 已归档、通过 Apple 分发校验、上传并完成 Apple 处理；出口合规已保存，现有 EvidenceGuard Internal 组中的状态为“正在测试”，成员可更新。详见 [手机演示与 Personal Agent](Docs/MOBILE-DEMO-PERSONAL-AGENT.md)。以下日期为此前版本记录。
 

@@ -1,5 +1,7 @@
 # 单团队 iOS 测试环境
 
+现有实例的登录账号、SSH 密钥、新成员接入与手机 demo 服务目录，见 [服务器 SSH 与团队协作](SERVER-ACCESS.md)。本页下述鉴权配置指原团队服务；TestFlight 3/4 使用隔离的手机 demo 服务并自动连接，见 [手机演示](MOBILE-DEMO-PERSONAL-AGENT.md)。
+
 Ubuntu 24.04、Python 3.12、FFmpeg；单进程 Uvicorn 监听 127.0.0.1:8790，Nginx 对外提供 HTTPS。
 不要增加 workers；摄像头命令锁目前在同一进程内。
 
