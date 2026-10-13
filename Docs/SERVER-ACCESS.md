@@ -55,6 +55,25 @@ ssh -i ~/.ssh/evidenceguard_team YOUR_ASSIGNED_USERNAME@34.218.51.85
 连接超时：先检查实例状态、成员当前出口 IP 与安全组 22 端口来源是否匹配，再检查本地网络。
 `Permission denied (publickey)`：检查账号名、使用的私钥，以及该账号是否已登记对应公钥。
 
+## 现场换网络：团队管理优先使用 Session Manager
+
+上面的来源公网 IP 是成员笔记本所在网络的出口地址，用来限制 SSH 22 端口。去现场、切手机热点或换 VPN 后，它可能变化；需要更新的是 SSH 来源规则和相关管理连接条件，不需要因为笔记本换网络就重新部署后端或改手机 App 地址。给服务器换域名也不能解决客户端来源 IP 改变的问题。
+
+团队日常管理建议改用 AWS Systems Manager Session Manager。它通过成员的 AWS 身份和 IAM 权限访问指定实例，不依赖 SSH 入站端口或固定客户端 IP；可使用浏览器终端，也可使用 AWS CLI。手机 App 继续通过 HTTPS 访问 demo 服务，这两条通路分别配置。
+
+2026-10-13 只读检查结果：本机 `snap.amazon-ssm-agent.amazon-ssm-agent.service` 正在运行；EC2 元数据没有返回已挂载的 IAM instance profile（404）。这不证明账号层面的 Default Host Management Configuration 状态，尚未确认该实例在 Systems Manager 中在线或成功建立会话。
+
+切换前需要完成：
+
+1. 核对 AWS 账号的管理权限，在已有账号级管理配置或此实例专用 IAM role 中提供所需 SSM 权限；实例方式可参考 `AmazonSSMManagedInstanceCore`。这是实例服务权限，不能代替成员的登录授权。
+2. 管理员确认成员访问范围，再给成员独立 AWS 身份授予这台实例的会话权限；Session Manager 的默认 Linux 会话可能拥有管理权限，需按职责配置 Run As / OS 权限。
+3. 验证实例在 Systems Manager 中在线，并由已授权成员在日常 Wi-Fi 与手机热点分别开启会话。需要 VS Code Remote SSH 时，再单独验证 AWS CLI / Session Manager 插件的 SSH 隧道配置；浏览器终端不是自动可用的 VS Code SSH 配置。
+4. 新通路验证通过后再处理旧 SSH 来源规则，避免失去现有管理入口。当前未更改 IAM、未新增成员权限、未关闭已有 SSH 通路。
+
+因此，当前 SSH 密钥方案仍是已验证的现有入口；Session Manager 是准备切换的团队方案，不应在未配置及验收前告诉成员已经可用。
+
+参考：[Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)、[实例权限](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-getting-started-instance-profile.html)、[前置条件与默认会话账号](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-prerequisites.html)。
+
 ## 当前后端环境
 
 三个服务运行在同一台 EC2 上，使用不同服务用户、数据库和访问令牌。
