@@ -1,8 +1,61 @@
-# 服务器 SSH 与团队协作
+# 服务器访问与团队协作
 
-2026-10-13 已通过现有 SSH 连接核实。GitHub 保存后端源码和操作说明，登录凭证保存在仓库外。
+2026-10-13 已配置并实际验证 AWS Systems Manager Session Manager（SSM）。团队管理优先使用 SSM，现有 SSH 保留为备用入口。GitHub 保存后端源码和操作说明，登录凭证保存在仓库外。
 
-## 当前连接方式
+## 换网络后的日常连接：Session Manager
+
+在已登录且具有该实例 SSM 权限的 AWS 控制台中：
+
+1. 选择 **美国西部（俄勒冈）/ us-west-2**。
+2. 打开 EC2 → 实例，选择 `evidenceguard-api` / `i-06744490347d73778`。
+3. 点击「连接」→「SSM 会话管理器」→「连接」。
+4. 终端使用完输入 `exit` 结束自己的会话。
+
+这条管理通路不依赖笔记本的固定公网 IP 或 SSH 22 入站规则。去深圳、切手机热点或换 Wi-Fi 不需要因此重新部署后端或修改 App 地址；新网络仍需能正常访问 AWS 控制台及 SSM 服务。手机 App 的 HTTPS 请求与管理员登录服务器是两条不同通路。
+
+### 已完成的配置和验证
+
+| 项目 | 已核实的状态 |
+| --- | --- |
+| AWS 账号 | `083151142234` |
+| EC2 实例 | `i-06744490347d73778`，`us-west-2` |
+| 实例 IAM role | `EvidenceGuardSSMInstanceRole`，信任主体为 `ec2.amazonaws.com` |
+| 唯一附加的托管策略 | AWS 官方 `AmazonSSMManagedInstanceCore` |
+| Instance profile | `EvidenceGuardSSMInstanceProfile`，关联状态 `associated` |
+| SSM agent | `3.3.4793.0`，诊断中的实例身份、凭证、网络与服务检查通过 |
+| 控制台连接状态 | 在线 / 已连接 |
+| 实际终端验证 | 已通过浏览器 SSM 会话执行命令；登录用户为 `ssm-user` |
+| 后端服务 | `evidenceguard-demo`、`evidenceguard`、`evidenceguard-review` 均为 `active` |
+| 演示服务健康检查 | 会话内 `http://127.0.0.1:8792/api/health` 返回 `{"status":"ok"}` |
+
+验证完成后已用 `exit` 结束测试会话。本次只重启了 SSM agent，没有重启或重新部署三个后端服务，没有修改安全组、现有 SSH 或新增成员授权。默认 SSM 会话具备 sudo 管理能力，因此只有被明确授权的管理身份才能使用。
+
+尚未进行现场网络或 Wi-Fi / 热点切换实测；尚未为队友创建独立 AWS 身份，也未验证 VS Code Remote SSH 经 SSM 隧道连接。不要把浏览器终端已连通理解为这些事项均已完成。
+
+### 本机命令行入口
+
+仓库提供 [cloud_session.sh](../scripts/cloud_session.sh)，用于检查目标账号与实例状态，然后按需打开会话：
+
+```bash
+bash scripts/cloud_session.sh check YOUR_AWS_PROFILE
+bash scripts/cloud_session.sh connect YOUR_AWS_PROFILE
+```
+
+需要先安装 AWS CLI v2、官方 Session Manager 插件，并配置本人已获授权的 AWS 登录；不传 profile 时使用 CLI 的默认身份。浏览器登录不会自动配置本地 CLI。2026-10-13 这台开发 Mac 尚未配置该 CLI 入口；脚本已完成语法和四条模拟 CLI 分支验证，真实服务器会话通过浏览器验收。
+
+脚本不创建凭证、不修改 IAM 或安全组。`check` 显示 connected 仅表示 SSM 状态正常，成功打开并执行命令才算会话验收。
+
+[ssm-instance-role.json](../Cloud/infra/ssm-instance-role.json) 保存角色与 profile 的 CloudFormation 参考定义，用于复核或受控重建。本次实际资源通过 AWS CLI 创建，**不由 CloudFormation stack 管理**；当前账号已有同名资源，不可直接部署此模板，否则会名称冲突。模板也不会自动绑定实例或授予成员权限。
+
+### 队友接入
+
+给队友独立 AWS 身份，再按职责授权访问指定实例。拥有 GitHub 仓库权限不等于拥有服务器权限；实例上的 SSM role 也不能代替成员身份权限。避免共享管理员 AWS 登录或 SSH 私钥。
+
+只读日志与部署管理应分别定义权限；需要限制操作系统权限时另行配置 Session Manager Run As 和 Linux 账号。授予成员权限后，分别验证其本人会话与热点连接，再决定是否收紧旧 SSH 入口。
+
+参考：[Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)、[实例权限](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-getting-started-instance-profile.html)、[前置条件与默认会话账号](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-prerequisites.html)。
+
+## 保留的 SSH 备用入口
 
 | 项目 | 当前值 |
 | --- | --- |
@@ -33,7 +86,7 @@ SHA256:m3m0KCupVlW7U9+bTJdPPqKF2NzyS+zC+O8urazekVs
 
 首次连接时核对指纹；出现变化时先向管理员核实实例或主机密钥是否更换，不关闭主机校验。
 
-## 新成员接入
+### 需要传统 SSH 的成员
 
 新成员在自己的电脑生成专用 SSH 密钥，私钥由本人保留。下例用于尚未存在的文件；已有该文件时不要覆盖：
 
@@ -54,25 +107,6 @@ ssh -i ~/.ssh/evidenceguard_team YOUR_ASSIGNED_USERNAME@34.218.51.85
 
 连接超时：先检查实例状态、成员当前出口 IP 与安全组 22 端口来源是否匹配，再检查本地网络。
 `Permission denied (publickey)`：检查账号名、使用的私钥，以及该账号是否已登记对应公钥。
-
-## 现场换网络：团队管理优先使用 Session Manager
-
-上面的来源公网 IP 是成员笔记本所在网络的出口地址，用来限制 SSH 22 端口。去现场、切手机热点或换 VPN 后，它可能变化；需要更新的是 SSH 来源规则和相关管理连接条件，不需要因为笔记本换网络就重新部署后端或改手机 App 地址。给服务器换域名也不能解决客户端来源 IP 改变的问题。
-
-团队日常管理建议改用 AWS Systems Manager Session Manager。它通过成员的 AWS 身份和 IAM 权限访问指定实例，不依赖 SSH 入站端口或固定客户端 IP；可使用浏览器终端，也可使用 AWS CLI。手机 App 继续通过 HTTPS 访问 demo 服务，这两条通路分别配置。
-
-2026-10-13 只读检查结果：本机 `snap.amazon-ssm-agent.amazon-ssm-agent.service` 正在运行；EC2 元数据没有返回已挂载的 IAM instance profile（404）。这不证明账号层面的 Default Host Management Configuration 状态，尚未确认该实例在 Systems Manager 中在线或成功建立会话。
-
-切换前需要完成：
-
-1. 核对 AWS 账号的管理权限，在已有账号级管理配置或此实例专用 IAM role 中提供所需 SSM 权限；实例方式可参考 `AmazonSSMManagedInstanceCore`。这是实例服务权限，不能代替成员的登录授权。
-2. 管理员确认成员访问范围，再给成员独立 AWS 身份授予这台实例的会话权限；Session Manager 的默认 Linux 会话可能拥有管理权限，需按职责配置 Run As / OS 权限。
-3. 验证实例在 Systems Manager 中在线，并由已授权成员在日常 Wi-Fi 与手机热点分别开启会话。需要 VS Code Remote SSH 时，再单独验证 AWS CLI / Session Manager 插件的 SSH 隧道配置；浏览器终端不是自动可用的 VS Code SSH 配置。
-4. 新通路验证通过后再处理旧 SSH 来源规则，避免失去现有管理入口。当前未更改 IAM、未新增成员权限、未关闭已有 SSH 通路。
-
-因此，当前 SSH 密钥方案仍是已验证的现有入口；Session Manager 是准备切换的团队方案，不应在未配置及验收前告诉成员已经可用。
-
-参考：[Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)、[实例权限](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-getting-started-instance-profile.html)、[前置条件与默认会话账号](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-prerequisites.html)。
 
 ## 当前后端环境
 
@@ -99,3 +133,27 @@ curl --fail https://demo.34.218.51.85.sslip.io/api/health
 环境配置在 `/etc/evidenceguard-demo/cloud.env`，只能由已授权人员或服务进程读取；文件包含服务令牌及模型配置，不粘贴进 Git、issue 或聊天。更新前备份代码、数据库和配置，验证失败应回滚。部署说明见 [Cloud 部署](CLOUD-DEPLOYMENT.md)。
 
 官方参考：[EC2 SSH 连接条件](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/connect-to-linux-instance.html)、[EC2 公私钥机制](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html)。
+
+## 新加坡 / 香港迁移评估（尚未迁移）
+
+2026-10-13 在当前账号读取区域状态：
+
+| 区域 | AWS 返回状态 | 当前结论 |
+| --- | --- | --- |
+| 新加坡 `ap-southeast-1` | `opt-in-not-required` | 已启用，可作为迁移候选；实例创建权限、配额及容量仍需验证 |
+| 香港 `ap-east-1` | `not-opted-in` | 尚未启用，需要有权限的账号管理员先启用后再评估 |
+
+优先评估新加坡。地理距离更近不能保证实际链路更快；需要在深圳或相近用户网络比较 HTTPS、视频下载和模型调用全链路。当前 Mac 到俄勒冈 demo 健康接口的三次新连接请求均 HTTP 200，总耗时约 0.58–0.78 秒（包含 TCP/TLS）；这不是模型响应时间，也没有与新加坡同配置实例作对照。
+
+迁移需要在目标区域部署新实例，而非修改现有实例的区域属性；可以复制 AMI / 快照或重新部署服务。两区并行验证、快照及传输可能产生费用，当前没有新建这些资源。参见 [AWS AMI 跨区域复制](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/CopyingAMIs.html)。
+
+建议按以下顺序推进：
+
+1. 确认赛事账号允许的区域、资源预算和新加坡实例配额，再准备目标实例与 SSM。
+2. 为手机 demo 使用团队可控的固定域名，并配置可信 HTTPS。现有 `demo.34.218.51.85.sslip.io` 直接映射旧 IP，不能当作可自由改解析的团队域名；当前 EC2 公网地址也未绑定 Elastic IP。
+3. 先迁移手机 demo：安全复制模型配置、服务令牌、录像及一致性 SQLite 备份，保留原团队和 Apple 审核服务。切换时同一数据集 / 摄像头只保留一个实时 Skill 与主动任务调度进程，避免两台服务器同时执行。
+4. 对比新区域的健康接口、自动演示登录、真实对话、录像播放和任务执行；记录模型 API 的独立耗时。
+5. 更新 iOS 内置 `EGServiceBaseURL`，上传新的 TestFlight 构建并验收。当前 3/4 构建内置旧地址；访问令牌只对同源 HTTPS 服务发送，不应放宽这条限制来迁移。
+6. 验证切换和回滚后再安排旧资源退役。保留旧主机做代理可以临时兼容旧包，但用户仍经过俄勒冈，不能当作完整的延迟优化。
+
+本次 SSM 改造不需要重发 App；区域迁移和固定域名切换是后续独立工作。

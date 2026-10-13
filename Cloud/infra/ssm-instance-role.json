@@ -1,0 +1,35 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EvidenceGuard EC2 SSM instance role only. Does not attach to or replace an EC2 instance, grant team access, or alter security groups.",
+  "Resources": {
+    "InstanceRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "EvidenceGuardSSMInstanceRole",
+        "Description": "SSM agent permissions for the EvidenceGuard backend",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {"Service": "ec2.amazonaws.com"},
+            "Action": "sts:AssumeRole"
+          }]
+        },
+        "ManagedPolicyArns": ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"],
+        "Tags": [{"Key": "Project", "Value": "EvidenceGuard"}]
+      }
+    },
+    "InstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "InstanceProfileName": "EvidenceGuardSSMInstanceProfile",
+        "Roles": [{"Ref": "InstanceRole"}]
+      }
+    }
+  },
+  "Outputs": {
+    "InstanceProfileName": {"Value": {"Ref": "InstanceProfile"}},
+    "InstanceProfileArn": {"Value": {"Fn::GetAtt": ["InstanceProfile", "Arn"]}},
+    "RoleName": {"Value": {"Ref": "InstanceRole"}}
+  }
+}

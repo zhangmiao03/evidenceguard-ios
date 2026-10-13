@@ -5,7 +5,7 @@
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
 - [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
-- [服务器 SSH 与团队协作](Docs/SERVER-ACCESS.md)：登录账号、密钥接入、新成员开通步骤及三个后端环境。
+- [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、三个后端环境及新加坡迁移评估。
 
 ## 当前进度
 
