@@ -38,6 +38,8 @@ private struct ProductRootView: View {
     }
     @ViewBuilder private func destination(_ route: AppRoute) -> some View {
         switch route {
+        case .connectedApps: ConnectedAppsView()
+        case .cameraObservation: CameraObservationSettingsView()
         case .pushDelivery(let id, let scope): PushDeliveryView(id: id, scope: scope)
         case .pushConversation(let id, let skill, let mode): ConversationView(conversationID: id, skillID: skill, initialMode: mode)
         case .demoScene: DemoSceneView()

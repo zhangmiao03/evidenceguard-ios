@@ -54,6 +54,7 @@ class PersonalAgent:
         self.store = store
         self.last_error = None
         self.engine = None
+        self.memory = None
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_profiles (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_memories (id TEXT PRIMARY KEY, client TEXT NOT NULL, payload TEXT NOT NULL)')
@@ -79,7 +80,7 @@ class PersonalAgent:
 
     def remember(self, client, body: MemoryInput):
         with self.store.transaction():
-            if len(self.memories(client)) >= 20: raise ValueError('最多保留 20 条记忆，请先移除不再需要的内容')
+            if len(self.memories(client)) >= 100: raise ValueError('最多保留 100 条记忆，请先移除不再需要的内容')
             item = dict(id=uuid.uuid4().hex, content=body.content, source='user_confirmed', createdAt=time.time(),
                         expiresAt=time.time()+86400 if body.temporary else None)
             self.store.db.execute('INSERT INTO personal_memories VALUES (?,?,?)', (item['id'], client, json.dumps(item)))
@@ -87,6 +88,8 @@ class PersonalAgent:
 
     def forget(self, client, key):
         with self.store.transaction():
+            item = next((m for m in self.memories(client) if m['id']==key), None)
+            if item and self.memory: self.memory.suppress(client,item)
             self.store.db.execute('DELETE FROM personal_memories WHERE client=? AND id=?', (client,key))
         return self.snapshot(client)
 
@@ -106,7 +109,7 @@ class PersonalAgent:
         return self.snapshot(client)
 
     def snapshot(self, client):
-        return self.profile(client) | dict(memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error, messages=self.engine.messages(client) if self.engine else [], activity=self.engine.activity(client) if self.engine else [])
+        return self.profile(client) | dict(memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error, messages=self.engine.messages(client) if self.engine else [], activity=self.engine.activity(client) if self.engine else [], automaticMemory=self.memory.status(client) if self.memory else None)
 
     def context(self, client):
         if not client: return None

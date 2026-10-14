@@ -72,5 +72,20 @@
 	<string>把你按住说话的内容转成可编辑文字，确认发送后才交给 AI。</string>
 	<key>EGAPNSEnvironment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>预览未来 7 天的日历标题和日期。由你确认后才共享给 anker；不修改日历。</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>预览未完成提醒事项的标题和日期。由你确认后才共享给 anker；不修改提醒事项。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>个人应用连接授权</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.zhangmiao.evidenceguard.connect</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

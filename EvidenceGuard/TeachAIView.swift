@@ -200,7 +200,7 @@ struct ConversationView: View {
 
     private var suggestions: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image("DogAvatar").resizable().scaledToFill().frame(width: 52, height: 52).clipShape(Circle())
+            Image("AnkerAvatar").resizable().scaledToFit().frame(width: 64, height: 64).accessibilityLabel("anker")
             Text(isMainConversation ? "我是 \(AssistantIdentity.name)，你的安防小助手。" : "接着聊聊这件事。")
                 .font(.title2.weight(.semibold))
             Text(executionMode == "history" ? "想找哪段记录？" : "想看看家里的情况，或有件事需要留意，都可以和我说。")

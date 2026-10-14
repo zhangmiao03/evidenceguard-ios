@@ -62,7 +62,7 @@ export function MemoryPage({
         <span className="feature-symbol">✧</span>
         <div>
           <h2>让助手更了解你</h2>
-          <p>保存你确认的关注点与回复偏好，后续对话继续使用。</p>
+          <p>聊天后整理你明确提到的偏好和家庭信息，保留原话来源；你可以随时移除。</p>
           <button
             className="primary"
             disabled={!personal}
@@ -75,14 +75,20 @@ export function MemoryPage({
           </button>
         </div>
       </section>
+      {personal?.automaticMemory && <section className="card product-card">
+        <label><input type="checkbox" checked={personal.automaticMemory.enabled} disabled={busy}
+          onChange={e => void perform(() => api.request<Personal>(`/api/personal/memory-options?enabled=${e.target.checked}`, {}, undefined, "PUT"))} />从聊天中整理记忆</label>
+        <p>{personal.automaticMemory.pending ? `${personal.automaticMemory.pending} 轮对话正在整理` : personal.automaticMemory.reason}</p>
+        {personal.automaticMemory.status === "failed" && <button disabled={busy} onClick={() => void perform(() => api.request<Personal>("/api/personal/memory-retry", {}))}>重试记忆整理</button>}
+      </section>}
       <div className="section-heading">
-        <h2>已确认的记忆 · {personal?.memories.length || 0}</h2>
+        <h2>已保存的记忆 · {personal?.memories.length || 0}</h2>
         <label>
           记忆类型
           <select value={filter} onChange={(e) => setFilter(e.target.value)}>
             <option value="all">全部</option>
             <option value="longterm">长期</option>
-            <option value="temporary">24 小时</option>
+            <option value="temporary">临时</option>
           </select>
         </label>
       </div>
@@ -93,6 +99,7 @@ export function MemoryPage({
               {m.expiresAt ? "临时记忆" : "长期记忆"}
             </span>
             <p className="memory-content">{m.content}</p>
+            {m.sourceQuote && <details><summary>查看原话</summary><p>{m.sourceQuote}</p></details>}
             <small>
               {m.expiresAt
                 ? "有效至 " + timeLabel(m.expiresAt)
@@ -117,7 +124,7 @@ export function MemoryPage({
         </p>
       )}
       <p className="subtle-note">
-        每个客户端最多保存 20
+        每个客户端最多保存 100
         条。记忆与提醒偏好属于当前浏览器，摄像头和任务在团队空间共享；记忆不会自动授权或启用设备操作。
       </p>
       {adding && (

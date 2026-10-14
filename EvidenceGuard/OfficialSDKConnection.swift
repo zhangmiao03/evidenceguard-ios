@@ -421,7 +421,9 @@ enum SDKCredentialVault {
                 guard syncGeneration == requestGeneration else { throw CancellationError() }
                 try Task.checkCancellation()
                 let items = returned[offset..<min(offset + 10, returned.count)].map { SDKCloudEvent(camera: camera, event: $0) }
-                _ = try await client.ingestSDKEvents(Array(items), review: false)
+                // Fresh human/doorbell metadata can produce a qualified notice
+                // even if the vendor has not made its thumbnail available yet.
+                _ = try await client.ingestSDKEvents(Array(items), review: recentOnly)
             }
             var images = 0
             for event in returned.filter({ $0.hasThumbnail && !syncedImages.contains(client.baseURL.absoluteString + ":" + camera.sn + ":" + $0.id) }).prefix(10) {

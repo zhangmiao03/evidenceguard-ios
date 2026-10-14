@@ -1,0 +1,54 @@
+{
+  "model": "doubao-seed-2-1-lite-260915",
+  "synthetic": true,
+  "results": [
+    {
+      "input": "以后请回复简洁一些，先告诉我需要做什么。",
+      "status": {
+        "enabled": true,
+        "pending": 0,
+        "status": "completed",
+        "reason": "已整理本轮对话，更新 1 条记忆"
+      },
+      "memories": [
+        {
+          "content": "回复需简洁，优先告知用户需要执行的事项",
+          "quote": "以后请回复简洁一些，先告诉我需要做什么。",
+          "revision": 1
+        }
+      ]
+    },
+    {
+      "input": "改一下，我现在更希望你解释详细一些，不用特别简短。",
+      "status": {
+        "enabled": true,
+        "pending": 0,
+        "status": "completed",
+        "reason": "已整理本轮对话，更新 1 条记忆"
+      },
+      "memories": [
+        {
+          "content": "回复需解释详细，无需特别简短",
+          "quote": "我现在更希望你解释详细一些，不用特别简短",
+          "revision": 2
+        }
+      ]
+    },
+    {
+      "input": "这是一段测试转发内容，不是我的情况：张三说“我家有三只猫”。",
+      "status": {
+        "enabled": true,
+        "pending": 0,
+        "status": "completed",
+        "reason": "已整理本轮对话，更新 0 条记忆"
+      },
+      "memories": [
+        {
+          "content": "回复需解释详细，无需特别简短",
+          "quote": "我现在更希望你解释详细一些，不用特别简短",
+          "revision": 2
+        }
+      ]
+    }
+  ]
+}

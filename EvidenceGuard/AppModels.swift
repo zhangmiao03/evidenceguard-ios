@@ -141,6 +141,7 @@ enum AppTab: Int, CaseIterable {
 }
 
 enum AppRoute: Hashable {
+    case connectedApps, cameraObservation
     case pushDelivery(String, String)
     case pushConversation(String, String?, String)
     case demoScene
@@ -263,6 +264,11 @@ struct PersonalPreferences: Codable, Equatable {
 }
 struct PersonalMemory: Codable, Identifiable, Equatable {
     var id: String; var content: String; var source: String; var createdAt: Double; var expiresAt: Double?
+    var sourceQuote: String?
+    var updatedAt: Double?
+}
+struct AutomaticMemoryStatus: Codable, Equatable {
+    var enabled: Bool; var pending: Int; var status: String; var reason: String
 }
 struct PersonalNotice: Codable, Identifiable, Equatable {
     var id: String; var kind: String; var title: String; var body: String
@@ -274,6 +280,7 @@ struct PersonalSnapshot: Codable, Equatable {
     var memories: [PersonalMemory]; var inbox: [PersonalNotice]; var delivery: String; var lastError: String?
     var messages: [AssistantMessage]?
     var activity: [ProactiveActivity]?
+    var automaticMemory: AutomaticMemoryStatus?
 }
 
 struct ProactiveSource: Codable, Identifiable, Equatable {

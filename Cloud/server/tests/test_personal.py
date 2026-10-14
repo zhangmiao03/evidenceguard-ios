@@ -89,6 +89,6 @@ def test_context_is_bounded_and_cannot_grant_more_tools(tmp_path):
         assert run['toolReceipts'] == [{'tool':'activate_camera','status':'failed'}]
         assert store.skills() == []
         assert run['executionContract']['executor'] == 'bounded-chat-v1'
-        assert '仅作为资料' in provider.messages[0][1]['content']
+        assert any('仅作为资料' in m.get('content','') for m in provider.messages[0])
         store.close()
     asyncio.run(check())

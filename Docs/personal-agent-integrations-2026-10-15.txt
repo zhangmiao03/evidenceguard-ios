@@ -1,0 +1,87 @@
+anker：自动记忆、只读连接器与摄像头主动观察
+2026-10-15 · 本地代码与草稿 PR #4；未部署、未上传或分发
+
+产品入口
+助手 / 摄像头 Skill / 任务 / 记忆 / 我的五个入口保留。anker 使用用户本轮选定的海报蓝白机器人头像；用户昵称仍独立保存。主对话和旧话题不合并、不删除。
+我的 → 连接应用：Gmail、飞书、手机日历与提醒事项。
+我的 → 摄像头与记录 → 定时观察：分别配置两台摄像头。
+记忆：开启/关闭自动整理，查看来源原话、临时有效期、移除记忆和重试失败整理。
+
+一、聊天和记忆是两层
+用户消息 → 持久化聊天运行 → anker 回复 → 同一数据库事务记录待整理任务
+  → Doubao 从本轮用户原话提出有效事实
+  → 校验逐字来源、类别、有效期、重复、纠正和删除标记
+  → 保存记忆、保留来源轮次 → 后续对话与主动评估读取有效记忆
+
+完整聊天和助手回复仍保存在原有对话记录中。自动记忆不是逐字复印聊天；已完成的用户对话默认进入后台整理，通常在回复后开始，不阻塞回复。界面显示待整理或失败状态，网络/模型失败自动重试最多5次，再由用户手动重试。未完成的模型回复不会被误报为已经整理成功。
+只从本轮用户原话抽取：稳定回复偏好、明确的家庭事实、临时安排。助手推断、工具输出、邮件、群消息和摄像头一次事件不自动转成个人事实。提示词要求排除凭证及敏感健康、财务、身份信息，代码再校验原话和敏感标记；这不是能保证识别所有敏感表达的分类器。
+自动记忆有来源 run ID、逐字引用、更新版本、可选到期时间。相同内容去重，语义键冲突需指明被纠正记录；明确纠正保留同一记忆 ID。移除后保存内容/语义键的哈希标记，避免同一记忆从排队任务重新写回。模型换一种语义键仍可能识别不准，用户可删除或关闭自动整理。
+上限100条；自动短期记忆最多31天，无明确期限的短期信息提示词限定至多24小时，手动临时记忆仍24小时。关闭后不回填旧聊天；重新开启只处理之后的新轮次。删除/到期记忆不删除原聊天记录。
+本轮没有增加长聊天滚动摘要和个人记忆向量索引。对话仍使用有界近期历史，个人记忆单独注入；现有豆包 embedding 与视频索引兼容性不变。
+
+二、摄像头是主动消息的主链路
+A. T8171 / T8214 官方设备事件
+   → 前台 SDK 查询最近事件，每30秒一轮（需要用户开启同步）
+   → 元数据与实际事件缩略图分别上传
+   → 云端合并同一事件、保留证据、Doubao 视觉核验
+B. 用户开启的定时观察
+   → 每台独立持久化时钟（默认30分钟，可选5/15/30/60分钟）
+   → 共用现有采集服务、设备占用锁与新帧挑战
+   → 验证真实来源和时间 → 保存取样 → Doubao 视觉核验
+A/B 汇合 → 只读主动评估 → 来源复核、去重、合并、免打扰与频率门控
+         → anker 主对话中的新消息 → APNs 持久队列 → 点击后回到依据/对话
+
+遇到“human / ring”元数据但没有图片，允许评估是否提醒；话术只能说设备报告有人或门铃响，不能声称看清人物、确认身份或完整动作。图片到了以后可以补充核验，幂等事件避免重复导入。历史导入不作为新事件提醒。
+定时观察仅接受 official_sdk / official_live_* 的真实采集来源和5分钟内的时间回执；测试图片、旧图、未来时间、离线、任务占用、预算不足都不会变成“已看过”。模型期间关闭观察或修改配置，也会拦住旧结论发布。定时取样不抢占正在运行的摄像头任务。
+取样和事件核验共享现有每台每日100次自动视觉调用预算；每次事件最多2次核验。默认半小时取样通常占48次/天，给事件保留余量；高频取样可能提前用完。现有普通提醒策略保留：高价值判断、每天最多6条、至少间隔5分钟、10分钟同类合并、用户免打扰时段。人形触发阈值待用户另行确定。
+关键限制：当前官方 SDK 是手机前台事件中继/直播取帧。手机锁屏或离线后不保证接收新事件或新图。云端可继续处理已经收到的数据并推送，但本轮未凭空实现设备云全天候取流。要验收全天候能力，需要赛事设备/账号，以及官方服务器事件接口或常在线采集端。画面、通知与真机送达均仍待实体设备验证。
+
+三、Gmail 和飞书首版
+Gmail：OAuth 授权 gmail.readonly；按用户问题搜索邮件，再读指定邮件。读取纯文本及 HTML 提取文字，分页、截断有标记；不加载图片/远程资源、不下载附件，不提供发送、修改、删除工具。
+飞书：用户 OAuth；读取授权可见的群列表，再读取选定群近期消息，保留发言人、时间、分页限制。首版不读取私聊、云文档、日历或全组织全部历史；不提供发送工具。
+读取触发方式：用户在助手中提问后由只读工具执行。本轮没有后台轮询 Gmail 或飞书，也没有基于邮件自动主动推送。
+手机授权使用 ASWebAuthenticationSession；服务端保存加密 PKCE verifier 与10分钟一次性 state，回调仅把授权码送回发起的系统浏览器会话，原设备携带私密安装证明才能完成交换。
+授权令牌用独立 Fernet 密钥加密，按安装身份和 provider 隔离。令牌刷新/读取/断开串行，飞书轮换 refresh_token 后更新存储。模型不接触令牌，不能决定请求域名、方法或任意 URL。
+客户端安装 UUID 之外增加 X-EG-Private-Key。iOS 使用服务地址隔离的 Keychain 密钥；Web 使用当前源的随机密钥。已经绑定的个人空间、聊天、记忆和连接器需要该证明，不能只换一个安装 UUID 读取。仍是内部单家庭空间，尚未提供跨手机登录/账号恢复；设备和摄像头证据继续在团队空间共享。
+断开连接会删除本服务的令牌和待授权 state，不自动撤销平台上的应用授权，也不删除已进入聊天的读取结果。用户可到 Google/飞书账号管理撤销授权。
+邮件/群消息被标成不可信资料，不能成为工具指令或自动记忆来源。
+
+服务端需要配置（实际值只放 work/private 或服务器私有环境文件）
+EG_CONNECTOR_ORIGIN：该隔离服务的稳定 HTTPS 根地址
+EG_CONNECTOR_ENCRYPTION_KEY：Fernet.generate_key() 生成的独立密钥；丢失会导致已有令牌不可恢复
+EG_GMAIL_CLIENT_ID / EG_GMAIL_CLIENT_SECRET：Google Web OAuth client
+EG_FEISHU_CLIENT_ID / EG_FEISHU_CLIENT_SECRET：飞书自建应用
+OAuth 回调：
+  <origin>/api/connectors/oauth/callback/gmail
+  <origin>/api/connectors/oauth/callback/feishu
+Gmail scopes：https://www.googleapis.com/auth/gmail.readonly
+飞书 scopes：im:chat:readonly im:message:readonly im:message.group_msg:get_as_user offline_access
+需要在飞书应用管理中开通对应权限、机器人能力及适用用户/可见范围；在 OAuth 请求中授予 scope 不会绕过平台权限审批。Gmail readonly 属于 restricted scope，测试用户/同意屏幕和正式验证应按 Google 应用类型完成。
+使用 HTTPS、原有团队鉴权及无查询参数日志；现有云服务启动参数 --no-access-log 保持。授权码不得进入访问日志、Dashboard 或 PR。
+本轮这些配置未写入三套线上服务；Gmail/飞书尚未真实授权联调。不能拿 Codex 自身连接器的账号当作 App 连接凭证。手机/团队/Apple review 三套配置、令牌与数据库继续隔离。
+
+四、iPhone 能读取什么
+已实现：EventKit 日历（未来7天）或未完成提醒事项 → 本地预览最多20条 → 可左滑移除 → 用户点击共享 → 云端加密快照，24小时内可供 read_phone_context 读取。只取标题/日期，不取备注、参与人或附件。共享会覆盖上一次快照，不是后台实时同步。
+iOS 17+ 为这两类读取要求完整访问系统权限；App 代码仅做读取，没有新增/修改/删除 EventKit 条目。进页面不会触发权限请求，点击“预览”才请求；预览不会上传。
+快照到期后不再读取，下次访问时清理过期行；用户可立即移除。已进入聊天的内容不随快照删除。要共享手机信息，服务端同样需要加密密钥；没有密钥时明确拒绝保存。
+可以后续接但未实现：联系人（授权/选择）、位置（定位授权）、健康（HealthKit 分类授权）、照片和文件（用户选择器）。没有授权时不能自动读取。
+不能直接读取：其他 App 私有聊天库、微信聊天、全系统通知中心内容、短信历史或通话记录。这些不是普通 iOS App 可任意读取的接口；可以让用户主动分享内容。
+
+五、验证与发布状态
+本地后端测试包含：来源/到期/纠正/删除/重试记忆、安装证明隔离、OAuth scope/PKCE/一次性 state、只读分页/HTML文本化/令牌刷新、手机快照隔离、两台独立取样、暂停/旧图/测试源拦截、元数据事件提醒、模拟 APNs 一次入队和接受回执。
+真实 Doubao 独立合成样例：保存简洁偏好；用户纠正后更新为详细回复；转发他人的养猫情况不存为用户事实。样例在 verification/personal-agent-2026-10-15/doubao-memory-samples.json。未使用真实邮件、飞书内容或摄像头图像。
+iOS Simulator 与官方 SDK arm64 本地编译通过，Swift 契约7组、iOS界面4项通过。界面截图在同目录 profile.png / phone-preview.png；进入手机信息不会弹权限，未预览不显示共享按钮。Web 类型/生产构建、协议9项通过。Cloud 全量236项通过，之后补充的飞书刷新并发用例也通过（当前共237项）；Edge浏览器28项通过、1项专有Demo恢复条件跳过。本机缺少 Playwright 自带 Chromium/WebKit 二进制，未把启动失败记为产品失败或通过；跨浏览器最终检查交给 GitHub CI。GitHub状态见 PR #4。
+保持用户要求：未部署本轮功能到 AWS；未上传新 TestFlight；未加入任何测试组。build9既有状态不变。
+
+官方依据（核查于2026-10-15）
+Google Gmail 用户 OAuth：https://developers.google.com/workspace/gmail/api/auth/web-server
+Google scope：https://developers.google.com/workspace/gmail/api/auth/scopes
+邮件搜索/读取：https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list
+https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get
+飞书 OAuth：https://open.feishu.cn/document/authentication-management/access-token/obtain-oauth-code
+https://open.feishu.cn/document/authentication-management/access-token/get-user-access-token
+https://open.feishu.cn/document/authentication-management/access-token/refresh-user-access-token
+飞书群消息：https://open.feishu.cn/document/server-docs/group/chat/list
+https://open.feishu.cn/document/server-docs/im-v1/message/list
+Apple EventKit：https://developer.apple.com/documentation/EventKit/accessing-calendar-using-eventkit-and-eventkitui
+Apple 沙盒边界：https://support.apple.com/guide/security/security-of-runtime-process-sec15bfe098e/web

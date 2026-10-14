@@ -43,6 +43,7 @@ class ProactiveEngine:
         self.ingest = None
         self.demo = None
         self.push = None
+        self.watch = None
         personal.engine = self
         with self.store.transaction():
             self.store.db.executescript('''
@@ -86,6 +87,7 @@ class ProactiveEngine:
     def enqueue(self, client, dedupe, kind, title, body, now, skill_id=None):
         key = 'proactive-'+uuid.uuid4().hex
         job = dict(id=key, client=client, dedupe=dedupe, kind=kind, title=title, body=body,
+                   cameraObservationId=dedupe if kind=='camera_observation' else None,
                    skillId=skill_id, createdAt=now, expiresAt=now+86400, attempts=0,
                    cameraEpisodeId=dedupe if kind=='camera_event' else None,reason='等待检查摄像头观察记录',episode=dedupe.split(':')[-1] if kind in {'event','followup'} else None)
         with self.store.transaction():
@@ -130,6 +132,12 @@ class ProactiveEngine:
         if now >= job['expiresAt']: return 'expired',None,'触发已过期，未发送旧提醒'
         if job['kind']=='schedule' and not p['dailySummary']: return 'cancelled',None,'每日概况已关闭'
         kind=job.get('sourceKind',job['kind'])
+        if kind=='camera_observation':
+            observation=self.watch.observation(job.get('cameraObservationId') or job['dedupe']) if self.watch else None
+            if not observation or observation['status']!='completed': return 'cancelled',None,'定时图片尚未完成核验'
+            config=self.watch.get(observation['cameraId'])
+            if not config['enabled'] or config['revision']!=observation['revision']: return 'cancelled',None,'定时观察已暂停或配置已变化'
+            if now-observation['observedAt']>3600: return 'expired',None,'取样已过期，未发送旧现场提醒'
         if official_mode(getattr(self.runtime,'cameras',None)) and kind=='demo_event':
             return 'cancelled',None,'当前已切换官方事件来源，测试证据保留但不再发送测试提醒'
         if kind=='demo_event':
@@ -139,7 +147,7 @@ class ProactiveEngine:
             if now-scene['createdAt']>3600: return 'expired',None,'测试事件已超过即时提醒时效，证据仍保留'
         if kind=='camera_event':
             episode=self.ingest.episode(job.get('cameraEpisodeId') or job['dedupe']) if self.ingest else None
-            if not episode or episode['status']!='completed': return 'cancelled',None,'事件图片尚未核验，未发现场结论'
+            if not episode or episode['status'] not in {'completed','metadata_only'}: return 'cancelled',None,'事件图片尚未核验，未发现场结论'
             events=self.ingest.events(episode['id'])
             if not events or now-max(e['metadata']['startMs']/1000 for e in events)>3600:
                 return 'expired',None,'事件已超过即时提醒时效，证据仍保留'
@@ -186,12 +194,17 @@ class ProactiveEngine:
                      and m.get('feedback') not in {'handled','dismiss','snooze'}),None)
 
     def merge_key(self, job):
+        if job.get('sourceKind',job['kind'])=='camera_observation' and self.watch:
+            observation=self.watch.observation(job.get('cameraObservationId') or job['dedupe'])
+            if observation: return 'observation:'+observation['cameraId']
         if job.get('sourceKind',job['kind'])=='camera_event' and self.ingest:
             ep=self.ingest.episode(job.get('cameraEpisodeId') or job['dedupe'])
             if ep: return 'camera:'+ep['cameraId']+':'+ep['kind']
         return (job.get('skillId') or job['dedupe'])+':'+('event' if job['kind'] in {'event','followup'} else job['kind'])
 
     def sources(self, job, now):
+        if job.get('sourceKind',job['kind'])=='camera_observation' and self.watch:
+            return self.watch.sources(job.get('cameraObservationId') or job['dedupe'])
         if job.get('sourceKind',job['kind'])=='demo_event' and self.demo:
             return self.demo.sources(job['dedupe'])
         if job.get('sourceKind',job['kind'])=='camera_event' and self.ingest:

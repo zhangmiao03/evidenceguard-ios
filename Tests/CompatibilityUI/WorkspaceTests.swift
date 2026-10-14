@@ -41,4 +41,19 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["连接摄像头"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["workspace.switch"].exists)
     }
+
+    func testConnectionsAndPhonePreviewDoNotRequestPermissionOnEntry() {
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["连接应用"].tap()
+        XCTAssertTrue(app.navigationBars["连接应用"].waitForExistence(timeout: 5))
+        app.buttons["日历与提醒事项"].tap()
+        XCTAssertTrue(app.navigationBars["手机信息"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["预览未来 7 天的日历"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertFalse(app.buttons["共享给 anker，24 小时内可读"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phone information requires preview before sharing"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
 }

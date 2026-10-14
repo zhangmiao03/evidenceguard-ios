@@ -6,9 +6,10 @@ struct ProfileView: View {
     var body: some View {
         List {
             Section {
-                NavigationLink(value: AppRoute.profile) { HStack(spacing: 14) { Image("DogAvatar").resizable().scaledToFill().frame(width: 54,height: 54).clipShape(Circle()); VStack(alignment: .leading,spacing: 4) { Text(name).font(.title3.bold()); Text("让生活更安心").font(.subheadline).foregroundStyle(Brand.muted) }; Spacer(); Text("编辑").font(.caption) }.padding(.vertical,8) }
+                NavigationLink(value: AppRoute.profile) { HStack(spacing: 14) { Image("AnkerAvatar").resizable().scaledToFit().frame(width: 54,height: 54).clipShape(Circle()); VStack(alignment: .leading,spacing: 4) { Text(name).font(.title3.bold()); Text("让生活更安心").font(.subheadline).foregroundStyle(Brand.muted) }; Spacer(); Text("编辑").font(.caption) }.padding(.vertical,8) }
             }
             Section("助手") {
+                NavigationLink(value: AppRoute.connectedApps) { Label("连接应用", systemImage: "link") }
                 NavigationLink(value: AppRoute.notificationSettings) { Label("通知与提醒", systemImage: "bell") }
                     .accessibilityIdentifier("profile.notifications")
                 NavigationLink(value: AppRoute.voiceSettings) { Label("语音输入", systemImage: "waveform") }
@@ -19,6 +20,7 @@ struct ProfileView: View {
                 NavigationLink(value: AppRoute.help) { Label("使用帮助", systemImage: "questionmark.circle") }
             }
             Section("摄像头与记录") {
+                NavigationLink(value: AppRoute.cameraObservation) { Label("定时观察", systemImage: "clock.arrow.circlepath") }
                 NavigationLink(value: AppRoute.officialSDK) { Label("摄像头账号", systemImage: "video") }
                     .accessibilityIdentifier("profile.officialSDK")
                 NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }

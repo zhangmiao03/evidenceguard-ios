@@ -19,22 +19,34 @@ struct MemoryView: View {
                 ConnectionBanner()
                 VStack(alignment: .leading, spacing: 14) {
                     Text("我记下的事").font(.title3.bold())
-                    Text("记下你的关注点和沟通偏好，下次对话时继续使用。")
+                    Text("每次聊完，整理你明确说过的关注点、家庭信息和沟通偏好，下次接着聊。")
                         .font(.subheadline).foregroundStyle(Brand.muted)
+                    if let memory = store.data.personal?.automaticMemory {
+                        Toggle("从聊天整理记忆", isOn: Binding(get: { memory.enabled }, set: { value in
+                            Task { await store.perform { store.data.personal = try await store.client.memoryOptions(enabled: value) } }
+                        })).disabled(store.busy || !store.isConnected)
+                        HStack {
+                            if memory.pending > 0 { ProgressView() }
+                            Text(memory.pending > 0 ? "正在整理 \(memory.pending) 轮对话…" : memory.reason).font(.caption)
+                        }.foregroundStyle(Brand.muted)
+                        if memory.status == "failed" {
+                            Button("重试整理") { Task { await store.perform { store.data.personal = try await store.client.retryMemory() } } }
+                        }
+                    }
                     Button { adding = true } label: {
                         HStack { Label("添加一条记忆", systemImage: "plus"); Spacer(); Image(systemName: "chevron.right").font(.caption) }
                             .font(.subheadline.weight(.medium)).padding(15).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 16))
                     }.buttonStyle(.plain).foregroundStyle(Brand.blue).accessibilityIdentifier("memory.add")
-                    Text("只保存你确认的内容；临时情况可设置为 24 小时有效。")
+                    Text("记忆不是聊天逐字备份；临时信息会过期，你随时可以移除记错的内容。")
                         .font(.caption).foregroundStyle(Brand.muted)
                 }.padding(20).background(Brand.paleBlue.opacity(0.86)).clipShape(RoundedRectangle(cornerRadius: 24))
                 HStack {
-                    Text("已确认的记忆").font(.headline)
+                    Text("已保存的记忆").font(.headline)
                     Spacer()
                     Text("\(memories.count) 条").font(.caption).foregroundStyle(Brand.muted)
                 }
                 Picker("记忆类型", selection: $filter) {
-                    Text("全部").tag("all"); Text("长期").tag("longterm"); Text("24 小时").tag("temporary")
+                    Text("全部").tag("all"); Text("长期").tag("longterm"); Text("临时").tag("temporary")
                 }.pickerStyle(.segmented).accessibilityIdentifier("memory.filter")
                 if filtered.isEmpty {
                     Text(memories.isEmpty ? "还没有保存的记忆。可以先告诉我：你最关心什么，或希望我怎样回复。" : "这里还没有这类记忆。")
@@ -53,6 +65,10 @@ struct MemoryView: View {
                                 .accessibilityLabel("管理这条记忆").disabled(store.busy || !store.isConnected)
                         }
                         Text(item.content).font(.body).textSelection(.enabled)
+                        Text(item.source == "conversation" ? "来自对话" : "你手动记下的").font(.caption).foregroundStyle(Brand.blue)
+                        if let quote = item.sourceQuote {
+                            DisclosureGroup("查看原话") { Text(quote).font(.caption).textSelection(.enabled) }
+                        }
                         Text(item.expiresAt.map { "有效至 " + displayTime($0) } ?? "保存于 " + displayTime(item.createdAt))
                             .font(.caption).foregroundStyle(Brand.muted)
                     }.padding(18).frame(maxWidth: .infinity, alignment: .leading)

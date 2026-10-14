@@ -52,6 +52,23 @@ struct APIClient {
     var baseURL: URL
     var accessToken: String { ServiceAccess.token(for: baseURL) }
     init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
+    func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
+    func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
+    func disconnectConnector(_ provider: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)", method: "DELETE", body: Optional<String>.none) }
+    func sharePhone(_ items: [SharedPhoneItem], truncated: Bool) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/phone-context", body: SharedPhoneContext(items: items, truncated: truncated))
+    }
+    func removePhoneContext() async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/phone-context", method: "DELETE", body: Optional<String>.none)
+    }
+    func cameraObservations() async throws -> [CameraObservation] { try await get("/api/camera-observation") }
+    func saveObservation(_ id: String, enabled: Bool, interval: Int) async throws -> [CameraObservation] {
+        struct Options: Encodable { var enabled: Bool; var intervalSeconds: Int }
+        return try await send("/api/camera-observation/\(id)", method: "PUT", body: Options(enabled: enabled, intervalSeconds: interval))
+    }
     func pushStatus() async throws -> PushStatus { try await send("/api/push/status", method: "GET", body: Optional<String>.none, push: true) }
     func registerPush(token: String) async throws -> PushStatus {
         let environment = Bundle.main.object(forInfoDictionaryKey: "EGAPNSEnvironment") as? String ?? ""
@@ -92,6 +109,10 @@ struct APIClient {
     func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
     func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
     func personalSettings() async throws -> PersonalSnapshot { try await get("/api/personal") }
+    func memoryOptions(enabled: Bool) async throws -> PersonalSnapshot {
+        try await send("/api/personal/memory-options?enabled=\(enabled)", method: "PUT", body: [String:String]())
+    }
+    func retryMemory() async throws -> PersonalSnapshot { try await send("/api/personal/memory-retry", body: [String:String]()) }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
         struct Body: Encodable { var content: String; var temporary: Bool }
@@ -249,6 +270,9 @@ struct APIClient {
             throw APIProblem(message: "请求地址不属于当前服务，已停止发送。")
         }
         request.setValue(MobileServiceConfiguration.installationID, forHTTPHeaderField: "X-EG-Installation-ID")
+        if baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") {
+            request.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Private-Key")
+        }
         let token = accessToken
         guard !token.isEmpty else { return }
         guard baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") else {

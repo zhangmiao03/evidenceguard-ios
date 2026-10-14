@@ -199,6 +199,8 @@ class SDKIngest:
             # First/middle/last bound image cost while retaining event order.
             if len(selected)>3: selected=[selected[0],selected[len(selected)//2],selected[-1]]
             result=await self.visual.review(ep['cameraId'],ep['id'],[(e['imageUrl'].split('/')[-1],e['metadata']['startMs']/1000) for e in selected])
+            if not selected and ep['kind'] in {'human','ring'}:
+                result=dict(status='metadata_only',reason='设备报告“'+('有人' if ep['kind']=='human' else '门铃响')+'”；尚无可核验图片，不能确认人物身份或现场动作')
             with self.store.transaction():
                 current=self.episode(ep['id'])
                 if current['revision']!=revision: return True  # A new image arrived; next job uses it.
@@ -216,7 +218,7 @@ class SDKIngest:
                     self.store.db.execute('UPDATE evidence SET payload=? WHERE id=?',(json.dumps(item,ensure_ascii=False),e['id']))
                 # Historical imports never masquerade as new household events.
                 latest=max(e['metadata']['startMs']/1000 for e in events)
-                if result['status']=='completed' and 0 <= now-latest <= 300:
+                if result['status'] in {'completed','metadata_only'} and 0 <= now-latest <= 300:
                     profiles=self.store.db.execute('SELECT id FROM personal_profiles').fetchall()
                     for (client,) in profiles:
                         if self.personal.profile(client)['preferences']['enabled']:
