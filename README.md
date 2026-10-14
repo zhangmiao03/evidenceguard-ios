@@ -10,7 +10,7 @@
 
 ## 当前进度
 
-2026-10-14 · 新增源码复审与兼容性回归：修复快速重连/退出时的释放、iOS 离页取消 Agent、Web 存储受限白屏、HTTPS 凭证保护、逐帧降级与手机退出入口。加入多浏览器、macOS WebKit 和原生 Simulator UI 测试；结果、跳过原因及官方 arm64 待验收项见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。
+2026-10-14 · 新增源码复审与兼容性回归：修复快速重连/退出时的释放、iOS 离页取消 Agent、Web 存储受限白屏、HTTPS 凭证保护、逐帧降级与手机退出入口。后端 163 项、本地浏览器 74 项、Linux 浏览器 48 项、macOS WebKit 24 项和原生 Simulator UI 2 项通过，普通 iOS 编译通过。跳过原因、官方 arm64 待验收项，以及最新 main 的 8 个合并冲突见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次没有更新线上服务或 TestFlight。
 
 2026-10-14 · 增加 **EvidenceGuard / 官方 SDK 工作区切换**：iOS 顶部可进入官方 `SampleApp` 完整导航，Web 可进入资料包原版 Demo 的独立页面，保留返回按钮及分型号的检查指引。切换前停止本项目直播和取帧，返回后重新查询设备。Web 支持手动检查记录 JSON 导出。两端原版入口范围、恢复命令、原生构建要求和实机验收见 [官方 SDK 工作区](Docs/OFFICIAL-SDK-WORKSPACES.md)。切换的是界面与会话，不会替换 SDK 二进制或升级硬件固件。
 

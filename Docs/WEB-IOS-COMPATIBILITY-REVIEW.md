@@ -2,6 +2,8 @@
 
 日期：2026-10-14。分支：`dongrunze`。审核基线：`b75f9b1630fe05bc9a0f07984d831c0312e298de`。
 
+修复后验收代码：`f4db02e66cea45ee59507523f452b19798ad6b7c`。[GitHub Checks 四个任务全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38544089264)，测试完成时间为 2026-10-14 17:44（UTC+8）。本报告与 README 的后续提交只补充验收结果，不改变受测代码。
+
 ## 结论与范围
 
 本轮重新阅读 Web 工作台、官方 Demo 外壳、SwiftUI 直播页、Kotlin 桥接、采集 API 和 Agent 图片输入代码，修复生命周期及浏览器兼容问题，并加入可重复运行的浏览器和原生 UI 测试。
@@ -46,6 +48,7 @@
 
 ## 后端及构建
 
+- Linux CI 多浏览器：**48 通过、4 跳过、0 失败**，覆盖 Chromium、Firefox、WebKit 和手机尺寸 WebKit。4 项跳过都是未分发到 CI 的原版 Demo 加载检查；两类 video 回退在四个配置均通过。
 - 后端 **163 项通过**：设备身份、账号冲突、会话归属、旧帧/错误设备拒绝、停止与过期、HTTP 取图全流程、Agent 两条视觉输入、代理访问边界。
 - Web **4 项协议单测通过**；TypeScript、自有生产构建、恢复后的官方 Demo 构建通过。
 - npm 审计：0 高危/中危，1 项 low，来自官方对照页的 `elliptic 6.6.1`，暂无直接修复版本。自有握手使用 WebCrypto。外部官方 UMD 不属于 npm 审计范围。
@@ -53,14 +56,22 @@
 
 ## Apple 平台自动化
 
-本轮 CI 新增以下检查，最终执行结果见提交的 GitHub Checks：
+本轮 CI 新增以下检查，执行记录见 [兼容性检查](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38544089264)：
 
 1. 普通 `EvidenceGuard` iOS Simulator 编译。
 2. Swift 服务地址、聊天迁移、二维码、聊天持久化契约测试。
 3. 启动 iOS Simulator，XCUITest 操作五个原生标签页，打开 SDK 检查指引并返回；截图存入 xcresult。
 4. macOS WebKit / 手机尺寸 WebKit 执行同套 Web 测试。
 
+原生实测环境为 macOS 26.6.2 / Xcode 26.6 / iPhone 16 Simulator（iOS 26.5）。普通 App 编译通过，Swift 契约检查通过，**2 项 XCUITest 全部通过**：逐个点击五个真实 SwiftUI 标签页，检查 SDK 入口；打开模拟器中的官方检查指引，核对限制提示并返回。测试操作的是原生编译后的界面。
+
 Simulator 不编译 `#if canImport(SampleCore) && !targetEnvironment(simulator)` 内的官方路径，不能替代 `EvidenceGuardSDK` arm64 构建和设备测试。
+
+macOS WebKit 两个配置共 **24 通过、2 跳过**；两项跳过均因 CI 未放入主办方原版 Demo。桌面和手机尺寸的两类 video 回退均通过，包含浏览器实际解码合成 H.264 视频并产生 JPEG。这仍不是 iPhone Safari 真机结果。
+
+首轮新增测试出现了两个测试环境问题，并保留了失败记录：生成的 XCUITest target 没有 PRODUCT_NAME，普通 App 编译通过而测试包路径冲突；Linux WebKit 在加载和填表阶段耗尽 30 秒总时限，退出断言开始时只余约 0.5 秒。已补齐测试 target 名称，将 CI 并发改为 2、整例上限改为 60 秒，业务断言时限未放宽、未添加自动重试。
+
+工程最低部署目标为 iOS 17，当前 CI 使用已安装的最新可用 runtime。通过当前 runtime 不等于逐个验收所有 iOS 17 及以上版本；最低版本、真实 iPhone、厂商 arm64 和签名 Archive 仍应在发布前验证。
 
 ## 复现
 
@@ -98,3 +109,18 @@ bash scripts/test_ios_compatibility.sh
 | 视觉模型 | 使用真实模型核对来源、描述和遮挡不确定性，不用脚本回答代替 |
 
 当前仍为单团队、单后端进程、前台取样。成员权限、独立归属核验、后台采集、完整 Web 配网/设置产品流程不属于本轮。官方页面存在与设备实际支持分别记录。
+
+## 审核期间主分支发生的变化
+
+审核过程中远端 `main` 从 `1bf084e` 更新到 `0959463`（个人 Agent 五标签与 APNs 合并）。本轮修复提交 `2fec234` 仍位于 `dongrunze`。对两个真实 Git 树执行 `git merge-tree --write-tree --name-only HEAD origin/main`，**存在 8 个冲突文件，不能将本分支通过解释为已与最新 main 完成兼容**：
+
+`.env.example`、`EvidenceGuard.xcodeproj/project.pbxproj`、`EvidenceGuard/APIClient.swift`、`EvidenceGuard/EvidenceGuardApp.swift`、`EvidenceGuard/ProfileView.swift`、`EvidenceGuard/RootView.swift`、`README.md`、`scripts/check_repository.py`。
+
+读源后的合并要求：
+
+- AppDelegate 必须同时处理 APNs 回调与官方播放器方向控制，不能只保留两个 delegate 之一或机械添加两个入口。
+- RootView 要保留官方工作区外壳，并接入新的 AppTab 枚举、推送路由和前台 presence；返回产品模式不能继续假定 selectedTab 是整数。UI 测试也要随新五标签文案更新。
+- APIClient.send 必须同时保留 `push` 与 `mediaSession` 参数、推送密钥头和采集会话头。
+- Xcode 工程同时保留 LiveCameraView、PushNotifications、ReminderSettings 和推送 entitlements；环境示例、忽略规则与仓库检查合并两边新增条目。
+
+这里只做了不改工作区的合并预检，没有合并主分支或覆盖对方的新界面。合并后须重跑本报告的整套检查，并增加“收到推送时处于官方工作区”的路由测试。
