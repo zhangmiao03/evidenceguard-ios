@@ -118,6 +118,7 @@ enum SDKCredentialVault {
     private var relayRequestID = UUID()
     private var syncedImages = Set<String>()
     private var requestGeneration = 0
+    private var connectedCredentials: SDKCredentials?
     #if canImport(SampleCore) && !targetEnvironment(simulator)
     private let bridge = EvidenceGuardSDKBridge()
     #endif
@@ -150,6 +151,7 @@ enum SDKCredentialVault {
         requestGeneration += 1
         let generation = requestGeneration
         devices = []
+        connectedCredentials = nil
         resetInspection()
         checking = true
         message = "正在从官方服务获取账号下的设备…"
@@ -170,6 +172,7 @@ enum SDKCredentialVault {
                     return
                 }
                 self.devices = devices
+                self.connectedCredentials = normalized
                 let count = devices.filter(\.isCompetitionCamera).count
                 self.message = count > 0 ? "发现 \(count) 台赛事摄像头；画面与任务执行尚待验收"
                                         : "查询完成，账号下暂未发现 T8171 / T8214"
@@ -257,6 +260,7 @@ enum SDKCredentialVault {
         resetInspection()
     }
     func disconnect() {
+        connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
         #if canImport(SampleCore) && !targetEnvironment(simulator)
@@ -267,6 +271,19 @@ enum SDKCredentialVault {
         resetInspection()
         message = "SDK 会话已断开，保存的配置仍在本机"
     }
+
+    func importDevices(client: APIClient) async throws -> [RegisteredCamera] {
+        guard let credentials = connectedCredentials else { throw APIProblem(message: "请先用官方账号查询设备") }
+        let cameras = devices.filter(\.isCompetitionCamera)
+        guard !cameras.isEmpty else { throw APIProblem(message: "官方账号下没有可导入的赛事设备") }
+        return try await client.importDevices(account: credentials.userID, environment: credentials.environment, cameras: cameras)
+    }
+
+    #if canImport(SampleCore) && !targetEnvironment(simulator)
+    func makeLive(camera: SDKDiscoveredCamera) -> EvidenceGuardLiveBridge? {
+        bridge.createLive(sn: camera.sn)
+    }
+    #endif
     func clearCredentials() throws {
         disconnect()
         try SDKCredentialVault.clear()

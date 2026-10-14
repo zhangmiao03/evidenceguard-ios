@@ -11,6 +11,10 @@ struct AddDeviceView: View {
     @State private var pending = PendingDevice.load()
     var body: some View {
         List {
+            Section("导入已绑定的官方设备") {
+                NavigationLink("连接官方账号、查询设备与实时查看", value: AppRoute.officialSDK)
+                Text("已由官方账号绑定的设备可直接导入，无需重新扫码配网。").font(.caption).foregroundStyle(Brand.muted)
+            }
             Section {
                 Label("扫描设备上的二维码", systemImage: "qrcode.viewfinder").font(.headline)
                 Text("识别设备 → 确认位置 → 验证官方绑定 → 测试画面").font(.subheadline).foregroundStyle(Brand.muted)

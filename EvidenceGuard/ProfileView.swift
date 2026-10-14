@@ -95,6 +95,9 @@ struct CameraDetailView: View {
     var body: some View { ScrollView { VStack(alignment: .leading,spacing: 16) {
         ConnectionBanner()
         if let camera = store.camera(id) {
+            if camera.adapter.hasPrefix("official-relay/") {
+                NavigationLink("打开实时视频与 Agent", destination: RegisteredLiveCameraView(deviceID: id)).buttonStyle(.borderedProminent)
+            }
             CameraFrame(camera: camera)
             Text(camera.name).font(.title2.bold()); Text("\(camera.model) · \(camera.connectionLabel)").foregroundStyle(Brand.muted)
             Text("采集时间：\(displayTime(camera.lastCapturedAt))").font(.caption)

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AF1020261014000000000001 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
+		AF1020261014000000000002 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
 		022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */; };
 		03AE49A9BBD66F7270098AAA /* DeviceQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */; };
 		145DF8C0457707043D197721 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* Assets.xcassets */; };
@@ -72,6 +74,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BF1020261014000000000001 /* LiveCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCameraView.swift; sourceTree = "<group>"; };
 		017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileServiceConfiguration.swift; sourceTree = "<group>"; };
 		1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceQRCode.swift; sourceTree = "<group>"; };
 		19CD50DD08657A3BA91F3763 /* EvidenceGuardSDK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EvidenceGuardSDK.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -182,6 +185,7 @@
 				B1000000000000000000000D /* Assets.xcassets */,
 				B1000000000000000000000E /* Info.plist */,
 				B518902B51F961B41EBBE6B2 /* OfficialSDKConnection.swift */,
+				BF1020261014000000000001 /* LiveCameraView.swift */,
 				DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */,
 				556347FBC61E08769874E594 /* OfficialSDKInspectionView.swift */,
 				505F82BE5C916E901BB968A4 /* PrivacyInfo.xcprivacy */,
@@ -385,6 +389,7 @@
 				A1000000000000000000000C /* ProfileView.swift in Sources */,
 				A20000000000000000000001 /* SpeechInput.swift in Sources */,
 				FEE334583A87D919BD54C412 /* OfficialSDKConnection.swift in Sources */,
+				AF1020261014000000000001 /* LiveCameraView.swift in Sources */,
 				F6B530B6898B80401CC64A42 /* OfficialSDKSettingsView.swift in Sources */,
 				7D0BC24FC0F8F8BA3436875C /* OfficialSDKInspectionView.swift in Sources */,
 				981EC957B1FBD8C49707B4D3 /* MobileServiceConfiguration.swift in Sources */,
@@ -412,6 +417,7 @@
 				243DA04C02F15F31D2E6FA23 /* ProfileView.swift in Sources */,
 				5DBA0647E4277563805CB1E3 /* SpeechInput.swift in Sources */,
 				F77EBCF45EEABAD4EF9C7B78 /* OfficialSDKConnection.swift in Sources */,
+				AF1020261014000000000002 /* LiveCameraView.swift in Sources */,
 				022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */,
 				AAF3279B86FE017968D269DE /* OfficialSDKInspectionView.swift in Sources */,
 				BBFAE9FC133B81373AB1A1F2 /* MobileServiceConfiguration.swift in Sources */,

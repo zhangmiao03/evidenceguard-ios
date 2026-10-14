@@ -11,7 +11,9 @@ from fastapi.staticfiles import StaticFiles
 import uuid
 from pydantic import BaseModel, Field
 from .camera.adapters.fixture_lab import FixtureLabAdapter
-from .camera.registry import CameraRegistry
+from .camera.registry import CameraRegistry, EmptyCameraAdapter
+from .camera.live import LiveDevices
+from .camera.live_routes import install_live_routes
 from .camera.service import CameraService
 from .harness.scheduler import TaskScheduler
 from .harness.runtime import AgentRuntime
@@ -76,7 +78,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     store=Store(db_path or Path(os.getenv('EG_DATABASE',str(root/'data/evidenceguard.sqlite3'))))
     store.recover_ownership()
     personal = PersonalAgent(store)
-    camera=CameraRegistry(camera_adapter or FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')))
+    camera=CameraRegistry(camera_adapter or (FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')) if os.getenv('EG_CAMERA_MODE') == 'fixture' else EmptyCameraAdapter()))
+    camera.live=LiveDevices(store)
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
     database=Path(store.db.execute('PRAGMA database_list').fetchone()[2])
@@ -118,9 +121,11 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await worker.shutdown()
             await videos.shutdown()
             await scheduler.shutdown()
+            await camera.live.shutdown()
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
     install_access(app)
+    install_live_routes(app, camera, captures)
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
     app.state.replay_worker=replay_worker

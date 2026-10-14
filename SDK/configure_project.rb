@@ -4,7 +4,7 @@ root = File.expand_path('..', __dir__)
 project = Xcodeproj::Project.open(File.join(root, 'EvidenceGuard.xcodeproj'))
 app = project.targets.find { |target| target.name == 'EvidenceGuard' }
 group = project.main_group.find_subpath('EvidenceGuard', false)
-%w[OfficialSDKConnection.swift OfficialSDKSettingsView.swift OfficialSDKInspectionView.swift].each do |name|
+%w[OfficialSDKConnection.swift OfficialSDKSettingsView.swift OfficialSDKInspectionView.swift LiveCameraView.swift].each do |name|
   reference = group.files.find { |file| file.path == name } || group.new_file(name)
   app.source_build_phase.add_file_reference(reference, true)
 end

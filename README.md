@@ -1,13 +1,17 @@
-# EvidenceGuard · iOS / Cloud
+# EvidenceGuard · iOS / Web / Cloud
 
-当前主要开发原生 iOS App；Cloud Agent、miimiao 参考的 harness、Skill 校验和录像索引由此仓库维护。Web 原型已拆到独立仓库，暂缓开发，不影响 iOS 编译。
+本仓库维护原生 iOS App、响应式 Web 设备工作台和共用的 Cloud Agent。设备、实时取帧、观察回执和媒体统一经过同一套 API；两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
-- [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
+- [此前独立 Web 原型](https://github.com/zhangmiao03/evidenceguard-web)：历史参考；本轮 Web 实现在本仓库 `Web/`。
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
 - [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、新加坡三个后端环境与迁移状态。
 
 ## 当前进度
+
+2026-10-14 · 设备接入增量：加入 SN 对应的持久设备记录、iOS 官方播放器桥接、Web 直播工作台、跨客户端采集会话、新画面请求/回传与 Agent 视觉输入。默认设备列表为空，测试摄像头需显式启用。已完成本地后端与 Web 自动化检查；本轮代码的官方 SDK arm64 构建、真实账号握手、T8171 / T8214 实机取流仍待验收。这是源码更新，尚未更新部署或 TestFlight。见 [实时设备接入与联合验收](Docs/LIVE-DEVICE-INTEGRATION.md)。
+
+下方为此前发布与验证记录，不能代替本轮变更的验收。
 
 2026-10-14：手机、团队与 Apple 审核服务已迁至新加坡，三个环境的数据与凭证保持隔离。build 5 已通过签名归档、Apple 校验与处理，内部组显示“正在测试”；新版会自动连接新加坡并保留本地会话与草稿。美国旧实例已删除；手机需在 TestFlight 直接更新到 `1.0 (5)`，无需卸载或填写服务器配置。见 [服务器状态](Docs/SERVER-ACCESS.md) 和 [TestFlight](Docs/TESTFLIGHT.md)。
 
@@ -28,6 +32,7 @@
 | 目录 | 用途 |
 | --- | --- |
 | `EvidenceGuard/`、`EvidenceGuard.xcodeproj` | 原生 SwiftUI App；首页保留设计，其余页使用紧凑标题与返回 |
+| `Web/` | React / TypeScript 设备工作台：账号接入、设备选择、官方直播、Agent 观察与证据 |
 | `Cloud/server/` | Agent harness、工具、录像检索、草案试跑与设备占用 |
 | `Cloud/fixture-lab/` | 双路模拟摄像头与离线回归 |
 | `SDK/Bridge/`、`SDK/prepare.py` | 官方 App SDK 的自有桥接与本机构建准备 |
@@ -55,7 +60,41 @@ cp .env.example .env
 EG_ENV_FILE="$PWD/.env" Cloud/.venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/server --host 127.0.0.1 --port 8790
 ```
 
-本地联调默认不启用鉴权；公网单团队测试必须使用 HTTPS、`EG_REQUIRE_AUTH=1` 和随机 `EG_ACCESS_TOKEN`，部署步骤见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。多租户账号尚未实现。默认不托管 Web；若日后需要同源部署独立 Web 构建，可显式设置 `EG_WEB_ROOT=/绝对路径/EvidenceGuard-Web/dist`。仓库分工见 [协作边界](Docs/WEB-APP-ARCHITECTURE.md)。
+本地联调默认不启用鉴权；公网单团队测试使用 HTTPS、`EG_REQUIRE_AUTH=1` 和随机 `EG_ACCESS_TOKEN`，部署步骤见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。多租户账号尚未实现。默认不托管 Web；设置 `EG_WEB_ROOT=/绝对路径/evidenceguard-ios/Web/dist` 可由 Cloud 同源托管构建产物。登录页可公开加载，API 和证据仍受团队鉴权保护。
+
+### Web 启动
+
+需要 Node.js 22+。在仓库根目录恢复主办方 Web SDK（只复制到被 Git 忽略的目录）：
+
+```bash
+python3 scripts/import_web_sdk.py "/绝对路径/安防赛题材料/demo工程/WebSDKDemo/public/sdk"
+cd Web
+npm ci
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173`；Vite 将 `/api` 转发到本机 8790 的 Cloud。生产构建用 `npm run build`。Windows 的后端启动命令、HTTPS/手机访问和官方参数说明见 [接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。
+
+### 本轮联调顺序
+
+1. **先配网与官方绑定。** 当前链路接入已经绑定的设备；App 原有“扫码保存 SN”仍不是完整配网。可先使用主办方 Demo 完成 QR 配网与绑定，本轮没有把首次配网标成已完成。
+2. **iOS：** 选择 `EvidenceGuardSDK` 真机方案 → 我的 → 官方 SDK → 连接账号并发现设备 → 同步设备到本项目 → 打开“实时画面与 Agent”。修改桥接后必须重新执行 `SDK/prepare.py`，不能复用旧 SampleCore 产物。
+3. **Web：** 进入工作台 → 接入设备 → 输入主办方 Web 鉴权参数 → 导入账号下的 SN → 开始直播。当前固定官方 PR / US 路线；不是给普通用户输入开发密钥的正式登录产品。
+4. 在直播页点击“获取一张新画面”，再问“现在画面里有什么”。后端发放请求 ID，客户端取样后回传，Agent 使用对应图片或视觉核验结果回答。iOS 与 Web 使用同一 SN 时得到同一个设备 ID。
+5. 停止直播、切换设备、锁屏、断网后再次提问，应返回没有有效输入，不能继续使用旧图。一个设备同一时刻只允许一个本项目采集端；其他客户端可以向同一后端请求它的当前画面。
+
+视频通过官方链路在客户端播放，不经过本项目后端连续转码。仅请求的 JPEG/PNG 会上传给 Cloud，并按服务配置发送给视觉模型。当前依赖 iOS 页面或浏览器保持前台；后台持续守护、正式家庭成员权限、PTZ/对讲闭环和事件录像导入不属于本轮已完成功能。
+
+### 检查
+
+```bash
+python -m pytest Cloud/server/tests -q
+cd Web
+npm test
+npm run build
+```
+
+GitHub Checks 已加入 Web 检查，并保留 Cloud 与普通 iOS Simulator 构建。官方 SDK 不上传仓库，带 SDK 的 arm64 构建由持有资料包的 Mac 完成。详细检查范围和失败处理见 [实时接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。
 
 ## 既有功能与验证记录
 
@@ -138,6 +177,6 @@ EG_EMBED_MODEL_ID=doubao-embedding-vision-251215
 
 ## 已检查与边界
 
-本次通过 Xcode iOS Simulator 编译，并在 iPhone 17 Pro 模拟器检查了五个标签、AI 输入与发送、输入草稿保留、键盘避让、语音弹层取消、摄像头详情及多级返回。当前已切换到方舟 Lite，并验证真实视频模型调用；Embeddings 的联调选型与验证范围见 v0.5 文档。麦克风完整转写仍需在真机实际说话验收。
+此前版本通过 Xcode iOS Simulator 编译，并在 iPhone 17 Pro 模拟器检查了五个标签、AI 输入与发送、输入草稿保留、键盘避让、语音弹层取消、摄像头详情及多级返回。此前已验证模型调用；Embeddings 的联调选型与验证范围见 v0.5 文档。新增实时设备链路以本文顶部的本轮状态为准，麦克风完整转写仍需真机验收。
 
-当前摄像头执行器使用双路 RTSP 合成场景与测试标记；T8171 / T8214 正式 SDK 入口保留，尚未做实机接入验收。通用视觉守护、后台推送、正式公网部署与鉴权也尚未完成。接口边界见 `Cloud/CAMERA-SDK-CONTRACT.md`。
+双路 RTSP 合成场景仅在 `EG_CAMERA_MODE=fixture` 时启用；默认使用空设备清单及客户端导入的真实设备记录。T8171 / T8214 新增官方媒体接入代码，尚未做本轮实机验收。已有单团队鉴权与历史部署记录；正式多租户、通用持续视觉守护和后台推送仍需后续开发。接口边界见 `Cloud/CAMERA-SDK-CONTRACT.md` 与本轮接入指南。

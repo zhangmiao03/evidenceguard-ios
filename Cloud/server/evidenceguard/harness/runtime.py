@@ -14,10 +14,11 @@ SYSTEM = '''你是 EvidenceGuard 的摄像头任务助手。用中文简洁回�
 包裹录像试跑使用 leaves_region、completion=once、saveEvidence=true、sampleIntervalSeconds≥3（默认3）、confirmationSeconds≥采样间隔（默认6）；未选录像的草案提示用户在App选择。draft_visual_skill 返回capability，回答必须说明该范围，unsupported不得说可启用。用户在App保存、试跑并核验报告后才能启用回放；试跑不占摄像头也不触发正式告警。
 规则包括观察对象、触发条件、按秒检测间隔和确认跨度、UNKNOWN 先保留判断、证据、连续或一次性。
 不擅自用箱子规则监护人或宠物。测试标记执行器没有校准的置信度，minConfidence 仅为未来视觉模型预留，不能宣称本次按该分数执行。默认区域只是待确认初始框，不能说已经替用户准确圈选。当前支持测试标记区域进出，以及用户在草案选择已存录像后的包裹区域状态回放测试；回放不等于真实摄像头守护。用户可先生成普通物品离区草案，再在App选择录像、圈定目标和区域并确认。其他任务可以起草，但会标明执行能力未就绪。
-用户当前就在原生App对话内。编辑入口名称是“编辑草案”和“圈选画面”，直接引导点击，不要让用户“去App”。保存只保存草案，不会自动启用或开始提醒。只有已完成的旧任务时，不能称其为未启用草案；用户提出新守护需求应重新核对能力并生成新草案。
+用户可能在 iOS 或 Web 对话内。iOS 编辑入口名称是“编辑草案”和“圈选画面”；Web 设备工作台当前只提供设备、直播与观察对话，不能声称它已有草案编辑按钮。保存只保存草案，不会自动启用或开始提醒。只有已完成的旧任务时，不能称其为未启用草案；用户提出新守护需求应重新核对能力并生成新草案。
 草案不是执行成功；你没有确认启用、删除或设备控制工具。用户说已处理只请求复核。
 修改现有任务时生成 replaces_id 草案，旧规则继续生效直到新草案被用户确认。不要伪造截图、录像或状态。
 需要看现在的画面时必须调用 request_camera_snapshot，再根据工具返回的新图回答；可以分别请求任务的主视角与补证视角。没有成功回执不能说看过。get_task_state 查询的是任务执行器状态，单次视觉回答不能修改此状态。
+visionAvailable=false 表示没有完成图像理解，不能只凭截图成功、设备名称或文件路径编造画面内容。visualReview 仅描述所给取样的可见内容；capturedAt 为空时设备拍摄时间未知，sampledAt 只是客户端读取直播的时间，不得说是设备拍摄时间。
 cam-a 为屋檐摄像头，cam-b 为门铃摄像头；不能根据型号或安装角色直接断言任务可行。草案生成后参考capability.deployment，已有任务可调用assess_camera_task_fit。缺少实际视野或真机正反例时明确需要用户摆放目标、走位、遮挡测试；告诉用户下一步具体配合事项。准备勾选不等于验收通过，录像试跑通过也不能发布真机任务。每隔N秒抽样只能判断采样时刻状态，不能声称精确看到了拿起动作，也不能保证捕获短暂事件。
 每次请求只能生成一份草案。生成草案后用简短摘要说明待确认项。'''
 
@@ -231,9 +232,15 @@ class AgentRuntime:
                                 if name in {'request_camera_snapshot','read_stored_image'}:
                                     run.setdefault('captures',[]).append(result)
                                     result['visionAvailable']=os.getenv('EG_MODEL_VISION')=='1'
+                                    if (name == 'request_camera_snapshot' and result.get('mediaId')
+                                            and not result['visionAvailable'] and getattr(self, 'visual_review', None)):
+                                        review = await self.visual_review.review(result['cameraId'], result['id'],
+                                            [(result['mediaId'], result.get('receivedAt') or result.get('capturedAt'))])
+                                        result['visualReview'] = review | {'limitation': '仅本次直播取样；设备拍摄时间可能未知，不能证明持续状态。'}
+                                        result['visionAvailable'] = review['status'] == 'completed'
                                     if result.get('mediaId') and os.getenv('EG_MODEL_VISION')=='1':
                                         raw,mime,_=self.store.media(result['mediaId'])
-                                        frame_messages.append(dict(type='text',text=('已保存的历史图片（不是当前现场）：' if name=='read_stored_image' else '本轮工具回执对应的新画面：')+json.dumps({k:result.get(k) for k in ['cameraId','capturedAt','sourceType','frameId']},ensure_ascii=False)))
+                                        frame_messages.append(dict(type='text',text=('已保存的历史图片（不是当前现场）：' if name=='read_stored_image' else '本轮工具回执对应的新画面：')+json.dumps({k:result.get(k) for k in ['cameraId','capturedAt','sampledAt','timestampMeaning','sourceType','frameId']},ensure_ascii=False)))
                                         frame_messages.append(dict(type='image_url',image_url={'url':f'data:{mime};base64,'+base64.b64encode(raw).decode()}))
                                 run['toolReceipts'].append(dict(tool=name,status='failed' if isinstance(result,dict) and result.get('status') in {'failed','unsupported'} else 'completed'))
                                 self.store.event(run['id'],'tool_completed',{'tool':name})

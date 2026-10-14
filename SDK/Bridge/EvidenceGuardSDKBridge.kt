@@ -27,6 +27,20 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.delay
+import com.anker.esiotkit.media.live_stream.LiveMediaPlayer
+import com.anker.esiotkit.media.live_stream.LiveParams
+import com.anker.esiotkit.media.live_stream.LivePlayListener
+import com.anker.esiotkit.media.live_stream.LivePlayerState
+import com.anker.esiotkit.media.live_stream.LiveType
+import com.anker.esiotkit.media.RecordState
+import com.anker.esiotkit.media.TalkState
+import com.anker.esiotkit.media.VideoInfo
+import com.anker.esiotkit.support.platform.IotImage
+import com.anker.esiotkit.support.platform.currentTimeMillis
+import com.anker.esiotkit.security_device.p2p.P2PPingManager
+import platform.UIKit.UIImage
+import platform.UIKit.UIView
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.serialization.json.JsonArray
@@ -35,7 +49,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-/** Swift-facing, read-only device / event inspection. No live sessions or device controls.
+/** Swift-facing device inspection and foreground live media factory.
  * Receipts contain device identity and raw capability declarations, never credentials.
  */
 class EvidenceGuardSDKBridge {
@@ -43,8 +57,22 @@ class EvidenceGuardSDKBridge {
     private var generation = 0
     private var discoveredSn = emptySet<String>()
     private val eventCache = mutableMapOf<String, MegaEvent>()
+    private var activeLive: EvidenceGuardLiveBridge? = null
+
+    fun createLive(sn: String): EvidenceGuardLiveBridge? {
+        if (sn !in discoveredSn) return null
+        val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) } ?: return null
+        activeLive?.stop()
+        return EvidenceGuardLiveBridge(device).also { activeLive = it }
+    }
+
+    fun stopLive() {
+        activeLive?.stop()
+        activeLive = null
+    }
 
     fun connect(userId: String, token: String, environment: String, completion: (String) -> Unit) {
+        stopLive()
         generation += 1
         val current = generation
         scope.coroutineContext.cancelChildren()
@@ -233,6 +261,7 @@ class EvidenceGuardSDKBridge {
     }
 
     fun disconnect() {
+        stopLive()
         generation += 1
         scope.coroutineContext.cancelChildren()
         discoveredSn = emptySet()
@@ -246,5 +275,90 @@ class EvidenceGuardSDKBridge {
     private companion object {
         // SDK startup is process-wide. Credentials may be refreshed; an environment switch requires restart.
         var startupEnvironment: String? = null
+    }
+}
+
+/** One foreground player. UIImage samples are client readouts, not sensor timestamps.
+ * Main-thread ownership matches the official iOS renderer. The vendor shutdown
+ * grace period is retained using coroutine delay instead of blocking NSThread.
+ */
+class EvidenceGuardLiveBridge internal constructor(private val device: MegaDevice) {
+    private val player = LiveMediaPlayer(device)
+    private val pingManager: P2PPingManager = esInject()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var callback: ((String) -> Unit)? = null
+    private var started = false
+    private var stopping = false
+    private var playing = false
+    private var resolutionReady = false
+    private var lastActivity = 0L
+    private var activity = 0
+
+    fun activitySequence(): Int = activity
+
+    private fun markActivity() {
+        lastActivity = currentTimeMillis()
+        activity += 1
+    }
+
+    fun renderView(): UIView = player.getRenderView()
+
+    fun start(onState: (String) -> Unit) {
+        if (started || stopping) return
+        started = true
+        callback = onState
+        onState("connecting")
+        player.setPlayListener(object : LivePlayListener {
+            override fun onPlayState(status: LivePlayerState, message: String) {
+                scope.launch {
+                    if (stopping) return@launch
+                    playing = status == LivePlayerState.Playing
+                    if (!playing) resolutionReady = false
+                    callback?.invoke(when (status) {
+                        LivePlayerState.Playing -> "playing"
+                        LivePlayerState.Loading -> "connecting"
+                        LivePlayerState.Failed, LivePlayerState.Timeout -> "failed"
+                        LivePlayerState.Stop -> "stopped"
+                        else -> "connecting"
+                    })
+                }
+            }
+            override fun onResolution(width: Int, height: Int) {
+                scope.launch { if (!stopping && width > 0 && height > 0) { resolutionReady = true; markActivity() } }
+            }
+            override fun onRate(rate: Int) {
+                scope.launch { if (!stopping && rate > 0) markActivity() }
+            }
+            override fun onVideoInfo(info: VideoInfo) {
+                scope.launch { if (!stopping && info.width > 0 && info.height > 0) { resolutionReady = true; markActivity() } }
+            }
+            override fun onSpeakState(status: TalkState, message: String) {}
+            override fun onRecordState(status: RecordState, timeStamp: Long, message: String) {}
+            override fun onMuteState(isMute: Boolean) {}
+            override fun onCutImage(image: IotImage) {}
+        })
+        val params = LiveParams().apply { liveType = LiveType.Hotspot }
+        // Competition models use the official default main/composite layout;
+        // do not invent a second independently subscribable doorbell stream.
+        runCatching { pingManager.startForeverPing(device.iotDevice); player.startPlay(params) }.onFailure { onState("failed") }
+    }
+
+    fun capture(): UIImage? {
+        if (stopping || !playing || !resolutionReady || currentTimeMillis() - lastActivity > 4000) return null
+        return runCatching { player.cutImage() }.getOrNull()
+    }
+
+    fun stop() {
+        if (stopping) return
+        stopping = true
+        playing = false
+        resolutionReady = false
+        callback = null
+        runCatching { pingManager.stopForeverPing(device.iotDevice) }
+        runCatching { player.stopPlay() }
+        scope.launch {
+            delay(500)
+            runCatching { player.release() }
+        }
     }
 }
