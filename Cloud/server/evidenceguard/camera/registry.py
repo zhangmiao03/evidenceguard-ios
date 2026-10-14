@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import replace
 
 from .contracts import CameraAdapter, DeviceManifest, SnapshotKind, SnapshotReceipt, CameraCommandContext
 
@@ -46,7 +47,14 @@ class CameraRegistry:
         self.live = None
 
     async def manifests(self) -> list[DeviceManifest]:
-        return await self.active.manifests() + (await self.live.manifests() if self.live else [])
+        devices = {m.id: m for m in await self.active.manifests()}
+        for live in await self.live.manifests() if self.live else []:
+            event = devices.get(live.id)
+            devices[live.id] = replace(live,
+                capabilities=event.capabilities | live.capabilities,
+                evidence=live.evidence + ' ' + event.evidence,
+                last_frame_url=live.last_frame_url or event.last_frame_url) if event else live
+        return list(devices.values())
 
     async def snapshot(self, device_id: str, kind: SnapshotKind, context: CameraCommandContext | None = None) -> SnapshotReceipt:
         manifests = await self.manifests()
@@ -58,7 +66,9 @@ class CameraRegistry:
     async def state(self) -> dict:
         value = await self.active.state()
         if self.live:
-            value = {'cameras': value.get('cameras', []) + (await self.live.state())['cameras']}
+            devices = {d['id']: d for d in value.get('cameras', [])}
+            devices.update({d['id']: d for d in (await self.live.state())['cameras']})
+            value = {'cameras': list(devices.values())}
         return value
 
     async def frame_bytes(self, device_id: str, frame_id: str) -> tuple[bytes, str]:

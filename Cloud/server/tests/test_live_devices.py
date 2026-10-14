@@ -34,6 +34,47 @@ def picture(request, sequence=2):
                 imageBase64=base64.b64encode(f.getvalue()).decode(), sampledAt=time.time())
 
 
+def test_event_and_live_discovery_share_one_camera_without_stale_live_claims(tmp_path, monkeypatch):
+    from test_sdk_ingest import event
+    monkeypatch.setenv('EG_CAMERA_SOURCE', 'official_sdk')
+    app = create_app(tmp_path/'unified.sqlite', start_worker=False)
+    with TestClient(app) as client:
+        from uuid import uuid4
+        client.headers['X-EG-Installation-ID'] = str(uuid4())
+        hub = app.state.camera.live
+        d = imported(hub, sn='T8214TEST0001')
+        assert client.post('/api/sdk/events', json={'events': [event(deviceSn=d['sn'])]}).status_code == 202
+        cameras = client.get('/api/bootstrap').json()['cameras']
+        assert len(cameras) == 1 and cameras[0]['id'] == d['id']
+        assert cameras[0]['capabilities']['storedSnapshot'] == 'supported'
+        assert cameras[0]['capabilities']['liveSnapshot'] == 'unknown'
+        thumbnail = cameras[0]['lastFrameUrl']
+        _, session = ready(hub, d['id'])
+        live = client.get('/api/bootstrap').json()['cameras'][0]
+        assert live['connection'] == 'online' and live['capabilities']['liveSnapshot'] == 'supported'
+        assert live['lastCapturedAt'] is None
+        hub.stop(session)
+        offline = client.get('/api/bootstrap').json()['cameras'][0]
+        assert offline['capabilities']['liveSnapshot'] == 'unknown'
+        assert offline['lastFrameUrl'] == thumbnail  # History stays visible, never becomes a fresh capture.
+        assert len(client.portal.call(app.state.camera.state)['cameras']) == 1
+
+
+def test_live_only_device_does_not_trigger_no_camera_reply(tmp_path, monkeypatch):
+    from test_harness import ScriptedProvider, tool, settle
+    monkeypatch.setenv('EG_CAMERA_MODE', 'official')
+    provider = ScriptedProvider([tool('list_camera_events', {}), dict(role='assistant', content='这台设备还没有同步事件记录。')])
+    app = create_app(tmp_path/'live-only.sqlite', start_worker=False, provider=provider)
+    with TestClient(app) as client:
+        d = imported(app.state.camera.live)
+        result = client.portal.call(lambda: app.state.tools.call('list_camera_events'))
+        assert result['registeredDeviceCount'] == 1 and result['count'] == 0
+        assert 'nextStep' not in result
+        run = client.portal.call(lambda: settle(app.state.agent, app.state.agent.start('摄像头最近发生什么？', 'live-events', camera_id=d['id'])))
+        assert run['status'] == 'completed' and run['text'] == '这台设备还没有同步事件记录。'
+        assert app.state.store.skills() == []
+
+
 def test_device_identity_and_account_conflicts_are_durable(tmp_path):
     path = tmp_path/'db.sqlite3'
     app = create_app(path, start_worker=False)

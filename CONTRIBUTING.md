@@ -1,6 +1,6 @@
 # 团队开发
 
-本仓库包含原生 iOS、Cloud harness、Web 五栏应用和模拟摄像头。本轮真实设备接入在 `dongrunze` 分支开发，Web 也放在本仓库 `Web/`；独立 Web 仓库只作为历史原型参考。`main` 为集成分支，通过团队 Review 合并。
+本仓库包含原生 iOS、Cloud harness、Web 五栏应用、官方事件与直播接入，以及隔离测试工具。原生 iOS 仍是产品主线；独立 Web 仓库只作为历史原型参考。`main` 保存可编译的集成版本，成员在各自功能分支工作，通过 Pull Request 合并。
 
 ## 分工边界
 
@@ -25,7 +25,7 @@ cd evidenceguard-ios
 git switch -c feat/你的主题
 ```
 
-已有工作副本先回到 `main` 并执行 `git pull --ff-only origin main`，再创建自己的分支。当前集成版包括五栏交互、APNs 和同页自动保存的通知设置；手机测试使用 TestFlight `1.0 (8)`。通知配置和验证边界见 [APNs](Docs/APNS.md)，上线资源见 [服务器访问](Docs/SERVER-ACCESS.md)。
+已有工作副本先回到 `main` 并执行 `git pull --ff-only origin main`，再创建自己的分支。当前集成版包括五栏交互、精简助手、官方事件、APNs 和同页自动保存的通知设置；build 9 已签名归档，分发状态见 [TestFlight](Docs/TESTFLIGHT.md)。通知配置见 [APNs](Docs/APNS.md)，接入与未验证能力见 [官方摄像头事件](Docs/OFFICIAL-CAMERA-EVENTS.md)，上线资源见 [服务器访问](Docs/SERVER-ACCESS.md)。
 
 按 README 启动 Cloud 与 iOS。真实摄像头联调另外恢复官方资料包：
 
@@ -55,11 +55,13 @@ python3 SDK/prepare.py --archive-downloads
 
 它需要现有 `gh` 登录；只从各依赖的官方 GitHub 仓库取构建源文件，验证 Git blob、commit 和本地归档 SHA256，不改 CocoaPods 版本或 spec。缓存仍不入 Git。正常网络优先使用常规 CocoaPods 安装。
 
-SDK 构建用 workspace / `EvidenceGuardSDK`，Simulator 用 project / `EvidenceGuard`。本次默认通过 TestFlight 安装手机测试包，现场拿到摄像头与凭证后再验证 SDK。签名、HTTPS 服务和 App Store Connect 准备见 [TestFlight](Docs/TESTFLIGHT.md)。
+SDK 构建用 workspace / `EvidenceGuardSDK`，Simulator 用 project / `EvidenceGuard`。先完成框架和联调，只有用户明确要求分发后才上传 TestFlight 或添加测试组；当前可安装的是 build 8，已上传的 build 9 未分发。现场测试使用已分发的手机测试包，现场拿到摄像头与凭证后再验证 SDK。签名、HTTPS 服务和 App Store Connect 准备见 [TestFlight](Docs/TESTFLIGHT.md)。
 
-`.env.example` 的聊天模型示例为 `doubao-seed-2-1-lite-260915`，Embedding 示例为 `doubao-embedding-vision-251215`、1024 维；图片/视频可用 `EG_VIDEO_*` 单独配置，官方 Demo 另走固定 Nova Pro 网关。实际模型标识查看 `/api/bootstrap`。修改模型、提示词和采样策略后，按版本更新视觉缓存或重建录像向量索引；不能仅保留相同维数就混用旧向量。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
+`.env.example` 的聊天模型示例为 `doubao-seed-2-1-lite-260915`，Embedding 示例为 `doubao-embedding-vision-251215`、1024 维；图片/视频沿用豆包聊天模型，`EG_VIDEO_*` 仅用于同系列独立配置；官方原版 Demo 可选 Nova Pro 代理默认关闭，不作为生产模型或回退。实际模型标识查看 `/api/bootstrap`。修改模型、提示词和采样策略后，按版本更新视觉缓存或重建录像向量索引；不能仅保留相同维数就混用旧向量。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
 
 界面或接口变化时，同步核对 `harness/runtime.py` 的 `PRODUCT_GUIDANCE`、工具描述、返回给客户端的草案摘要、OpenAPI 字段说明和当前接入文档。提示词只描述已实现入口，不能扩大工具权限；新增界面不等于设备执行器已就绪。回归检查见 `test_prompt_contracts.py` 和 `test_web_product.py`。
+
+`.env.example` 使用 `EG_CAMERA_SOURCE=official_sdk`，无真实设备时返回空列表。需要历史 fixture-lab 回归时，只在隔离环境显式改为 `fixture_lab`；正常手机环境不启用合成场景。官方 SDK User ID / Token 仅填写 App 的「摄像头 Skill → 连接摄像头」，不会随设备登记请求发往 Cloud。
 
 ## 提交前检查
 

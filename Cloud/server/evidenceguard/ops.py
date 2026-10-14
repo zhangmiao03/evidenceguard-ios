@@ -31,7 +31,7 @@ MAX_RECORDS = 10_000
 CTX = contextvars.ContextVar('eg_trace', default={})
 RECORDER = contextvars.ContextVar('eg_recorder', default=None)
 OPERATION = contextvars.ContextVar('eg_operation', default='model')
-SECRET = re.compile(r'authorization|api.?key|secret|password|credential|tokenhash|imagebase64|^token$|^sn$|accountid|clientid|importedby', re.I)
+SECRET = re.compile(r'authorization|api.?key|secret|password|credential|tokenhash|imagebase64|token$|^sn$|devicesn|serialnumber|accountid|clientid|importedby', re.I)
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_.:-]{1,120}$')
 
 

@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from .storage import VideoStore
 from .providers import LiteVideoProvider, ArkVideoEmbedding, ProviderError
+from ..camera.sources import official_mode, registered_device_ids, visible_recording
 
 
 async def command(*args):
@@ -123,6 +124,7 @@ class VideoService:
             if not skill: raise ValueError('任务不存在')
             scope=set(skill['devices'])
         recordings={r['id']:r for r in self.db.recordings(camera_id) if not scope or r['cameraId'] in scope}
+        if official_mode(self): recordings={k:r for k,r in recordings.items() if visible_recording(r,registered_device_ids(self.store))}
         now=datetime.now(ZoneInfo('Asia/Shanghai')); start_at=end_at=None
         if period:
             midnight=now.replace(hour=0,minute=0,second=0,microsecond=0)

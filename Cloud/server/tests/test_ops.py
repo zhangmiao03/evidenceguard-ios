@@ -36,6 +36,16 @@ def test_prompt_privacy_and_multimodal_omission():
     assert 'my private question' in captured and 'NOTREAL' not in captured and 'secretvalue' not in captured
 
 
+def test_sdk_event_and_session_identifiers_are_redacted_without_losing_usage(recorder):
+    recorder.emit('sdk.event', data={'metadata': {'deviceSn': 'T8214PRIVATE001',
+        'mediaSessionToken': 'private-session-value'}, 'usage': {'total_tokens': 16}})
+    recorder.flush()
+    bundle = recorder.bundle()
+    serialized = canonical(bundle)
+    assert 'T8214PRIVATE001' not in serialized and 'private-session-value' not in serialized
+    assert bundle['records'][0]['data']['usage']['total_tokens'] == 16
+
+
 @pytest.mark.anyio
 async def test_concurrent_traces_do_not_cross_and_usage_is_real(recorder):
     class Operation:

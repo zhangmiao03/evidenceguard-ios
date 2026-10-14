@@ -35,7 +35,7 @@ struct OfficialSDKSettingsView: View {
                     do { try connection.save(credentials); feedback = "配置已保存" }
                     catch { feedback = error.localizedDescription }
                 }.disabled(!credentials.isComplete || connection.checking)
-                Button { connection.discover(credentials) } label: {
+                Button { connection.discover(credentials, client: store.client) } label: {
                     HStack { if connection.checking { ProgressView() }; Text("检查官方设备") }
                 }.disabled(!credentials.isComplete || connection.checking || connection.inspecting || !connection.canDiscover)
                     .accessibilityIdentifier("sdk.discover")
@@ -84,7 +84,7 @@ struct OfficialSDKSettingsView: View {
                     catch { feedback = error.localizedDescription }
                 }
             }
-        }.pageStyle("官方摄像头接入")
+        }.pageStyle("连接摄像头")
             .task {
                 do { if let saved = try SDKCredentialVault.load() { credentials = saved } }
                 catch { feedback = error.localizedDescription }

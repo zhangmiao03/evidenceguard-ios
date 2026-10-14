@@ -35,12 +35,26 @@ class SDKBatch(BaseModel):
     reviewRequested: bool = False
 
 
+class SDKDevice(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    deviceSn: str = Field(min_length=1,max_length=100)
+    model: Literal['T8171','T8214']
+    deviceName: str = Field(min_length=1,max_length=100)
+
+
+class SDKDevices(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    devices: list[SDKDevice] = Field(max_length=50)
+
+
 class SDKIngest:
     def __init__(self, store, visual, personal):
         self.store, self.visual, self.personal = store, visual, personal
         self.lock = asyncio.Lock()
         with store.transaction():
             store.db.executescript('''
+                CREATE TABLE IF NOT EXISTS sdk_devices (
+                    id TEXT PRIMARY KEY, payload TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS sdk_events (
                     id TEXT PRIMARY KEY, camera TEXT NOT NULL, episode TEXT NOT NULL,
                     received REAL NOT NULL, payload TEXT NOT NULL);
@@ -49,6 +63,29 @@ class SDKIngest:
                     status TEXT NOT NULL, payload TEXT NOT NULL);
             ''')
             store.db.execute("UPDATE sdk_episodes SET status='pending' WHERE status='running'")
+            # Preserve SDK imports from earlier builds without creating placeholder devices.
+            for (payload,) in store.db.execute('SELECT payload FROM sdk_events').fetchall():
+                event=json.loads(payload); meta=event['metadata']
+                value=dict(id=event['cameraId'],model=meta['model'],name=meta['deviceName'],registeredAt=event['receivedAt'])
+                store.db.execute('INSERT OR IGNORE INTO sdk_devices VALUES (?,?)',(event['cameraId'],json.dumps(value,ensure_ascii=False)))
+
+    @staticmethod
+    def camera_id(sn): return 'sdk-'+hashlib.sha256(sn.encode()).hexdigest()[:20]
+
+    def register_devices(self, batch):
+        with self.store.transaction():
+            for device in batch.devices:
+                key=self.camera_id(device.deviceSn)
+                # Discovery reports identity only, never live capture capability or credentials.
+                value=dict(id=key,model=device.model,name=device.deviceName,registeredAt=time.time())
+                self.store.db.execute('INSERT INTO sdk_devices VALUES (?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
+                                      (key,json.dumps(value,ensure_ascii=False)))
+        return dict(cameraIds=[self.camera_id(d.deviceSn) for d in batch.devices])
+
+    def devices(self):
+        with self.store.lock:
+            rows=self.store.db.execute('SELECT payload FROM sdk_devices ORDER BY id').fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     @staticmethod
     def image(value):
@@ -67,7 +104,8 @@ class SDKIngest:
         receipts=[]
         with self.store.transaction():
             for event, image in zip(batch.events,decoded):
-                camera='sdk-'+hashlib.sha256(event.deviceSn.encode()).hexdigest()[:20]
+                camera=self.camera_id(event.deviceSn)
+                self.register_devices(SDKDevices(devices=[SDKDevice(deviceSn=event.deviceSn,model=event.model,deviceName=event.deviceName)]))
                 key='sdk-event-'+hashlib.sha256((event.deviceSn+'\0'+event.eventId).encode()).hexdigest()
                 metadata=event.model_dump(exclude={'imageBase64'})
                 row=self.store.db.execute('SELECT payload FROM sdk_events WHERE id=?',(key,)).fetchone()
@@ -91,7 +129,8 @@ class SDKIngest:
                                   relation='unknown',reason='官方事件已保存；尚未核验画面，不代表实时现场。',
                                   imageUrl=data['imageUrl'],revision=0,sourceType='official_sdk',
                                   mediaStatus='saved' if data['imageUrl'] else 'unavailable',frameId=key,
-                                  timestampMeaning='device_event',deviceName=event.deviceName)
+                                  timestampMeaning='device_event',deviceName=event.deviceName,
+                                  detectionType=event.detectionType,reviewStatus='saved')
                     self.store.db.execute('INSERT INTO evidence VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',
                                           (key,'',event.startMs/1000,json.dumps(evidence,ensure_ascii=False)))
                 # Explicit review import is read-only; no Skill approval is inferred.
@@ -113,11 +152,25 @@ class SDKIngest:
             row=self.store.db.execute('SELECT payload,status FROM sdk_episodes WHERE id=?',(key,)).fetchone()
         return json.loads(row[0]) | {'status':row[1]} if row else None
 
-    def events(self, episode=None):
+    def events(self, episode=None, camera=None):
         with self.store.lock:
-            rows=self.store.db.execute('SELECT payload FROM sdk_events '+('WHERE episode=? ' if episode else '')+'ORDER BY received DESC LIMIT 100',
-                                       (episode,) if episode else ()).fetchall()
+            clauses=[]; parameters=[]
+            if episode: clauses.append('episode=?'); parameters.append(episode)
+            if camera: clauses.append('camera=?'); parameters.append(camera)
+            rows=self.store.db.execute('SELECT payload FROM sdk_events '+('WHERE '+' AND '.join(clauses)+' ' if clauses else '')+"ORDER BY json_extract(payload,'$.metadata.startMs') DESC LIMIT 101",parameters).fetchall()
         return [json.loads(r[0]) for r in rows]
+
+    def timeline(self, camera=None):
+        values=self.events(camera=camera)
+        items=[]
+        for event in values[:100]:
+            meta=event['metadata']; episode=self.episode(event['episodeId'])
+            items.append(dict(id=event['id'],cameraId=event['cameraId'],deviceName=meta['deviceName'],
+                              startMs=meta['startMs'],endMs=meta['endMs'],detectionType=meta['detectionType'],
+                              hasVideo=meta['hasVideo'],imageUrl=event['imageUrl'],
+                              reviewStatus='completed' if episode and event['id'] in episode.get('reviewedEvidenceIds',[]) else episode['status'] if episode and episode['status']!='completed' else 'saved',
+                              reason=(episode or {}).get('reason','事件已保存'),sourceType='official_sdk'))
+        return dict(events=sorted(items,key=lambda e:e['startMs'],reverse=True),truncated=len(values)>100,continuousCoverage=False)
 
     def sources(self, key):
         ep=self.episode(key)
@@ -157,6 +210,7 @@ class SDKIngest:
                 for e in events:
                     row=self.store.db.execute('SELECT payload FROM evidence WHERE id=?',(e['id'],)).fetchone()
                     item=json.loads(row[0]); review=result.get('review',{})
+                    item['reviewStatus']='completed' if e['id'] in reviewed else result['status'] if result['status']!='completed' else 'saved'
                     item['reason']=((review.get('visible','')+'\n'+review.get('uncertainties','')).strip() or ep['reason']) if e['id'] in reviewed else '事件已保存；本条图片未完成视觉核验。'+result.get('reason','')
                     item['reason']+='\n事件缩略图核验；不代表实时现场或连续录像。'
                     self.store.db.execute('UPDATE evidence SET payload=? WHERE id=?',(json.dumps(item,ensure_ascii=False),e['id']))

@@ -79,6 +79,14 @@ struct APIClient {
         struct Body: Encodable { var events: [SDKCloudEvent]; var reviewRequested: Bool }
         return try await send("/api/sdk/events", body: Body(events: events, reviewRequested: review))
     }
+    func registerSDKDevices(_ cameras: [SDKDiscoveredCamera]) async throws {
+        struct Device: Encodable { var deviceSn: String; var model: String; var deviceName: String }
+        struct Body: Encodable { var devices: [Device] }
+        struct Receipt: Decodable { var cameraIds: [String] }
+        let _: Receipt = try await send("/api/sdk/devices", body: Body(devices: cameras.filter(\.isCompetitionCamera).map {
+            Device(deviceSn: $0.sn, model: $0.model, deviceName: $0.name)
+        }))
+    }
     func capability(_ id: String) async throws -> SkillCapability { try await get("/api/skills/\(id)/capability") }
     func trials(_ id: String) async throws -> [SkillTrial] { try await get("/api/skills/\(id)/trials") }
     func trial(_ id: String) async throws -> SkillTrial { try await get("/api/skill-trials/\(id)") }

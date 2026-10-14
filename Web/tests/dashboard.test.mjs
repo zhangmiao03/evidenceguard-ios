@@ -74,9 +74,15 @@ test("imported snapshots remove credential fields and embedded image payloads", 
   const bundle = sampleBundle();
   bundle.records[0].data = {
     Authorization: "should-disappear",
+    deviceSn: "T8214PRIVATE001",
+    mediaSessionToken: "private-session-value",
+    usage: { total_tokens: 16 },
     image: "data:image/png;base64,NOTREAL",
   };
   const clean = sanitizeBundle(validateBundle(bundle));
   assert.ok(!JSON.stringify(clean).includes("should-disappear"));
   assert.ok(!JSON.stringify(clean).includes("NOTREAL"));
+  assert.ok(!JSON.stringify(clean).includes("T8214PRIVATE001"));
+  assert.ok(!JSON.stringify(clean).includes("private-session-value"));
+  assert.equal(clean.records[0].data.usage.total_tokens, 16);
 });

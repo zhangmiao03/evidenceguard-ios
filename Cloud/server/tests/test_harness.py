@@ -61,6 +61,30 @@ def test_query_does_not_create_or_activate_skill(tmp_path):
     asyncio.run(check())
 
 
+def test_official_empty_camera_receipt_blocks_unavailable_workflow_claims(tmp_path,monkeypatch):
+    from evidenceguard.app import create_app
+    monkeypatch.setenv('EG_CAMERA_SOURCE','official_sdk')
+    async def check():
+        provider=ScriptedProvider([tool('list_camera_capabilities',{}),
+            {'role':'assistant','content':'已经开始看门口了，你还可以选录像试跑。'},
+            {'role':'assistant','content':'嗨，我在。'}])
+        app=create_app(tmp_path/'official-empty.sqlite3',start_worker=False,provider=provider)
+        try:
+            runtime=app.state.agent
+            run=await settle(runtime,runtime.start('帮我看住门口包裹','guard'))
+            assert run['status']=='completed' and run['cameraUnavailable']
+            assert '连接摄像头' in run['text'] and '开始看门口' not in run['text'] and '录像试跑' not in run['text']
+            assert run['draft'] is None and app.state.store.skills()==[]
+            events=await app.state.tools.call('list_camera_events')
+            assert events['registeredDeviceCount']==0 and events['events']==[]
+            greeting=await settle(runtime,runtime.start('你好','greeting'))
+            assert greeting['text']=='嗨，我在。' and greeting['toolReceipts']==[]
+        finally:
+            await app.state.agent.scheduler.shutdown();await app.state.push.provider.close()
+            await app.state.videos.shutdown();app.state.store.close()
+    asyncio.run(check())
+
+
 def test_created_skill_remains_draft_and_events_replay(tmp_path):
     async def check():
         provider = ScriptedProvider([tool('draft_visual_skill', {

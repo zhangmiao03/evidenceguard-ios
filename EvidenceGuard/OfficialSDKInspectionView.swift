@@ -6,13 +6,12 @@ struct OfficialSDKInspectionView: View {
     @ObservedObject var connection: OfficialSDKConnection
     let camera: SDKDiscoveredCamera
     @State private var date = Date()
-    @State private var foregroundSync = false
 
     var body: some View {
         List {
             Section(camera.name) {
                 Text(camera.model).font(.subheadline)
-                Text("此页检查官方 SDK 返回的数据，尚未启用摄像头守护任务。")
+                Text("事件来自这台摄像头，图片为对应事件的缩略图。")
                     .font(.caption).foregroundStyle(Brand.muted)
             }
             Section("设备图片") {
@@ -55,11 +54,9 @@ struct OfficialSDKInspectionView: View {
                 Button("同步所选日期的事件与图片") {
                     Task { await connection.syncEvents(camera: camera, date: date, client: store.client); await store.refresh() }
                 }.disabled(connection.syncing || connection.inspecting || connection.checking || !store.isConnected)
-                Toggle("本页前台同步新事件", isOn: $foregroundSync)
-                    .disabled(!connection.canDiscover || !store.isConnected)
                 if connection.syncing { ProgressView("正在同步事件证据…") }
                 Text(connection.syncMessage).font(.caption).foregroundStyle(Brand.muted)
-                Text("每 30 s 查询最近 120 s 的事件，重复记录不会重复入库。图片交给云端合并核验，可在证据页查看。离开本页或锁屏会暂停同步；尚未验收持续后台守护。")
+                Text("在摄像头首页开启自动同步后，App 打开时每 30 秒查询近期事件；离开这页继续同步，锁屏暂停。重复事件不会重复入库。")
                     .font(.caption).foregroundStyle(Brand.muted)
                 NavigationLink("查看云端证据", value: AppRoute.evidenceList(nil))
             }
@@ -67,19 +64,11 @@ struct OfficialSDKInspectionView: View {
                 Text("拿到设备后，在摄像头前完成一次经过或放下包裹的动作，再查询事件并核对缩略图与时间。SDK 返回成功、图片可读和任务可执行是不同的验收步骤。")
                     .font(.caption).foregroundStyle(Brand.muted)
             }
-        }.pageStyle("设备联调")
-            .task(id: foregroundSync && scenePhase == .active) {
-                guard foregroundSync, scenePhase == .active else { return }
-                while !Task.isCancelled {
-                    await connection.syncEvents(camera: camera, date: Date(), client: store.client, recentOnly: true)
-                    await store.refresh()
-                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
-                }
-            }
+        }.pageStyle(camera.name + "事件")
             .onChange(of: scenePhase) { _, phase in
                 if phase != .active { connection.cancelInspection() }
             }
-            .onDisappear { connection.cancelInspection() }
+            .onDisappear { if !connection.syncing { connection.cancelInspection() } }
     }
 
     private var pictureLabel: String {
@@ -87,6 +76,25 @@ struct OfficialSDKInspectionView: View {
         case "event_thumbnail": "官方事件缩略图 · 非实时画面"
         case "cached_cover": "官方缓存封面 · 拍摄时间未知"
         default: "官方设备缩略图 · 拍摄时间待核实"
+        }
+    }
+}
+
+struct SDKEventSyncWorker: View {
+    @ObservedObject var connection: OfficialSDKConnection
+    let client: APIClient
+    let active: Bool
+    let refresh: () async -> Void
+    private var key: String { "\(active):\(client.baseURL.absoluteString):\(connection.eventSyncOrigin ?? "")" }
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0).task(id: key) {
+            guard active, connection.syncEnabled(for: client) else { return }
+            connection.restoreSession(client: client)
+            while !Task.isCancelled && connection.syncEnabled(for: client) {
+                await connection.syncRecentEvents(client: client)
+                await refresh()
+                do { try await Task.sleep(for: .seconds(30)) } catch { return }
+            }
         }
     }
 }

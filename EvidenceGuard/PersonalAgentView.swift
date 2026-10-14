@@ -18,7 +18,7 @@ struct MemoryView: View {
             VStack(alignment: .leading, spacing: 22) {
                 ConnectionBanner()
                 VStack(alignment: .leading, spacing: 14) {
-                    Label("让助手更了解你", systemImage: "sparkles").font(.title3.bold())
+                    Text("我记下的事").font(.title3.bold())
                     Text("记下你的关注点和沟通偏好，下次对话时继续使用。")
                         .font(.subheadline).foregroundStyle(Brand.muted)
                     Button { adding = true } label: {
@@ -256,19 +256,18 @@ struct ProactiveMessageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("助手主动提醒", systemImage: "sparkles").font(.caption.bold()).foregroundStyle(Brand.blue)
+                Text(message.title).font(.headline)
                 Spacer()
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
-            Text(message.title).font(.headline)
+            if message.body != message.title { Text(message.body).font(.body).textSelection(.enabled) }
             Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
-            Label(testSource ? "测试 / 回放资料 · 非真实现场" : "依据已有记录 · 不代表此刻现场", systemImage: "info.circle")
+            Label(testSource ? "测试 / 回放资料" : "事件记录", systemImage: "clock")
                 .font(.caption).foregroundStyle(Brand.muted)
-            ForEach(limitations, id: \.self) { Text($0).font(.caption2).foregroundStyle(Brand.muted) }
-            DisclosureGroup("展开详情与依据") {
+            DisclosureGroup("查看来源") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.body).font(.subheadline).textSelection(.enabled)
                     Text(message.why).font(.caption)
+                    ForEach(limitations, id: \.self) { Text($0).font(.caption2).foregroundStyle(Brand.muted) }
                     ForEach(message.sources) { source in
                         VStack(alignment: .leading, spacing: 3) {
                             Text(source.name ?? source.title ?? source.reason ?? "已记录的摄像头观察").font(.caption)
@@ -285,7 +284,7 @@ struct ProactiveMessageCard: View {
                 } else if let skill = message.skillId {
                     NavigationLink("查看守护", value: AppRoute.skill(skill)).buttonStyle(.borderedProminent)
                 }
-                Button("追问") { respond("read"); onReply() }.buttonStyle(.bordered)
+                Button("接着聊") { respond("read"); onReply() }
                 Spacer(minLength: 0)
                 if message.feedback == "handled" { Text("已处理此提醒").font(.caption).foregroundStyle(Brand.muted) }
                 else {

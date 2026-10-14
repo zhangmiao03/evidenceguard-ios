@@ -67,7 +67,7 @@ export function sanitizeData(value, depth = 0) {
         .slice(0, 100)
         .map(([k, v]) => [
           k.slice(0, 100),
-          /authorization|api.?key|secret|password|credential|tokenhash|imagebase64|^token$|^sn$|accountid|clientid|importedby/i.test(
+          /authorization|api.?key|secret|password|credential|tokenhash|imagebase64|token$|^sn$|devicesn|serialnumber|accountid|clientid|importedby/i.test(
             k,
           )
             ? "[redacted]"

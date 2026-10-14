@@ -38,7 +38,7 @@ final class WorkspaceTests: XCTestCase {
         let official = app.buttons["profile.officialSDK"]
         if !official.isHittable { app.swipeUp() }
         official.tap()
-        XCTAssertTrue(app.navigationBars["官方摄像头接入"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["连接摄像头"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["workspace.switch"].exists)
     }
 }

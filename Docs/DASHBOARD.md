@@ -16,7 +16,7 @@ cd ..
 
 macOS/Linux 使用对应 Python 路径，例如 `Cloud/.venv/bin/python scripts/run_dashboard.py`。打开 `http://127.0.0.1:8790/dashboard`，点击“连接本地服务 → 读取同源本地 API”。App 在同一地址 `/`。离线导入不需要 API，也不需要官方 SDK 或模型 Key。
 
-启动器默认隔离到 `Cloud/data/local-dashboard/`，不会隐式读取团队云端配置；仅绑定 `127.0.0.1`，单进程。`business.sqlite3` 是正常应用状态，`observability.sqlite3` 是独立追踪库，不能配置为同一文件。不要启动多个进程竞争设备会话。更换端口用 `--port 8791`。`--data-dir` 可指定一个本地开发数据目录。必要时显式用 `--env-file` 加载自己选择的本地模型配置；不要传入生产部署环境文件。
+启动器默认隔离到 `Cloud/data/local-dashboard/`，清除继承的 `EG_*` 部署变量，禁止环境文件间隐式跳转；仅绑定 `127.0.0.1`，单进程。后台调度与 APNs 发送强制关闭，显式本地文件也不能开启这两项。`business.sqlite3` 是正常应用状态，`observability.sqlite3` 是独立追踪库，不能配置为同一文件。不要启动多个进程竞争设备会话。更换端口用 `--port 8791`。`--data-dir` 可指定一个本地开发数据目录。必要时显式用 `--env-file` 加载自己选择的本地模型配置；不要传入生产部署环境文件。
 
 现有后端也可设置 `EG_OPS_ENABLED=1`、可选 `EG_OPS_DATABASE`，并把 `EG_WEB_ROOT` 指向构建出的 `Web/dist`。默认关闭采集。开发热更新可以同时启动 Vite（`cd Web; npm run dev`），其 `/api` 代理到本地 8790。
 

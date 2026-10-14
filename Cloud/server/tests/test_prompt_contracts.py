@@ -37,7 +37,7 @@ def test_chat_and_proactive_receive_current_product_guidance(tmp_path, mode):
         assert tools == {'read_proactive_context', 'read_observation_image'}
         assert store.skills() == []
         if mode == 'history':
-            assert set(run['executionContract']['allowed_tools']) == {'search_evidence', 'read_stored_image'}
+            assert set(run['executionContract']['allowed_tools']) == {'search_evidence', 'read_stored_image', 'list_camera_events'}
         await runtime.scheduler.shutdown()
         store.close()
     asyncio.run(check())

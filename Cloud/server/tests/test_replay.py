@@ -138,6 +138,7 @@ def test_replay_adapter_excludes_future_frames_and_checks_device(tmp_path):
     asyncio.run(check())
 
 def test_replay_api_confirmation_is_exclusive_and_history_stays_readable(tmp_path,monkeypatch):
+    monkeypatch.setenv('EG_CAMERA_MODE','fixture')
     from fastapi.testclient import TestClient
     from evidenceguard.app import create_app
     monkeypatch.setenv('EG_VIDEO_ROOT',str(tmp_path/'media'))

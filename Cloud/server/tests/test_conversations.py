@@ -116,7 +116,7 @@ def test_history_scope_shares_navigation_but_not_live_transcript(tmp_path):
         assert c.get('/api/agent/conversations/'+topic['id']).json()==[]
         index=c.get('/api/agent/conversations').json()
         assert len(index)==1 and index[0]['lastMode']=='history' and index[0]['title']=='回顾过去'
-        assert set(response.json()['executionContract']['allowed_tools'])=={'search_evidence','read_stored_image','search_recordings'}
+        assert set(response.json()['executionContract']['allowed_tools'])=={'search_evidence','read_stored_image','search_recordings','list_camera_events'}
 
 
 def test_main_history_cannot_be_read_or_rebound_by_other_installation(tmp_path):

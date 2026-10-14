@@ -39,12 +39,12 @@ struct EvidenceDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let item = store.data.evidence.first(where: { $0.id == id }) {
                     Text(item.title).font(.title2.bold())
-                    Text((item.sourceType == "synthetic_demo" ? "生成于 " : "") + displayTime(item.capturedAt)).font(.subheadline).foregroundStyle(Brand.muted)
+                    Text((item.sourceType == "synthetic_demo" ? "生成于 " : item.sourceType == "official_sdk" ? "设备事件时间 · " : "") + displayTime(item.capturedAt)).font(.subheadline).foregroundStyle(Brand.muted)
                     if item.videoUrl != nil {
                         NavigationLink(value: AppRoute.replayVideo(item.id, item.seekSeconds ?? 0)) { Label("播放触发片段 · \(videoTime(item.originalEventTime ?? 0))", systemImage: "play.circle.fill") }.buttonStyle(PrimaryAction())
                         Text("回放测试生成的提醒；记录时间不是原录像拍摄时间。证据只包含触发时已到达的画面。").font(.caption).foregroundStyle(.orange)
                     } else { EvidenceImage(url: store.client.absoluteURL(item.imageUrl)) }
-                    GroupBox("观察依据") { VStack(alignment: .leading, spacing: 10) { Text(item.reason); Text("来源设备：\(store.camera(item.cameraId)?.name ?? item.cameraId)"); if !item.skillId.isEmpty { Text("规则版本：\(item.revision)") }; Text(item.sourceType == "fixture" ? "来源：合成摄像头测试画面" : item.sourceType == "synthetic_demo" ? "来源：合成测试样本 · 非摄像头实拍，时间为生成时间" : item.sourceType == "official_sdk" ? "来源：官方事件缩略图 · 时间为设备事件时间" : "来源：\(item.sourceType)") }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading) }
+                    GroupBox("事件详情") { VStack(alignment: .leading, spacing: 10) { Text(item.reason); Text("来源设备：\(item.deviceName ?? store.camera(item.cameraId)?.name ?? item.cameraId)"); if !item.skillId.isEmpty { Text("规则版本：\(item.revision)") }; Text(item.sourceType == "fixture" ? "来源：合成摄像头测试画面" : item.sourceType == "synthetic_demo" ? "来源：合成测试样本 · 非摄像头实拍，时间为生成时间" : item.sourceType == "official_sdk" ? "来源：官方事件缩略图 · 时间为设备事件时间" : "来源：\(item.sourceType)") }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading) }
                     if !item.skillId.isEmpty { NavigationLink(value: AppRoute.skill(item.skillId)) { Label("查看所属任务", systemImage: "shield") } }
                     if ["official_sdk", "synthetic_demo"].contains(item.sourceType) {
                         NavigationLink(value: AppRoute.evidenceConversation(item.id)) { Label("向 AI 追问这条事件", systemImage: "bubble.left") }.buttonStyle(PrimaryAction())

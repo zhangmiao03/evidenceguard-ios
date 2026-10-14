@@ -9,6 +9,7 @@ struct RootView: View {
 }
 
 private struct ProductRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var store: AppStore
     @AppStorage("showFeedback") private var showFeedback = true
     var body: some View {
@@ -20,6 +21,8 @@ private struct ProductRootView: View {
             tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
         .tint(Brand.blue)
+        .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
+                                        active: scenePhase == .active) { await store.refresh() } }
         .sheet(item: $store.editor, onDismiss: { store.editorRegionCameraID = nil }) { skill in CreateSkillView(skill: skill, initialRegionCameraID: store.editorRegionCameraID).environmentObject(store) }
         .alert("操作未完成", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) { Button("知道了") { store.errorMessage = nil } } message: { Text(store.errorMessage ?? "") }
         .overlay(alignment: .top) {
@@ -51,6 +54,7 @@ private struct ProductRootView: View {
         case .evidenceConversation(let id): ConversationView(conversationID: "evidence-" + id, skillID: nil, historyEvidenceID: id)
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)
+        case .cameraEvents: CameraSkillsView()
         case .notificationSettings: NotificationSettingsView()
         case .voiceSettings: VoiceSettingsView()
         case .privacy: PrivacyView()

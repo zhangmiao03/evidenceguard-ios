@@ -117,6 +117,7 @@ enum SDKCredentialVault {
     @Published private(set) var inspectionMessage = "选择日期查询真实事件，或读取设备缩略图。"
     @Published private(set) var syncing = false
     @Published private(set) var syncMessage = "尚未同步官方事件"
+    @Published private(set) var eventSyncOrigin = UserDefaults.standard.string(forKey: "sdkEventSyncOrigin")
     private var relayContinuation: CheckedContinuation<String, Error>?
     private var relayTimeout: Task<Void, Never>?
     private var relayRequestID = UUID()
@@ -149,7 +150,7 @@ enum SDKCredentialVault {
         try SDKCredentialVault.save(credentials)
         message = "配置已保存到本机 Keychain，设备尚未验证"
     }
-    func discover(_ credentials: SDKCredentials) {
+    func discover(_ credentials: SDKCredentials, client: APIClient? = nil) {
         guard officialDemoController == nil, !switchingWorkspace, !checking && !inspecting && !syncing else { return }
         do { try save(credentials) } catch { message = error.localizedDescription; return }
         guard canDiscover else { message = buildStatus; return }
@@ -181,6 +182,10 @@ enum SDKCredentialVault {
                 let count = devices.filter(\.isCompetitionCamera).count
                 self.message = count > 0 ? "发现 \(count) 台赛事摄像头；画面与任务执行尚待验收"
                                         : "查询完成，账号下暂未发现 T8171 / T8214"
+                if let client, count > 0 {
+                    do { try await client.registerSDKDevices(devices) }
+                    catch { self.syncMessage = "设备已找到，云端同步暂未完成，请重试。" }
+                }
             }
         }
         #endif
@@ -259,12 +264,15 @@ enum SDKCredentialVault {
     func cancelInspection() {
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
+        checking = false
         #if canImport(SampleCore) && !targetEnvironment(simulator)
         bridge.cancelInspection()
         #endif
         resetInspection()
     }
     func disconnect() {
+        eventSyncOrigin = nil
+        UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
         liveController?.stop()
         connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
@@ -278,6 +286,24 @@ enum SDKCredentialVault {
         message = "SDK 会话已断开，保存的配置仍在本机"
     }
 
+    func syncEnabled(for client: APIClient) -> Bool { eventSyncOrigin == client.baseURL.absoluteString }
+    func setEventSync(_ enabled: Bool, client: APIClient) {
+        eventSyncOrigin = enabled ? client.baseURL.absoluteString : nil
+        UserDefaults.standard.set(eventSyncOrigin, forKey: "sdkEventSyncOrigin")
+        if !enabled { cancelInspection(); syncMessage = "自动同步已暂停，已保存的事件仍可查看。" }
+    }
+    func restoreSession(client: APIClient) {
+        guard syncEnabled(for: client), devices.isEmpty, !checking, canDiscover,
+              let credentials = try? SDKCredentialVault.load() else { return }
+        discover(credentials, client: client)
+    }
+    func syncRecentEvents(client: APIClient) async {
+        guard syncEnabled(for: client), officialDemoController == nil, !switchingWorkspace else { return }
+        for camera in devices.filter(\.isCompetitionCamera) {
+            guard syncEnabled(for: client), !Task.isCancelled else { return }
+            await syncEvents(camera: camera, date: Date(), client: client, recentOnly: true)
+        }
+    }
     func enterOfficialWorkspace() async {
         guard canDiscover, officialDemoController == nil, !switchingWorkspace else { return }
         switchingWorkspace = true
@@ -343,9 +369,10 @@ enum SDKCredentialVault {
 
     private func relayRequest(_ begin: (@escaping (String) -> Void) -> Void) async throws -> String {
         try Task.checkCancellation()
+        let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let id = UUID(); relayRequestID = id; relayContinuation = continuation
+                relayRequestID = id; relayContinuation = continuation
                 relayTimeout = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(35)) } catch { return }
                     guard let self, self.relayRequestID == id else { return }
@@ -359,7 +386,10 @@ enum SDKCredentialVault {
                 }
             }
         } onCancel: {
-            Task { @MainActor [weak self] in self?.cancelInspection() }
+            Task { @MainActor [weak self] in
+                guard let self, self.relayRequestID == id else { return }
+                self.cancelInspection()
+            }
         }
     }
 
@@ -381,7 +411,9 @@ enum SDKCredentialVault {
             }
             let receipt = try JSONDecoder().decode(SDKInspectionReceipt.self, from: Data(json.utf8))
             guard receipt.status == "success", let returned = receipt.events else { throw APIProblem(message: "官方事件查询未完成") }
+            guard returned.allSatisfy({ $0.deviceSn == camera.sn }) else { throw APIProblem(message: "事件设备与所选摄像头不一致，未同步。") }
             guard syncGeneration == requestGeneration else { throw CancellationError() }
+            try await client.registerSDKDevices([camera])
             events = returned
             // Preserve every returned event's metadata; upload images separately to
             // keep each HTTP body bounded. Only actual event images are eligible.
@@ -392,7 +424,7 @@ enum SDKCredentialVault {
                 _ = try await client.ingestSDKEvents(Array(items), review: false)
             }
             var images = 0
-            for event in returned.filter({ $0.hasThumbnail && !syncedImages.contains(client.baseURL.absoluteString + ":" + $0.id) }).prefix(10) {
+            for event in returned.filter({ $0.hasThumbnail && !syncedImages.contains(client.baseURL.absoluteString + ":" + camera.sn + ":" + $0.id) }).prefix(10) {
                 try Task.checkCancellation()
                 guard syncGeneration == requestGeneration else { throw CancellationError() }
                 syncMessage = "事件已入库，正在同步第 \(images + 1) 张证据图片…"
@@ -405,7 +437,7 @@ enum SDKCredentialVault {
                 guard syncGeneration == requestGeneration else { throw CancellationError() }
                 var item = SDKCloudEvent(camera: camera, event: event); item.imageBase64 = jpeg.base64EncodedString()
                 _ = try await client.ingestSDKEvents([item], review: true)
-                syncedImages.insert(client.baseURL.absoluteString + ":" + event.id); images += 1
+                syncedImages.insert(client.baseURL.absoluteString + ":" + camera.sn + ":" + event.id); images += 1
             }
             if syncedImages.count > 500 { syncedImages.removeAll() } // Server dedupe remains authoritative.
             syncMessage = "已同步 \(returned.count) 条事件、本次 \(images) 张图片，云端将合并核验。" + (returned.count >= 50 ? "本次达到查询上限，不代表完整记录。" : "")
