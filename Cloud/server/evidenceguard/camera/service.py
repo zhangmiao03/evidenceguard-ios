@@ -1,5 +1,6 @@
 """Capability-checked capture with durable receipts shared by Agent and Worker."""
 from __future__ import annotations
+from ..ops import traced
 import asyncio, time, uuid
 from dataclasses import asdict
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -25,6 +26,7 @@ class CameraService:
                 for d in sorted(devices): await stack.enter_async_context(self.gate(d))
                 yield
 
+    @traced('camera.capture')
     async def capture(self, device_id, skill_id=None, purpose='用户请求观察'):
         request_id = 'capture-' + uuid.uuid4().hex
         epoch = self.store.capture_context(device_id, skill_id)

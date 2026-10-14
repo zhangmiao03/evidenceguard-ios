@@ -23,6 +23,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .contracts import CapabilityState, Channel, DeviceManifest, FrameRef, SnapshotKind, SnapshotReceipt
+from ..ops import CTX
 
 
 class Input(BaseModel):
@@ -136,7 +137,13 @@ class LiveDevices:
         self.sessions[sid] = dict(id=sid, deviceId=body.deviceId, platform=body.platform,
                                   client=client, tokenHash=hashlib.sha256(token.encode()).hexdigest(),
                                   state='connecting', sequence=0, heartbeatAt=time.time(), frameAgeMs=None)
-        return dict(id=sid, deviceId=body.deviceId, token=token, heartbeatTTL=self.heartbeat_ttl)
+        self.observe('session.started', self.sessions[sid])
+        return dict(id=sid, deviceId=body.deviceId, token=token, heartbeatTTL=self.heartbeat_ttl, traceId=CTX.get().get('traceId'))
+
+    def observe(self, name, session, **details):
+        if getattr(self.store, 'ops', None):
+            self.store.ops.emit(name,data=dict(deviceId=session['deviceId'],sessionId=session['id'],
+                executor=session['platform'],state=session['state'],**details))
 
     def authorize(self, sid, client, token):
         s = self.sessions.get(sid)
@@ -149,12 +156,15 @@ class LiveDevices:
     def heartbeat(self, s, body: Heartbeat):
         if body.sequence < s['sequence']:
             raise ValueError('拒绝旧的媒体心跳')
+        changed=s['state']!=body.state
         s.update(state=body.state, sequence=body.sequence, frameAgeMs=body.frameAgeMs, heartbeatAt=time.time())
+        if changed: self.observe('session.state_changed',s)
         if body.state in {'stopped', 'failed'}:
             self.stop(s)
         return dict(status=s['state'], ready=self.ready(s))
 
     def stop(self, s):
+        if s['state']!='stopped': self.observe('session.stopped',s)
         s['state'] = 'stopped'
         for p in list(self.pending.values()):
             if p['sessionId'] == s['id'] and not p['future'].done():
@@ -164,6 +174,7 @@ class LiveDevices:
         now = time.time()
         for sid, s in list(self.sessions.items()):
             if now - s['heartbeatAt'] > self.heartbeat_ttl:
+                self.observe('session.expired',s)
                 self.stop(s)
                 del self.sessions[sid]
         for fid, (frame, _, _) in list(self.frames.items()):
@@ -173,7 +184,8 @@ class LiveDevices:
     def commands(self, s):
         self.expire()
         return [dict(requestId=rid, sessionId=p['sessionId'], deviceId=p['deviceId'],
-                     afterSequence=p['afterSequence'], deadline=p['deadline'], channelId='main')
+                     afterSequence=p['afterSequence'], deadline=p['deadline'], channelId='main',
+                     traceId=p.get('trace',{}).get('traceId'),parentSpanId=p.get('trace',{}).get('spanId'))
                 for rid, p in self.pending.items() if p['sessionId'] == s['id']
                 and not p['future'].done() and p['deadline'] > time.time()]
 
@@ -204,6 +216,11 @@ class LiveDevices:
         media = self.store.save_media(asdict(frame), raw, mime)
         s.update(sequence=max(s['sequence'], body.sequence), lastFrameUrl=media['imageUrl'], lastSampledAt=body.sampledAt)
         p['future'].set_result(frame)
+        if getattr(self.store,'ops',None):
+            self.store.ops.emit('capture.frame_accepted',trace=p.get('trace'),status='accepted',
+                data=dict(deviceId=s['deviceId'],requestId=body.requestId,executor=s['platform'],
+                    receivedAt=frame.received_at,sampledAt=body.sampledAt,capturedAt=None,
+                    timestampMeaning='client_live_sample',frameId=frame.frame_id))
         return dict(status='accepted', frameId=frame.frame_id, imageUrl=media['imageUrl'],
                     capturedAt=None, timestampMeaning='client_live_sample', receivedAt=frame.received_at)
 
@@ -231,7 +248,7 @@ class LiveDevices:
             raise ValueError('没有活跃的新画面输入，请在 iOS 或 Web 前台打开这台设备的直播')
         future = asyncio.get_running_loop().create_future()
         self.pending[context.request_id] = dict(sessionId=s['id'], deviceId=device_id,
-            afterSequence=s['sequence'], deadline=context.deadline, future=future)
+            afterSequence=s['sequence'], deadline=context.deadline, future=future,trace=dict(CTX.get()))
         try:
             async with asyncio.timeout(max(0, context.deadline - time.time())):
                 frame = await future

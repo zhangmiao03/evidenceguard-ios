@@ -1,5 +1,13 @@
 # EvidenceGuard · iOS / Web / Cloud
 
+## 本地研发 Dashboard（dongrunze）
+
+新增参考 AIBuddy 的 `/dashboard`：运行总览、设备与取流、Trace、模型调用、提示词、任务、证据、试跑、用量与离线数据。可在没有云端/root 权限时本地运行，导入/导出版本化 JSON；模拟样例需要手动载入且持续标识。iOS、Web 和后端新增关联埋点，官方 SDK 切换与 App 五栏功能保留。
+
+先在 `Web` 执行 `npm ci`、`npm run build`，回仓库根目录用已安装 Cloud 依赖的 Python 执行 `scripts/run_dashboard.py`，打开 **http://127.0.0.1:8790/dashboard**。Windows 例如 `.venv/Scripts/python.exe scripts/run_dashboard.py`；macOS/Linux 使用自己的虚拟环境 Python 路径。默认使用隔离的 `Cloud/data/local-dashboard/`，不读取生产环境文件。
+
+追踪默认不影响已有服务：现有后端需显式设置 `EG_OPS_ENABLED=1` 才采集。默认提示词动态内容仅存摘要；需要全文时用启动器 `--capture-content`。独立 Dashboard 访问权限、采集口径、模型覆盖、导入格式和完整操作见 [Dashboard 开发与使用说明](Docs/DASHBOARD.md)。
+
 本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)

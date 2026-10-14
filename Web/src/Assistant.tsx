@@ -7,6 +7,7 @@ import {
 } from "react";
 import { api, installation } from "./api";
 import { newID } from "./browser-support";
+import { observe } from "./telemetry";
 import { ErrorNotice, ImageEvidence, Modal, VideoPlayer } from "./ProductUI";
 import {
   running,
@@ -105,6 +106,14 @@ export const Assistant = forwardRef<
     const [mode, setMode] = useState("live");
     const [input, setInput] = useState("");
     const [runs, setRuns] = useState<ChatRun[]>([]);
+    const reported = useRef(new Set<string>());
+    useEffect(() => {
+      if (!active || document.hidden) return;
+      for (const run of runs) if (!running(run.status) && !reported.current.has(run.id)) {
+        reported.current.add(run.id);
+        observe({ name: "agent.displayed", traceId: run.id, status: run.status }, client.current.token);
+      }
+    }, [runs, active]);
     const [error, setError] = useState("");
     const [syncError, setSyncError] = useState("");
     const [sending, setSending] = useState(false);

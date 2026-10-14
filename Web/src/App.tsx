@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Capture, type Device } from "./api";
+import { observe } from "./telemetry";
+import { newID } from "./browser-support";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
 import { LiveView } from "./LiveView";
 import { OfficialWorkspace } from "./OfficialWorkspace";
@@ -311,6 +313,7 @@ export default function App() {
       clearSDKCredentials();
       setSettings(false);
       setOfficialMode(true);
+      observe({ name: "sdk.mode_changed", traceId: newID(), status: "official" }, api.token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "切换未完成，请重试");
     } finally {
@@ -324,6 +327,7 @@ export default function App() {
         defaults={{ ...auth, stationSn: device?.sn }}
         onReturn={() => {
           setOfficialMode(false);
+          observe({ name: "sdk.mode_changed", traceId: newID(), status: "product" }, api.token);
           setLive(null);
           setReady(false);
           setIntegration(null);

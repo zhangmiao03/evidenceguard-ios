@@ -404,6 +404,7 @@ export function SettingsPage({
               <button onClick={onOfficial}>
                 官方 SDK 硬件工作区 <span>↗</span>
               </button>
+              <a href="/dashboard" target="_blank" rel="noreferrer">本地研发 Dashboard ↗</a>
             </div>
           </section>
           <section className="card product-card">

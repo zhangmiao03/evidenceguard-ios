@@ -21,15 +21,18 @@ export function requireSecureConnection(): void {
 
 // Safari/private browsing and managed browsers may deny storage. Keep the
 // installation stable for this page even when persistence is unavailable.
+let pageInstallation: string | undefined;
 export function installationID(): string {
+  if (pageInstallation) return pageInstallation;
   const key = "evidenceguard.web.installation";
   try {
     const saved = localStorage.getItem(key);
-    if (saved && /^[a-f0-9-]{36}$/i.test(saved)) return saved;
+    if (saved && /^[a-f0-9-]{36}$/i.test(saved)) return (pageInstallation = saved);
   } catch {
     /* session-only identity */
   }
   const id = newID();
+  pageInstallation = id;
   try {
     localStorage.setItem(key, id);
   } catch {

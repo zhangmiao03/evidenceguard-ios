@@ -41,7 +41,7 @@ class TeamAccess(BaseHTTPMiddleware):
         authorized = hmac.compare_digest(bearer.encode(), ('Bearer ' + self.token).encode())
         # Serve the login shell without a secret; all API/media data remain
         # protected. StaticFiles performs path containment and existence checks.
-        static_path = request.url.path == '/' or request.url.path.startswith(('/assets/', '/sdk/', '/official-demo/')) or request.url.path == '/favicon.ico'
+        static_path = request.url.path in {'/', '/dashboard', '/dashboard/', '/favicon.ico'} or request.url.path.startswith(('/assets/', '/sdk/', '/official-demo/'))
         shell = bool(os.getenv('EG_WEB_ROOT')) and request.method in {'GET', 'HEAD'} and static_path
         media_cookie = (request.method in {'GET', 'HEAD'} and MEDIA.fullmatch(request.url.path)
                         and self.valid_cookie(request.cookies.get(COOKIE, '')))
