@@ -18,6 +18,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - run: scripts/check_mobile_contracts.sh
       - run: xcodebuild -project EvidenceGuard.xcodeproj -scheme EvidenceGuard -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
   # The organizer's proprietary SDK is not distributed to GitHub runners.
   # EvidenceGuardSDK needs local vendor restore and separate device/archive checks.

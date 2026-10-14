@@ -7,8 +7,9 @@ import Foundation
     @Published var lastError: String?
     @Published var errorMessage: String?
     @Published var toast: String?
-    @Published var selectedTab = 0
-    @Published var tabPaths: [[AppRoute]] = Array(repeating: [], count: 5)
+    @Published var selectedTab: AppTab = .assistant
+    @Published var tabPaths: [[AppRoute]] = Array(repeating: [], count: AppTab.allCases.count)
+    @Published var composerRevision = UUID()
     @Published var conversationDrafts: [String: String] = [:] { didSet { persistChat() } }
     var pendingChatRequests: [String: PendingChatRequest] = [:] { didSet { persistChat() } }
     @Published var conversations: [ConversationSummary] = []
@@ -28,8 +29,8 @@ import Foundation
         conversationModes = state.modes; newConversationRequestID = state.newConversationRequestID
     }
     var path: [AppRoute] {
-        get { tabPaths[selectedTab] }
-        set { tabPaths[selectedTab] = newValue }
+        get { tabPaths[selectedTab.rawValue] }
+        set { tabPaths[selectedTab.rawValue] = newValue }
     }
     @Published var editor: VisualSkill?
     var editorRegionCameraID: String?
@@ -40,6 +41,7 @@ import Foundation
     @Published var selectedCameraID = "cam-a"
     @Published var busy = false
     var client: APIClient
+    let reminderSettings = ReminderSettings()
     let officialSDK = OfficialSDKConnection()
     let generalConversation: String
     private var polling = false
@@ -100,7 +102,16 @@ import Foundation
     func openAI(prompt: String = "", skillID: String? = nil) {
         let id = skillID.map { "skill-chat-\($0)" } ?? generalConversation
         if !prompt.isEmpty { conversationDrafts[id] = prompt }
-        path.append(.conversation(skillID.map { "skill-chat-\($0)" } ?? generalConversation, skillID))
+        if let skillID {
+            path.append(.conversation(id, skillID))
+        } else {
+            // Return to the same durable main chat, including from a settings or device page.
+            conversationModes[id] = "live"
+            selectConversation(id)
+            tabPaths[AppTab.assistant.rawValue] = []
+            selectedTab = .assistant
+            composerRevision = UUID()
+        }
     }
     func poll() async {
         guard !polling else { return }; polling = true
@@ -112,7 +123,7 @@ import Foundation
     }
     func refresh() async {
         guard client.baseURL.host != "unconfigured.invalid" else {
-            isConnected = false; lastError = MobileServiceConfiguration.current.isInternalDemo ? "此测试版本连接配置不完整，请联系团队更新。" : "请在“我的 → 服务连接”设置云端 HTTPS 地址。"; return
+            isConnected = false; lastError = MobileServiceConfiguration.current.isInternalDemo ? "此测试版本连接配置不完整，请联系团队更新。" : "请在头像下的“服务连接”设置云端 HTTPS 地址。"; return
         }
         do {
             data = try await client.bootstrap(); isConnected = true; lastError = nil

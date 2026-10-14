@@ -64,5 +64,7 @@
 	</array>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>把你按住说话的内容转成可编辑文字，确认发送后才交给 AI。</string>
+	<key>EGAPNSEnvironment</key>
+	<string>$(APS_ENVIRONMENT)</string>
 </dict>
 </plist>

@@ -10,13 +10,13 @@ names = subprocess.check_output(['git', 'ls-files', '-z'], cwd=root).decode().sp
 secret_patterns = [
     re.compile(rb'\bsk-[A-Za-z0-9_-]{24,}\b'),
     re.compile(rb'\bgh[pousr]_[A-Za-z0-9]{30,}\b'),
-    re.compile(rb'\bAKIA[A-Z0-9]{16}\b'),
+    re.compile(rb'\b(?:AKIA|ASIA)[A-Z0-9]{16}\b'),
     re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
 ]
 errors = []
 for name in filter(None, names):
     path = Path(name)
-    if name.startswith(('SDK/Vendor/', 'Web/public/sdk/', 'Cloud/data/')) or path.name.startswith('.env') and path.name != '.env.example' or any(p in {'.venv','node_modules','Pods','DerivedData','xcuserdata'} for p in path.parts) or path.suffix in {'.sqlite3','.sqlite','.db','.ipa','.mp4','.mov'}:
+    if name.startswith(('SDK/Vendor/', 'Web/public/sdk/', 'Cloud/data/')) or path.name.startswith('.env') and path.name != '.env.example' or any(p in {'.venv','node_modules','Pods','DerivedData','xcuserdata'} or p.endswith('.xcarchive') for p in path.parts) or path.suffix in {'.sqlite3','.sqlite','.db','.ipa','.mp4','.mov','.p8','.pem','.key','.p12','.mobileprovision'} or name in {'Release/local.xcconfig','Release/internal-demo.xcconfig'}:
         errors.append(f'Local/private artifact tracked: {name}')
     result = subprocess.run(['git', 'show', ':'+name], cwd=root, capture_output=True)
     if result.returncode:

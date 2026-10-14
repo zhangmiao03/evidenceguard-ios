@@ -7,3 +7,5 @@ swiftc EvidenceGuard/MobileServiceConfiguration.swift EvidenceGuard/DeviceQRCode
 "$check_dir/check"
 swiftc EvidenceGuard/AppModels.swift Tests/ChatPersistence/main.swift -o "$check_dir/chat-check"
 "$check_dir/chat-check"
+swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/ReminderSettings.swift Tests/ReminderSettings/main.swift -o "$check_dir/reminder-check"
+"$check_dir/reminder-check"

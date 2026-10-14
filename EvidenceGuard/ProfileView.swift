@@ -8,26 +8,26 @@ struct ProfileView: View {
             Section {
                 NavigationLink(value: AppRoute.profile) { HStack(spacing: 14) { Image("DogAvatar").resizable().scaledToFill().frame(width: 54,height: 54).clipShape(Circle()); VStack(alignment: .leading,spacing: 4) { Text(name).font(.title3.bold()); Text("让生活更安心").font(.subheadline).foregroundStyle(Brand.muted) }; Spacer(); Text("编辑").font(.caption) }.padding(.vertical,8) }
             }
-            Section("快捷指令") {
-                Button("看看我关注的任务现在怎么样") { store.openAI(prompt: "看看我关注的任务现在怎么样") }
-                Button("查询最近的观察记录") { store.openAI(prompt: "查询最近的观察记录") }
-                NavigationLink("查看摄像头画面", value: AppRoute.cameras)
+            Section("助手") {
+                NavigationLink(value: AppRoute.notificationSettings) { Label("通知与提醒", systemImage: "bell") }
+                    .accessibilityIdentifier("profile.notifications")
+                NavigationLink(value: AppRoute.voiceSettings) { Label("语音输入", systemImage: "waveform") }
             }
-            Section {
-                NavigationLink(value: AppRoute.cameras) { Label("我的设备",systemImage: "video") }
-                if !MobileServiceConfiguration.current.isInternalDemo { NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入",systemImage: "link") } }
-                NavigationLink(value: AppRoute.personalAgent) { Label("助手记忆与提醒",systemImage: "sparkles") }
-                NavigationLink(value: AppRoute.personalInbox) { Label("助手提醒",systemImage: "tray") }
+            Section("设置与帮助") {
+                NavigationLink(value: AppRoute.settings) { Label(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接", systemImage: "network") }
+                NavigationLink(value: AppRoute.privacy) { Label("隐私与数据", systemImage: "hand.raised") }
+                NavigationLink(value: AppRoute.help) { Label("使用帮助", systemImage: "questionmark.circle") }
+            }
+            Section("测试与联调") {
                 if MobileServiceConfiguration.current.isInternalDemo {
-                    NavigationLink(value: AppRoute.demoScene) { Label("测试主动守护场景",systemImage: "play.rectangle") }
+                    NavigationLink(value: AppRoute.demoScene) { Label("合成场景演示", systemImage: "play.rectangle") }
                 }
-                NavigationLink(value: AppRoute.notificationSettings) { Label("通知与提醒",systemImage: "bell") }
-                NavigationLink(value: AppRoute.voiceSettings) { Label("语音与 AI",systemImage: "waveform") }
-                NavigationLink(value: AppRoute.settings) { Label(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接",systemImage: "network") }
-                NavigationLink(value: AppRoute.privacy) { Label("隐私与数据",systemImage: "hand.raised") }
-                NavigationLink(value: AppRoute.help) { Label("帮助与支持",systemImage: "questionmark.circle") }
+                if !MobileServiceConfiguration.current.isInternalDemo {
+                    NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入", systemImage: "link") }
+                }
+                NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }
             }
-        }.contentMargins(.top, 12, for: .scrollContent).scrollContentBackground(.hidden).pageStyle("我的")
+        }.contentMargins(.top, 12, for: .scrollContent).scrollContentBackground(.hidden).agentPageStyle("我的", largeTitle: true)
     }
 }
 struct EditProfileView: View {
@@ -65,8 +65,99 @@ struct ServiceSettingsView: View {
     }
 }
 struct NotificationSettingsView: View {
+    @EnvironmentObject var store: AppStore
+    var body: some View { NotificationSettingsContent(settings: store.reminderSettings) }
+}
+
+private struct NotificationSettingsContent: View {
+    @EnvironmentObject var store: AppStore
+    @ObservedObject var settings: ReminderSettings
+    @ObservedObject private var push = PushNotifications.shared
     @AppStorage("showFeedback") var feedback = true
-    var body: some View { Form { Section { Toggle("应用内操作反馈",isOn: $feedback); Text("关闭后仍在详情页保留操作结果和错误。后台远程推送尚未接入；新告警可在首页“需要关注”查看。").font(.caption).foregroundStyle(Brand.muted) }; NavigationLink("查看待处理事项", value: AppRoute.alerts) }.pageStyle("通知与提醒") }
+    private func preference<Value>(_ key: WritableKeyPath<PersonalPreferences, Value>) -> Binding<Value> {
+        Binding(get: { settings.preferences[keyPath: key] }, set: { settings.update(key, to: $0) })
+    }
+    private var phoneStatus: String {
+        if !push.wanted { return "已关闭" }
+        if !push.allowed { return "等待系统允许" }
+        if push.status?.serverReady == false { return "服务正在准备" }
+        return push.status?.enabled == true ? "已开启" : "正在连接"
+    }
+    var body: some View {
+        Form {
+            Section("手机通知") {
+                Toggle("手机推送", isOn: Binding(get: { push.wanted }, set: { wanted in
+                    Task { if wanted { await push.enable() } else { await push.disable() } }
+                })).disabled(push.busy).accessibilityIdentifier("notifications.phone")
+                LabeledContent("状态", value: phoneStatus)
+                if push.authorization == .denied {
+                    Button("前往系统设置允许通知") { openSystemSettings() }
+                }
+                if !push.wanted && push.status?.enabled == true { Text("正在同步关闭，请保持网络连接。").font(.caption).foregroundStyle(Brand.muted) }
+                Text("离开 App 后接收提醒、耗时任务结果和待确认草案。首次开启会弹出 iOS 授权窗口；锁屏只显示简短提示。").font(.caption).foregroundStyle(Brand.muted)
+                if let error = push.error { Text(error).foregroundStyle(.orange).font(.caption) }
+            }
+            Section("助手主动提醒") {
+                Toggle("摄像头事件与后续变化", isOn: preference(\.enabled))
+                    .accessibilityIdentifier("notifications.proactive")
+                Toggle("每日守护概况", isOn: preference(\.dailySummary))
+                    .disabled(!settings.preferences.enabled).accessibilityIdentifier("notifications.daily")
+                if settings.preferences.dailySummary && settings.preferences.enabled {
+                    Stepper("每日 \(settings.preferences.summaryHour):00", value: preference(\.summaryHour), in: 0...23)
+                        .accessibilityIdentifier("notifications.summaryHour")
+                }
+                Text("根据已接收的事件、守护记录和待处理事项提醒你。开启提醒不会自动启动摄像头守护。").font(.caption).foregroundStyle(Brand.muted)
+            }.disabled(!settings.loaded || settings.loading)
+            Section("免打扰") {
+                Stepper("开始：\(settings.preferences.quietStart):00", value: preference(\.quietStart), in: 0...23)
+                    .accessibilityIdentifier("notifications.quietStart")
+                Stepper("结束：\(settings.preferences.quietEnd):00", value: preference(\.quietEnd), in: 0...23)
+                    .accessibilityIdentifier("notifications.quietEnd")
+                Text("使用手机当前时区。免打扰期间暂存，之后重新核对；起止相同则全天允许提醒。普通提醒每天最多 6 条，间隔至少 5 分钟。").font(.caption).foregroundStyle(Brand.muted)
+            }.disabled(!settings.loaded || settings.loading)
+            Section {
+                if settings.loading || settings.saving {
+                    Label(settings.saving ? "正在保存更改…" : "正在读取设置…", systemImage: "arrow.triangle.2.circlepath")
+                } else if let error = settings.error {
+                    Text(error).foregroundStyle(.orange)
+                    Button("重试") { if settings.loaded { settings.retry() } else { Task { await settings.load(store) } } }
+                } else {
+                    Label(settings.savedOnce ? "已自动保存" : "调整后自动保存", systemImage: settings.savedOnce ? "checkmark.circle" : "arrow.triangle.2.circlepath")
+                }
+            }.font(.caption).foregroundStyle(Brand.muted).accessibilityIdentifier("notifications.saveState")
+            Section {
+                NavigationLink("查看提醒记录", value: AppRoute.personalInbox)
+                DisclosureGroup("提醒依据与后台检查") {
+                    Text("没有运行中的守护时，助手不会假装正在看现场。摄像头接入和具体守护仍需在摄像头 Skill 中设置。").font(.caption)
+                    if store.data.personal?.activity?.isEmpty ?? true { Text("暂无待检查事项。").font(.caption).foregroundStyle(Brand.muted) }
+                    ForEach(Array((store.data.personal?.activity ?? []).prefix(5))) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.statusLabel).font(.subheadline)
+                            Text(item.reason).font(.caption).foregroundStyle(Brand.muted)
+                        }
+                    }
+                }
+            }
+            Section {
+                DisclosureGroup("测试通知与连接检查") {
+                    LabeledContent("系统权限", value: push.permissionLabel)
+                    Button("向这台手机发送测试通知") { Task { await push.test() } }
+                        .disabled(push.busy || !push.allowed || push.status?.enabled != true || push.status?.serverReady != true)
+                    if let message = push.feedback { Text(message).font(.subheadline) }
+                    if let status = push.status { LabeledContent("最近一次", value: status.deliveryLabel) }
+                    Text("测试通知不受免打扰时段限制。手机网络和系统专注模式会影响显示。").font(.caption).foregroundStyle(Brand.muted)
+                    Button("刷新通知状态") { Task { await push.sync() } }.disabled(push.busy)
+                }
+                Toggle("应用内操作反馈", isOn: $feedback)
+            }
+        }.pageStyle("通知与提醒").task {
+            push.attach(store.client)
+            async let phone: Void = push.sync()
+            await settings.load(store)
+            await phone
+        }
+    }
+    private func openSystemSettings() { if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) } }
 }
 struct VoiceSettingsView: View {
     var body: some View { Form { Section("语音输入") { Text("按住录音 → 松开转写 → 编辑文字 → 发送给 AI。空录音、权限被拒或识别失败都不会创建任务。"); Text("优先使用设备端中文识别；设备不支持时由 Apple 语音服务处理。录音不保存到本应用，发送给 Agent 的是你确认后的文字。").font(.caption).foregroundStyle(Brand.muted); Button("打开系统权限设置") { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } } }; Section { NavigationLink("检查 AI 服务", value: AppRoute.settings) } }.pageStyle("语音与 AI") }
@@ -83,12 +174,39 @@ struct PrivacyView: View {
     }
 }
 struct HelpView: View {
-    var body: some View { List { Section("如何创建守护") { Text("1. 在 AI 页按住说话或输入文字。\n2. 编辑转写并发送；根据 AI 追问补充信息。\n3. 打开草案，分别圈选两路区域和主视角目标。\n4. 检查触发条件，确认后启用。") }; Section("三种结果") { Text("已确认：有新鲜的观察依据。\n需要处理：已满足提醒条件。\n无法确认：遮挡、离线、过期或视角冲突，暂不判断。") }; Section("处理与停止") { Text("“我已处理”只发起复核，不能直接变成安全。“暂停”可恢复；“停止”结束当前任务。返回不会隐式启用草案。") } }.pageStyle("帮助与支持") }
+    var body: some View { List { Section("如何创建守护") { Text("1. 在助手中输入或说出需求。\n2. 打开草案，确认对象与区域。\n3. 检查条件和可用能力，完成必要测试。\n4. 确认后开始；未就绪时保留草案。") }; Section("三种结果") { Text("已确认：有新鲜的观察依据。\n需要处理：已满足提醒条件。\n无法确认：遮挡、离线、过期或视角冲突，暂不判断。") }; Section("处理与停止") { Text("“我已处理”只发起复核，不能直接变成安全。“暂停”可恢复；“停止”结束当前任务。返回不会隐式启用草案。") } }.pageStyle("帮助与支持") }
 }
 struct CameraListView: View {
     @EnvironmentObject var store: AppStore
-    var body: some View { List { NavigationLink(value: AppRoute.addDevice) { Label("扫描添加设备", systemImage: "qrcode.viewfinder") }; if store.data.cameras.isEmpty { Text("暂无已连接设备。添加设备后完成绑定与画面验证。"); }; ForEach(store.data.cameras) { camera in NavigationLink(value: AppRoute.camera(camera.id)) { VStack(alignment: .leading,spacing: 6) { Text(camera.name).font(.headline); Text("\(camera.model) · \(camera.connectionLabel)").font(.caption).foregroundStyle(Brand.muted); Text(camera.adapter.contains("fixture") ? "测试适配器" : camera.adapter).font(.caption2) } } } }.pageStyle("我的设备").refreshable { await store.refresh() } }
+    var body: some View {
+        List {
+            Section {
+                ConnectionBanner()
+                NavigationLink(value: AppRoute.addDevice) { Label("添加设备", systemImage: "qrcode.viewfinder") }
+                    .accessibilityIdentifier("devices.add")
+            }
+            Section("我的摄像头") {
+                if store.data.cameras.isEmpty { Text("添加摄像头后，在助手中告诉我想关注什么。").foregroundStyle(Brand.muted) }
+                ForEach(store.data.cameras) { camera in
+                    NavigationLink(value: AppRoute.camera(camera.id)) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "video").foregroundStyle(Brand.blue).frame(width: 32)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(camera.name).font(.headline)
+                                Text(camera.model + " · " + camera.connectionLabel).font(.caption).foregroundStyle(Brand.muted)
+                                if camera.adapter.contains("fixture") { Text("合成测试设备").font(.caption2).foregroundStyle(.orange) }
+                            }
+                        }.padding(.vertical, 7)
+                    }.accessibilityIdentifier("devices." + camera.id)
+                }
+            }
+            Section {
+                NavigationLink(value: AppRoute.recordings) { Label("录像库", systemImage: "film") }
+            }
+        }.scrollContentBackground(.hidden).pageStyle("设备").refreshable { await store.refresh() }
+    }
 }
+
 struct CameraDetailView: View {
     @EnvironmentObject var store: AppStore
     let id: String

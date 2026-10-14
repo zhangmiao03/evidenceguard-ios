@@ -40,6 +40,7 @@ class ProactiveEngine:
         self.personal, self.runtime, self.store = personal, runtime, personal.store
         self.ingest = None
         self.demo = None
+        self.push = None
         personal.engine = self
         with self.store.transaction():
             self.store.db.executescript('''
@@ -121,7 +122,7 @@ class ProactiveEngine:
         start,end = preferences['quietStart'],preferences['quietEnd']
         return start <= hour < end if start < end else (hour >= start or hour < end) if start != end else False
 
-    def gate(self, job, now):
+    def gate(self, job, now, publication=True):
         p = self.personal.profile(job['client'])['preferences']
         if not p['enabled']: return 'cancelled',None,'用户已关闭主动提醒'
         if now >= job['expiresAt']: return 'expired',None,'触发已过期，未发送旧提醒'
@@ -158,6 +159,7 @@ class ProactiveEngine:
             if original.get('feedback') in {'handled','dismiss'}: return 'cancelled',None,'用户已处理或不再需要此事件提醒'
             if original.get('feedback')=='snooze': return 'cancelled',None,'后续提醒已交给用户选择的定时复查'
         if self.quiet(p,now): return 'deferred',now+60,'免打扰期间暂存，之后重新核对状态'
+        if not publication: return None
         # Non-urgent assistant messages only: native security alarms are separate.
         day = datetime.fromtimestamp(now,ZoneInfo(p['timezone'])).date()
         if self.merge_target(job,now): return None
@@ -297,6 +299,7 @@ class ProactiveEngine:
                                   (message['id'],job['client'],job['id'],current,json.dumps(message,ensure_ascii=False)))
             self.store.db.execute('INSERT OR IGNORE INTO personal_inbox VALUES (?,?,?,?)',
                                   (message['id'],job['client'],job['dedupe'],json.dumps(message,ensure_ascii=False)))
+            if self.push: self.push.message(job['client'],message,job)
             self.save(job,'sent',reason='规则通过，价值评分'+str(decision.valueScore)+'：'+decision.reason)
             if job['kind']=='schedule':
                 for source in refs:

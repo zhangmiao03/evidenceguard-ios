@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct EvidenceGuardApp: App {
+    @UIApplicationDelegateAdaptor(PushAppDelegate.self) private var appDelegate
     @StateObject private var store = AppStore()
 
     init() {
