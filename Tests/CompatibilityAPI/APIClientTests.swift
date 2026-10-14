@@ -61,7 +61,7 @@ final class APIClientTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLegacyCaptureFlowCompletesWhileObservationsAreStalled() async {
+    func testLegacyCaptureFlowCompletesWhileObservationsAreStalled() async throws {
         let requests = Requests(), diagnostics = Requests()
         let blocked = expectation(description: "diagnostic endpoint is stalled")
         let completed = expectation(description: "media exchange completes without diagnostic acknowledgement")
@@ -81,11 +81,13 @@ final class APIClientTests: XCTestCase {
             } else { item.reply(#"{"status":"ok"}"#) }
         }
         let api = client()
+        let live = try await api.startMedia("sdk-test", traceID: "start-trace")
+        XCTAssertNil(live.traceId)
+        // XCTest waiters on the same test case must not overlap. First ensure
+        // the observation is held, then time only the independent media exchange.
+        await fulfillment(of: [blocked], timeout: 2)
         let flow = Task {
             do {
-                let live = try await api.startMedia("sdk-test", traceID: "start-trace")
-                XCTAssertNil(live.traceId)
-                await fulfillment(of: [blocked], timeout: 2)
                 try await api.liveHeartbeat(live, state: "streaming", sequence: 2, age: 0)
                 let command = try await api.liveCommands(live).first!
                 XCTAssertNil(command.traceId)
@@ -109,44 +111,47 @@ final class APIClientTests: XCTestCase {
 
     func testUnavailableCollectorDoesNotReplaceBusinessErrors() async throws {
         let diagnostics = Requests()
-        let observed = expectation(description: "collector failures ignored")
-        observed.expectedFulfillmentCount = 4
-        StubProtocol.install { item in
-            if item.request.url!.path == "/api/ops/client-events" {
-                let n = diagnostics.append(item.request)
-                if n == 1 { item.reply("{}", status: 404) }
-                else if n == 2 { item.reply("{}", status: 503) }
-                else if n == 3 { item.fail(.timedOut) }
-                else { item.fail(.notConnectedToInternet) }
-                observed.fulfill()
-            } else if item.request.url!.path.hasSuffix("/frames") {
-                item.reply(#"{"detail":"采集会话已停止"}"#, status: 409)
-            } else if item.request.url!.path.hasSuffix("/stop") {
-                item.reply("not-json")
-            } else {
-                item.reply(#"{"id":"live-test","deviceId":"sdk-test","token":"synthetic"}"#)
+        for scenario in 0..<4 {
+            let observed = expectation(description: "collector failure \(scenario) ignored")
+            StubProtocol.install { item in
+                if item.request.url!.path == "/api/ops/client-events" {
+                    diagnostics.append(item.request)
+                    switch scenario {
+                    case 0: item.reply("{}", status: 404)
+                    case 1: item.reply("{}", status: 503)
+                    case 2: item.fail(.timedOut)
+                    default: item.fail(.notConnectedToInternet)
+                    }
+                    observed.fulfill()
+                } else if item.request.url!.path.hasSuffix("/frames") {
+                    item.reply(#"{"detail":"采集会话已停止"}"#, status: 409)
+                } else if item.request.url!.path.hasSuffix("/stop") {
+                    item.reply("not-json")
+                } else {
+                    item.reply(#"{"id":"live-test","deviceId":"sdk-test","token":"synthetic"}"#)
+                }
             }
+            // Fresh delivery per failure avoids testing scheduling/overflow here;
+            // the separate held-request test verifies the bounded drop policy.
+            let api = client(), live = LiveSession(id: "live-test", deviceId: "sdk-test", token: "synthetic", traceId: nil)
+            if scenario == 1 {
+                do {
+                    try await api.uploadLiveFrame(live, body: LiveFrameUpload(requestId: "capture-test", sequence: 2,
+                        imageBase64: "synthetic-frame", width: 32, height: 24, sampledAt: 1))
+                    XCTFail("Expected original 409")
+                } catch let error as APIProblem {
+                    XCTAssertEqual(error.statusCode, 409)
+                    XCTAssertEqual(error.message, "采集会话已停止")
+                }
+            } else if scenario == 2 {
+                do { try await api.stopMedia(live); XCTFail("Expected original decoding error") }
+                catch let error as APIProblem { XCTAssertEqual(error.message, "当前版本无法读取服务返回的数据，请更新测试版本。") }
+            } else {
+                let another = try await api.startMedia("sdk-test")
+                XCTAssertEqual(another.deviceId, "sdk-test")
+            }
+            await fulfillment(of: [observed], timeout: 2)
         }
-        let api = client()
-        let live = try await api.startMedia("sdk-test")
-        // Let each immediate failed observation release its slot; no retry is expected.
-        try await Task.sleep(for: .milliseconds(100))
-        do {
-            try await api.uploadLiveFrame(live, body: LiveFrameUpload(requestId: "capture-test", sequence: 2,
-                imageBase64: "synthetic-frame", width: 32, height: 24, sampledAt: 1))
-            XCTFail("Expected original 409")
-        } catch let error as APIProblem {
-            XCTAssertEqual(error.statusCode, 409)
-            XCTAssertEqual(error.message, "采集会话已停止")
-        }
-        try await Task.sleep(for: .milliseconds(100))
-        do { try await api.stopMedia(live); XCTFail("Expected original decoding error") }
-        catch let error as APIProblem { XCTAssertEqual(error.message, "当前版本无法读取服务返回的数据，请更新测试版本。") }
-        try await Task.sleep(for: .milliseconds(100))
-        let another = try await api.startMedia("sdk-test")
-        XCTAssertEqual(another.deviceId, "sdk-test")
-        await fulfillment(of: [observed], timeout: 2)
-        try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(diagnostics.all.count, 4, "Collector errors must not cause retries")
     }
 
