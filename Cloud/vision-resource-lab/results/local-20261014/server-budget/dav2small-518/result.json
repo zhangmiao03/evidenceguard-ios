@@ -1,0 +1,192 @@
+{
+  "name": "dav2small-518",
+  "kind": "depth",
+  "profile": "server-budget",
+  "args": {
+    "kind": "depth",
+    "model": "dav2small",
+    "resolution": 518,
+    "algorithm": "dis",
+    "threads": 2,
+    "cpu_budget": 2.0,
+    "memory_gib": 4.0,
+    "profile": "server-budget",
+    "run": "local-20261014",
+    "samples": 19,
+    "flow_pairs": 113,
+    "warmup": 2
+  },
+  "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "packages": {
+    "numpy": "2.2.6",
+    "opencv-python-headless": "4.12.0.88",
+    "onnxruntime": "1.23.2",
+    "psutil": "7.0.0",
+    "Pillow": "11.3.0"
+  },
+  "cpu_model": "Intel(R) Core(TM) i9-14900HX",
+  "logical_cpus_visible": 32,
+  "cpu_affinity_visible": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "note": "WSL host resource quota, not AWS EC2 performance simulation",
+  "cgroup_before": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-server-budget-dav2small.service",
+    "cpu.max": "200000 100000",
+    "cpu.stat": "usage_usec 256891\nuser_usec 236821\nsystem_usec 20069\nnice_usec 0\nnr_periods 3\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "4294967296",
+    "memory.current": "32169984",
+    "memory.peak": "32169984",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "cgroup_after": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-server-budget-dav2small.service",
+    "cpu.max": "200000 100000",
+    "cpu.stat": "usage_usec 103668046\nuser_usec 102804312\nsystem_usec 863733\nnice_usec 0\nnr_periods 567\nnr_throttled 77\nthrottled_usec 259660\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "4294967296",
+    "memory.current": "120913920",
+    "memory.peak": "841023488",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "peak_process_rss_mib": 842.08203125,
+  "final_process_rss_mib": 159.69140625,
+  "sample_count": 19,
+  "timings_ms": {
+    "decode_ms": {
+      "mean": 12.699227210527017,
+      "p50": 11.293111000000522,
+      "p95": 17.716567599998704,
+      "min": 8.148016000006919,
+      "max": 20.283552999998733
+    },
+    "preprocess_ms": {
+      "mean": 20.818771157894165,
+      "p50": 20.119961000006015,
+      "p95": 32.30508419999864,
+      "min": 16.59438899999799,
+      "max": 34.849637999997185
+    },
+    "inference_ms": {
+      "mean": 2611.965630263158,
+      "p50": 2476.7304410000006,
+      "p95": 3100.380417099997,
+      "min": 2150.8927470000003,
+      "max": 5264.492932000003
+    },
+    "postprocess_ms": {
+      "mean": 4.969845052630492,
+      "p50": 4.665520999992623,
+      "p95": 7.737223099998402,
+      "min": 3.755727999987357,
+      "max": 7.989646999995159
+    },
+    "pipeline_ms": {
+      "mean": 2650.45347368421,
+      "p50": 2512.097747999995,
+      "p95": 3141.8368843999933,
+      "min": 2180.0457849999902,
+      "max": 5305.468990999998
+    }
+  },
+  "continuous_pipeline_throughput_per_s": 0.37729392721992205,
+  "mean_cpu_cores_during_timed_pipeline": 1.873537501189469,
+  "average_cpu_budget_utilization_pct": 93.67687505947345,
+  "process_wall_s_including_load_warmup_preview": 56.296749242,
+  "fixture": {
+    "source_name": "compare-input-output.mp4",
+    "source_sha256": "00542e127767bd7f579186c62dc62ca9410f03fbc721c4d56cf50024cc86882c",
+    "source_width": 1708,
+    "source_height": 480,
+    "source_fps": 24.0,
+    "decoded_frames": 456,
+    "crop": "right-half",
+    "crop_xywh": [
+      854,
+      0,
+      854,
+      480
+    ],
+    "sample_fps_requested": 6.0,
+    "jpeg_quality": 95,
+    "timestamps": "source frame index / FPS, not a wall-clock camera timestamp"
+  },
+  "model_artifact": {
+    "repo": "onnx-community/depth-anything-v2-small",
+    "revision": "4472b7362082ad9968fee890ca0f1e5aca36b93d",
+    "file": "onnx/model.onnx",
+    "origin": "community ONNX conversion, not official Depth Anything ONNX",
+    "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model.onnx",
+    "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
+    "verified_upstream_sha256": true,
+    "bytes": 99060839
+  },
+  "providers": [
+    "CPUExecutionProvider"
+  ],
+  "model_input": {
+    "name": "pixel_values",
+    "declared_shape": [
+      "batch_size",
+      3,
+      "height",
+      "width"
+    ],
+    "actual_nchw": [
+      1,
+      3,
+      518,
+      924
+    ],
+    "dtype": "float32"
+  },
+  "output_shape": [
+    518,
+    924
+  ],
+  "load_ms": 935.8671919999963,
+  "warmup_ms": 4669.023418999998,
+  "warmup_count": 2,
+  "outputs_finite_nonconstant": true,
+  "last_raw_percentiles_2_50_98": [
+    0.06938046529889108,
+    2.767640233039856,
+    6.340213499069214
+  ],
+  "timed_cpu_seconds": 94.348755584,
+  "meaning": "affine-invariant relative depth / disparity-like values, not metric distance",
+  "timing_scope": "JPEG disk-read/decode + preprocessing + model + validity/percentile stats; excludes video decode, network, render/save, VLM and queue wait"
+}

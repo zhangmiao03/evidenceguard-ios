@@ -1,0 +1,52 @@
+{
+  "duration_requested_s": 60,
+  "duration_actual_s": 59.86361944600003,
+  "target_depth_hz": 1,
+  "target_flow_hz": 6,
+  "depth_count": 60,
+  "flow_count": 356,
+  "processed_ticks": 360,
+  "dropped_source_ticks": 0,
+  "flow_note": "one missing flow pair at each 19-second video-loop boundary is intentional",
+  "frame_processing_ms": {
+    "mean": 43.39700537222492,
+    "p50": 20.919736500019326,
+    "p95": 118.88813725001341,
+    "min": 11.130233000017142,
+    "max": 283.9374880000207
+  },
+  "scheduled_frame_age_ms": {
+    "mean": 44.875220833348095,
+    "p50": 21.361986666676103,
+    "p95": 126.61606761667205,
+    "min": 11.21225733336928,
+    "max": 291.2998450000259
+  },
+  "peak_process_rss_mib": 197.40234375,
+  "final_process_rss_mib": 198.0078125,
+  "cpu_seconds": 8.39927081,
+  "average_cpu_cores": 0.1403067654066016,
+  "average_1cpu_budget_utilization_pct": 14.030676540660162,
+  "cgroup_before": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-sustained.service",
+    "cpu.max": "100000 100000",
+    "cpu.stat": "usage_usec 255870\nuser_usec 151787\nsystem_usec 104082\nnice_usec 0\nnr_periods 4\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "2147483648",
+    "memory.current": "201658368",
+    "memory.peak": "201658368",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "cgroup_after": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-sustained.service",
+    "cpu.max": "100000 100000",
+    "cpu.stat": "usage_usec 8910114\nuser_usec 8575730\nsystem_usec 334384\nnice_usec 0\nnr_periods 605\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "2147483648",
+    "memory.current": "342618112",
+    "memory.peak": "342618112",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "pipeline": "one CPU process; DepthART MNv4-M-slim-SPF 448 + DIS FAST 640x360; JPEG decode; latest-frame scheduling",
+  "scope": "local file replay, not live H264 decode, network, backend, VLM, multiple cameras, EC2 CPU-credit or long-duration stability test"
+}

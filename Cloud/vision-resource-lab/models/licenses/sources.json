@@ -1,0 +1,7 @@
+{
+  "DepthART-LICENSE.txt": "https://raw.githubusercontent.com/xuefeng-cvr/DepthART/b307c123f19051e2d969960bba93ee3684874b90/LICENSE",
+  "DepthART-THIRD-PARTY-NOTICES.md": "https://github.com/xuefeng-cvr/DepthART/blob/b307c123f19051e2d969960bba93ee3684874b90/README.md",
+  "Depth-Anything-V2-APACHE-2.0.txt": "https://raw.githubusercontent.com/DepthAnything/Depth-Anything-V2/a561b849ebae10a6f5ef49e26c83cbbcd36c71bf/LICENSE",
+  "DAV2-Small-ONNX-MODEL-CARD.md": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/README.md",
+  "DepthART-HF-MODEL-CARD.md": "https://huggingface.co/Fengxue93/DepthART/resolve/9e154201cd8fb3453c9def581997aaf1b4da3c22/README.md"
+}

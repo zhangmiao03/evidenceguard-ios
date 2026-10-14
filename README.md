@@ -6,6 +6,7 @@
 - [此前独立 Web 原型](https://github.com/zhangmiao03/evidenceguard-web)：历史参考；本轮 Web 实现在本仓库 `Web/`。
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
 - [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、新加坡三个后端环境与迁移状态。
+- [深度与光流实测、复现工具和模型](Docs/VISION-RESOURCE-BENCHMARK.md)：本机 CPU/内存限额实验，三份 ONNX 权重通过 Git LFS 获取。
 
 ## 当前进度
 
@@ -35,6 +36,7 @@
 | `Web/` | React / TypeScript 设备工作台：账号接入、设备选择、官方直播、Agent 观察与证据 |
 | `Cloud/server/` | Agent harness、工具、录像检索、草案试跑与设备占用 |
 | `Cloud/fixture-lab/` | 双路模拟摄像头与离线回归 |
+| `Cloud/vision-resource-lab/` | 深度与光流资源测试、实测报告和 Git LFS 模型 |
 | `SDK/Bridge/`、`SDK/prepare.py` | 官方 App SDK 的自有桥接与本机构建准备 |
 | `scripts/` | SDK 恢复、iOS 归档 / 校验 / 上传 |
 
