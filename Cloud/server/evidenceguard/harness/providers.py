@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from typing import Protocol
 import httpx
+from ..ops import traced, model_post
 
 class ProviderError(RuntimeError):
     pass
@@ -20,12 +21,13 @@ class OpenAICompatibleProvider:
         self.name = self.model or "not-configured"
         self.ready = bool(self.base_url and self.model and self.key)
 
+    @traced('chat')
     async def complete(self, messages: list[dict], tools: list[dict]) -> dict:
         if not self.ready:
             raise ProviderError("模型 API 尚未配置，请在服务端填写地址、模型 ID 和密钥。")
         try:
             async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
-                response = await client.post(self.base_url + "/chat/completions",
+                response = await model_post(client, self.base_url + "/chat/completions",
                     headers={"Authorization": "Bearer " + self.key},
                     json={"model": self.model, "messages": messages, "tools": tools, "tool_choice": "auto", "stream": False})
             if response.status_code >= 400:

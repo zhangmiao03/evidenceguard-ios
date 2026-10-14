@@ -49,13 +49,14 @@ struct CameraDevice: Codable, Identifiable, Equatable {
     var channels: [CameraChannel]; var capabilities: [String: String]; var evidence: String
     var lastFrameUrl: String?; var lastCapturedAt: Double?
     var fresh: Bool { connection == "online" && lastCapturedAt.map { Date().timeIntervalSince1970 - $0 < 8 } == true }
-    var connectionLabel: String { fresh ? "画面可用" : connection == "offline" ? "设备离线" : "等待新画面" }
+    var connectionLabel: String { connection == "event_only" ? "事件已接入" : fresh ? "画面可用" : connection == "offline" ? "设备离线" : "等待新画面" }
 }
 struct EvidenceItem: Codable, Identifiable, Equatable {
     var id: String; var skillId: String; var cameraId: String; var capturedAt: Double; var relation: String
     var reason: String; var imageUrl: String?; var revision: Int; var sourceType: String
     var recordingId: String?; var clipStart: Double?; var clipEnd: Double?; var seekSeconds: Double?; var originalEventTime: Double?; var videoUrl: String?
-    var title: String { if sourceType == "synthetic_demo" { return "合成测试 · 画面核验" }; if sourceType == "official_sdk" { return "摄像头事件 · 画面核验" }; if sourceType == "replay" { return "回放测试 · 区域状态提醒" }; return ["inside":"目标在区域内", "outside":"目标在区域外", "unknown":"无法确认目标位置"][relation] ?? "观察记录" }
+    var deviceName: String?; var detectionType: String?; var reviewStatus: String?
+    var title: String { if sourceType == "synthetic_demo" { return "合成测试 · 画面核验" }; if sourceType == "official_sdk" { return "摄像头事件" }; if sourceType == "replay" { return "回放测试 · 区域状态提醒" }; return ["inside":"目标在区域内", "outside":"目标在区域外", "unknown":"无法确认目标位置"][relation] ?? "观察记录" }
     var exportText: String { "EvidenceGuard 观察记录\n\(title)\n\(reason)\n\(["replay", "synthetic_demo"].contains(sourceType) ? "记录生成时间（非原录像拍摄时间）" : "采集时间")：\(displayTime(capturedAt))\n设备：\(cameraId)\n任务：\(skillId) · 规则版本 \(revision)\n来源：\(sourceType)\n证据 ID：\(id)" }
 }
 struct BootstrapSummary: Codable, Equatable { var activeSkills: Int; var openAlerts: Int; var unknownSkills: Int }
@@ -67,7 +68,18 @@ struct Bootstrap: Codable, Equatable {
     var recordings: [VideoRecording]?
     var videoModels: VideoModelInfo?
     var personal: PersonalSnapshot?
+    var cameraEvents: SDKEventTimeline?
     static let empty = Bootstrap(now: 0, summary: .init(activeSkills: 0, openAlerts: 0, unknownSkills: 0), skills: [], cameras: [], evidence: [], agent: .init(provider: "待连接", mode: "", ready: false, tools: []), integration: .init(lab: "", officialSdk: "已收到，待真机验证", physicalDevicesValidated: false))
+}
+struct SDKEventTimeline: Codable, Equatable {
+    var events: [SDKEventRecord]; var truncated: Bool; var continuousCoverage: Bool
+}
+struct SDKEventRecord: Codable, Identifiable, Equatable {
+    var id: String; var cameraId: String; var deviceName: String
+    var startMs: Int64; var endMs: Int64; var detectionType: String
+    var hasVideo: Bool; var imageUrl: String?; var reviewStatus: String; var reason: String; var sourceType: String
+    var date: Date { Date(timeIntervalSince1970: Double(startMs) / 1_000) }
+    var label: String { ["human":"人物活动", "motion":"画面活动", "package_put":"包裹放置", "package_take":"包裹取走", "vehicle":"车辆活动", "pet":"宠物活动", "ring":"门铃响起"][detectionType] ?? "设备事件" }
 }
 struct ToolReceipt: Codable, Equatable { var tool: String; var status: String }
 struct CameraCapture: Codable, Identifiable, Equatable {
@@ -129,10 +141,30 @@ enum AppRoute: Hashable {
     case pushConversation(String, String?, String)
     case demoScene
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
-    case conversation(String, String?), settings, officialSDK, notificationSettings, voiceSettings, privacy, help, profile
+    case conversation(String, String?), settings, officialSDK, cameraEvents, notificationSettings, voiceSettings, privacy, help, profile
     case addDevice, personalAgent, personalInbox, account
     case recordings, video(String, Double), replayVideo(String, Double)
     case evidenceConversation(String)
+}
+
+struct PushTap: Identifiable, Codable, Equatable {
+    var id: String
+    var scope: String
+}
+
+enum PushNavigation {
+    // Retain a tap while the vendor workspace releases or a sheet owns the UI.
+    // Consume only after product navigation is ready, preserving other tab paths.
+    @discardableResult static func consume(_ pending: inout PushTap?, selection: inout AppTab,
+                                           paths: inout [[AppRoute]], productVisible: Bool,
+                                           presentationBlocked: Bool) -> Bool {
+        guard productVisible, !presentationBlocked, let tap = pending,
+              paths.indices.contains(AppTab.assistant.rawValue) else { return false }
+        selection = .assistant
+        paths[AppTab.assistant.rawValue].append(.pushDelivery(tap.id, tap.scope))
+        pending = nil
+        return true
+    }
 }
 struct DemoSceneSnapshot: Decodable { var enabled: Bool; var scenes: [DemoScene] }
 struct DemoScene: Decodable, Identifiable {

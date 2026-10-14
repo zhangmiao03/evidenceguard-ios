@@ -11,7 +11,11 @@ from fastapi.staticfiles import StaticFiles
 import uuid
 from pydantic import BaseModel, Field
 from .camera.adapters.fixture_lab import FixtureLabAdapter
+from .camera.adapters.sdk_events import SDKEventsAdapter
 from .camera.registry import CameraRegistry
+from .camera.live import LiveDevices
+from .camera.live_routes import install_live_routes
+from .camera.sources import official_mode, fixture_mode, REAL_SOURCES, visible_recording
 from .camera.service import CameraService
 from .harness.scheduler import TaskScheduler
 from .harness.runtime import AgentRuntime
@@ -30,10 +34,11 @@ from .access import install_access
 from .personal import PersonalAgent, Preferences, MemoryInput, installation
 from .proactive import ProactiveEngine, Feedback, BindConversation
 from .visual_review import VisualReview
-from .camera.ingest import SDKIngest, SDKBatch
+from .camera.ingest import SDKIngest, SDKBatch, SDKDevices
 from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
 from .push import PushService, DeviceRegistration, Presence
+from .ops import install_ops
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -52,7 +57,7 @@ class AgentRequest(BaseModel):
     requestId: str = Field(min_length=1,max_length=100)
     skillId: str | None = None
     cameraId: str | None = None
-    executionMode: Literal['live','history'] = 'live'
+    executionMode: Literal['live','history'] = Field(default='live',description='live 允许受限现场工具，但不自动启动播放器；history 只读已保存资料。不是客户端平台或硬件在线状态。')
     historyFilter: HistoryFilter | None = None
     replyToMessageId: str | None = Field(default=None,max_length=100)
 class RecheckRequest(BaseModel): acknowledged: bool = False
@@ -77,11 +82,15 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     store=Store(db_path or Path(os.getenv('EG_DATABASE',str(root/'data/evidenceguard.sqlite3'))))
     store.recover_ownership()
     personal = PersonalAgent(store)
-    camera=CameraRegistry(camera_adapter or FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')))
+    official_events=official_mode() or (camera_adapter is None and not fixture_mode())
+    camera=CameraRegistry(camera_adapter or (FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')) if fixture_mode() else SDKEventsAdapter(store)))
+    camera.official_mode=official_events
+    camera.live=LiveDevices(store)
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
     database=Path(store.db.execute('PRAGMA database_list').fetchone()[2])
     videos=VideoService(store,os.getenv('EG_VIDEO_ROOT',str(database.parent/'recordings')))
+    videos.official_mode=official_events
     videos.recover()
     camera.replay=ReplayAdapter(videos)
     replay_worker=ReplayWorker(store,videos,captures)
@@ -97,8 +106,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     agent.visual_review=visual_review
     replay_worker.visual_budget=visual_review
     ingest=SDKIngest(store,visual_review,personal)
+    camera.sdk_ingest=ingest
     proactive.ingest=ingest
     demo=DemoScenes(store,visual_review,proactive)
+    if official_events: demo.enabled=False
     proactive.demo=demo
     worker=ObservationWorker(store,camera,camera_service=captures,scheduler=scheduler,replay_worker=replay_worker)
     @asynccontextmanager
@@ -126,9 +137,15 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await worker.shutdown()
             await videos.shutdown()
             await scheduler.shutdown()
+            await camera.live.shutdown()
+            if getattr(store, 'ops', None): await asyncio.to_thread(store.ops.close)
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
     install_access(app)
+    install_ops(app, store)
+    for model in (agent.model_provider, videos.vision, getattr(videos, 'embedding', None)):
+        if model is not None: model.ops = store.ops
+    install_live_routes(app, camera, captures)
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
     app.state.replay_worker=replay_worker
@@ -155,9 +172,20 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def health(): return dict(status='ok',workerError=worker.last_error,modelReady=agent.ready)
     @app.get('/api/bootstrap')
     async def bootstrap(request: Request):
+        """iOS/Web 共用初始化数据；包含任务、设备、证据及实际配置的模型标识。
+
+        integration 是源码接入状态，physicalDevicesValidated=false 表示真机尚未验收；
+        不代表所有设备离线。设备连接与能力以 cameras 中各项的运行时回执为准。
+        """
         manifests=await camera.manifests()
         skills=[s | {'capability':assess(s,videos,manifests)} for s in store.skills()]
-        return dict(personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+        evidence=store.evidence(); recordings=videos.db.recordings()[:100]
+        if official_events:
+            ids={m.id for m in manifests}
+            skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
+            evidence=[e for e in evidence if e['sourceType'] in REAL_SOURCES]
+            recordings=[r for r in recordings if visible_recording(r,ids)]
+        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='iOS event relay and iOS/Web foreground relay implemented; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
     def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
     def push_key(request): return request.headers.get('X-EG-Push-Key')
     @app.get('/api/push/status')
@@ -186,6 +214,13 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             raw.extend(chunk)
             if len(raw)>8_000_000: raise HTTPException(413,'单批事件上限为8MB，请分批上传')
         return ingest.accept(SDKBatch.model_validate_json(bytes(raw)),client)
+    @app.post('/api/sdk/devices')
+    async def sdk_devices(request: Request,body: SDKDevices):
+        personal_client(request)
+        return ingest.register_devices(body)
+    @app.get('/api/sdk/events')
+    async def sdk_events(cameraId: str | None = Query(default=None,max_length=100)):
+        return ingest.timeline(cameraId)
     @app.get('/api/sdk/events/status')
     async def sdk_status(): return ingest.status()
     @app.get('/api/personal')
@@ -212,7 +247,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             value=json.loads(await command('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(videos.file(recording_id))))['streams'][0]
             r['aspectRatio']=value['width']/value['height']; videos.db.save_recording(r)
         return videos.public(r)
-    @app.api_route('/api/recordings/{recording_id}/video',methods=['GET','HEAD'])
+    @app.get('/api/recordings/{recording_id}/video')
+    @app.head('/api/recordings/{recording_id}/video')
     async def play_recording(recording_id:str):
         # FileResponse implements byte Range/206, needed by AVPlayer for seeking.
         return FileResponse(videos.file(recording_id),media_type='video/mp4',headers={'Cache-Control':'private, max-age=3600'})
@@ -232,7 +268,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         e=replay_evidence(evidence_id)
         return dict(id=e['id'],cameraId=e['cameraId'],title='回放提醒证据',recordedAt=e['recordedAt']+e['clipStart'] if e.get('recordedAt') is not None else None,
             sourceType='replay',timestampMeaning=e.get('timestampMeaning'),status='evidence',duration=e['clipEnd']-e['clipStart'],segmentCount=1,error=None,playbackUrl=e['videoUrl'])
-    @app.api_route('/api/replay-evidence/{evidence_id}/video',methods=['GET','HEAD'])
+    @app.get('/api/replay-evidence/{evidence_id}/video')
+    @app.head('/api/replay-evidence/{evidence_id}/video')
     async def replay_video(evidence_id:str):
         return FileResponse(replay_evidence(evidence_id)['videoPath'],media_type='video/mp4')
     @app.post('/api/skills/{skill_id}/replay-acknowledge')
@@ -267,6 +304,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         finally: incoming.unlink(missing_ok=True)
     @app.post('/api/skills/drafts',status_code=201)
     async def manual_draft(body:ManualDraftRequest):
+        """为 iOS/Web 编辑器保存草案；保存不启用，不自动配网或绑定设备。"""
         manifests=await camera.manifests()
         if body.cameraId not in {m.id for m in manifests}:raise ValueError('请选择已配置的摄像头')
         if body.replacesId:
@@ -296,6 +334,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         return preparation.update(s,body.revision,body.action,body.completed,await camera.manifests())
     @app.post('/api/skills/{skill_id}/publish')
     async def publish(skill_id:str):
+        """真机持续任务发布门禁，当前始终返回未就绪；准备勾选或回放试跑不能解除此限制。"""
         s=store.skill(skill_id)
         if not s:raise KeyError(skill_id)
         result=preparation.read(s,await camera.manifests())
@@ -314,7 +353,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         if not r.get('videoPath'):raise KeyError(trial_id)
         s=store.skill(r['skillId'])
         return dict(id=r['id'],cameraId=r['cameraId'],title='试跑片段 · 不是真实告警',recordedAt=None,sourceType='trial',timestampMeaning=r.get('timestampMeaning'),status='evidence',duration=r['clipEnd']-r['clipStart'],segmentCount=1,error=None,playbackUrl=r['videoUrl'])
-    @app.api_route('/api/skill-trials/{trial_id}/video',methods=['GET','HEAD'])
+    @app.get('/api/skill-trials/{trial_id}/video')
+    @app.head('/api/skill-trials/{trial_id}/video')
     async def trial_video(trial_id:str):
         r=trials.read(trial_id)
         if not r.get('videoPath'):raise KeyError(trial_id)
@@ -420,6 +460,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     @app.post('/api/agent/conversations',status_code=201)
     async def conversation_create(body:NewConversation,request:Request):
         return conversations.create(personal_client(request),body.requestId)
+    @app.post('/api/agent/conversations/main')
+    async def conversation_main(request:Request):
+        """按 X-EG-Installation-ID 幂等获取主会话；保留既有 iOS 绑定，不合并不同安装实例的个人记录。"""
+        return conversations.ensure_main(personal_client(request))
     @app.patch('/api/agent/conversations/{conversation_id}')
     async def conversation_rename(conversation_id:str,body:ConversationTitle,request:Request):
         return conversations.rename(conversation_id,personal_client(request),body.title)
@@ -460,7 +504,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     web_setting = os.getenv('EG_WEB_ROOT')
     web_root = Path(web_setting) if web_setting else None
     if web_root is not None and (web_root/'index.html').is_file():
+        @app.get('/dashboard', include_in_schema=False)
+        @app.get('/dashboard/', include_in_schema=False)
+        async def dashboard_shell(): return FileResponse(web_root/'index.html')
         app.mount('/', StaticFiles(directory=web_root, html=True), name='web')
     return app
 
-app=create_app()
+app=create_app(start_worker=os.getenv('EG_DISABLE_WORKERS') != '1')

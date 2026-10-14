@@ -2,7 +2,13 @@
 
 ## 为什么先固定合同
 
-2026-10-08 已收到 T8171、T8214 官方 App / Web SDK。最小业务合同继续保留，RTSP 夹具只用于模拟。App 增加原生 Kotlin 设备发现、事件列表和缩略图联调；Web 增加直播与按秒抽帧联调入口。官方 App SDK 的 AI 路径是事件触发后读取缩略图/录像，不提供持续视频帧供 AI 分析。2026-10-12 增加了原生事件元数据和事件图片到 Cloud 的只读导入协议；命令转发、持续后台采集及真机验收仍未接通，不能把这些入口视为完整的真机 Adapter。双端边界见 [Web / App 协作架构](../Docs/WEB-APP-ARCHITECTURE.md)。
+2026-10-08 已收到 T8171、T8214 官方 App / Web SDK。更新至 2026-10-14 的源码：iOS 已有 Kotlin 设备发现、事件列表、缩略图、`LiveMediaPlayer.cutImage()` 前台直播取样；Web 使用官方播放器与帧订阅。两端通过 `LiveDevices` 接收服务端采样请求并上传新图，iOS 另有官方事件/事件图导入。持续后台采集、设备控制封装及真机验收仍待完成。双端边界见 [Web / App 协作架构](../Docs/WEB-APP-ARCHITECTURE.md)。
+
+## 当前已实现链路与预留端口
+
+`/api/devices/import` 登记官方已绑定设备；真实记录使用 `sdk-` 加 SN 哈希的稳定 ID。`/api/media-sessions` 与 heartbeat / commands / frames / stop 是已实现的客户端前台采集协议，Agent 通过 `CameraService` 请求新图。有效会话可报告 liveStream/liveSnapshot 支持，但这不代表实体设备验收、持续 Skill 发布或云端直接控制 SDK 已完成。
+
+下文 `OfficialSDKBridge.start_session/stop_session/read_session_window/list_recordings/export_recording` 是服务端直接适配 SDK 的预留 Python Protocol；它们与已实现的 HTTP 媒体会话不是同一接口。事件图片导入的 `hasVideo` 也不会自动导入对应录像。完整 HTTP 请求字段见 [实时设备接入指南](../Docs/LIVE-DEVICE-INTEGRATION.md)。
 
 ## 设备能力清单
 
@@ -12,32 +18,31 @@
 - `unsupported`：SDK 明确拒绝或没有该能力。
 - `unknown`：没有证据，不能猜测。
 
-当前探测项为 `storedSnapshot / liveSnapshot / liveStream / eventPush / ptz`。业务逻辑按能力分支，不按 T8171/T8214 型号分支。
+能力键包含 `storedSnapshot / liveSnapshot / liveStream / eventPush / ptz`，不同适配器返回自身实现的项目。执行器按能力分支；`LiveDevices` 的 liveStream/liveSnapshot 随前台会话变化，不因登记成功就标为支持，ptz 当前也没有业务控制方法。
 
 ## FrameRef
 
 每帧必须带：
 
 ```text
-frameId, deviceId, channelId,
-capturedAt, receivedAt,
-sourceType, freshness,
-viewRevision,
-clockOffsetMs, uncertaintyMs, calibrationRef
+frame_id, device_id, channel_id,
+captured_at, received_at, source_type, freshness, view_revision,
+clock_offset_ms, uncertainty_ms, calibration_ref,
+sampled_at, request_id, session_id
 ```
 
-`viewRevision` 用于隔离分辨率、裁剪或旋转发生变化后的坐标；时钟偏移与误差用于判断两机画面能否组成同一次观察。目标框与关注区域都用 0–1 归一化坐标保存。
+以上为 Python `FrameRef` 字段；HTTP 观察回执使用 `frameId/cameraId/channelId/capturedAt/receivedAt/sampledAt` 等字段。当前前台链路 `captured_at=None`，`sampled_at` 是客户端取样时间，`view_revision` 为会话 ID，不是已校准的云台位姿。时钟偏移、误差和标定引用允许未知，不能据此认定两机同步。目标框与关注区域用 0–1 归一化坐标保存。
 
 ## 截图语义
 
 `SnapshotKind.STORED` 和 `SnapshotKind.LIVE` 是两个独立操作。历史缩略图不能冒充请求之后的新鲜画面；重新检查必须请求 `LIVE`，失败时结果保持 `unknown`。
 
-## 两个正式端口
+## 两个预留适配器
 
 - `EufyT8171Adapter`：主观察设备 `cam-a`。
 - `EufyT8214Adapter`：补证设备 `cam-b`。
 
-它们当前均返回 `connection=unknown` 和全量 `capability=unknown`，这是刻意的真实性保护。SDK 到手后的实现顺序：发现设备 → 绑定设备/通道身份 → 读取 capability manifest → 验证 stored/live 差异 → 验证事件推送 → 验证流分辨率切换 → 验证双机时间偏移。
+未注入 `bridge` 时，它们返回 `connection=unknown` 和未知能力；这不代表 `LiveDevices` 中真实登记设备也固定使用 `cam-a/cam-b` 或始终未知。后续直接适配 SDK 的实现顺序：发现设备 → 绑定设备/通道身份 → 读取 capability manifest → 验证 stored/live 差异 → 验证事件推送 → 验证流分辨率切换 → 验证双机时间偏移。
 
 2026-10-09 仍无实机与赛事凭证。App 联调页展示 SDK 原始能力声明，不自动将它提升为 Cloud 的 `supported`；设备缩略图、缓存封面和事件图片只读结果均不能满足 `LIVE` 的新鲜度要求。
 
@@ -63,13 +68,13 @@ app = create_app(camera_adapter=RoutedCameraAdapter({
 - `frame_bytes(device_id, frame_id)`：**只读**已入站且绑定 frame_id 的缓存，不得把“最新图”伪装成指定帧。
 - `start_session / stop_session`：为长时间拉流或控制会话预留的 Protocol，目前不调用。启用真实流或 PTZ 前，需要补齐停止回执、故障恢复及设备能力验收，不能只打开 capability 开关。
 
-所有主动设备命令必须经 CameraService；每台设备独占范围包含所有通道。主/补摄像头一起占用，切换先等待在途调用结束，再原子变更所有权。已排队的旧 epoch 请求不得发给 SDK，迟到回执不得写入新任务。
+模型/任务请求的新画面必须经 CameraService；每台设备独占范围包含所有通道。主/补摄像头一起占用，切换先等待在途调用结束，再原子变更所有权。已排队的旧 epoch 请求不得发给 SDK，迟到回执不得写入新任务。客户端前台播放器另外由 LiveDevices 媒体会话协调；进入官方工作区前停止并释放本项目采集，不把原版工作区操作算作 Agent 控制工具。
 
-SDK snapshot 必须在返回或抛出取消异常前完成/确认取消设备命令；不允许 fire-and-forget 后立即释放锁。如果 SDK 无法确认停止，应隔离设备并报告 unknown，不能声称已安全切换。本版模拟截图没有持久控制会话，真实 SDK 的取消与隔离行为仍待实现验证。
+直接 SDK Bridge 的 snapshot 必须在返回或抛出取消异常前完成/确认取消设备命令；不允许 fire-and-forget 后立即释放锁。当前前台中转已经实现请求取消、播放器释放与会话过期处理，但这些软件检查不能代替 SDK 停止/隔离的真机验证；不能由切换界面成功推断硬件停止成功。
 
 历史分析不调用以上设备接口，只读服务端保存的媒体；首次从设备导入历史录像将是单独的导入流程，不属于“只读历史分析”。v0.5 已支持本地视频导入；SDK 获取录像尚未实现。
 
-适配器替换只完成设备通路。当前启用校验和 Worker 仍是 fixture-marker/v1 测试执行器；正式 SDK 到手后还需接入通用视觉执行器及对应确认流程，不能直接把真机画面当作测试标记结果。
+适配器替换只完成设备通路。当前可确认执行的范围包括 fixture-marker/v1 测试标记和有限录像的包裹区域回放；真机持续视觉执行器与发布仍有门禁，不能直接把真机画面当作测试标记结果。界面可编辑更多任务类型不等于执行器已经支持。
 
 ## 参考带来的具体约束
 

@@ -1,6 +1,6 @@
 # EvidenceGuard 当前后端与对话架构
 
-核对日期：2026-10-13。手机独立 demo 云端已部署本轮代码；iOS 签名、Apple 处理和安装状态分别记录于 TestFlight 文档，不把源码部署等同于手机升级。
+源码核对日期：2026-10-14，`dongrunze`。本文包含 Web 0.2、前台媒体中转与 APNs 的代码能力；本轮源码修订不代表线上服务或 TestFlight 已更新。部署与构建状态分别查看服务器和 TestFlight 文档，早期版本记录保留在文末。
 
 ## 1. 当前部署形态与职责
 
@@ -9,16 +9,19 @@
 ```mermaid
 flowchart TD
   App[SwiftUI iPhone App] --> API[FastAPI：服务鉴权与安装实例命名空间]
+  Web[Web 五栏应用] --> API
   API --> Sessions[Conversations：主对话 / 独立话题 / 历史流]
   Sessions --> Context[本话题历史 + 已确认的 Personal Context]
   Context --> Harness[Harness：冻结权限合同 / 调度 / 工具循环 / 回执]
   Harness --> Tools[受限 Tool Registry]
-  Tools --> Video[VideoService：Embedding 检索 + Lite 复核]
+  Tools --> Video[VideoService：Embedding 检索 + 配置的视觉模型复核]
   Tools --> Camera[CameraService：设备互斥与执行凭据]
   Tools --> Draft[Skill 草案]
   Draft --> Confirm[用户编辑 → 能力检查 → 试跑验收 → 确认]
   Confirm --> Worker[ObservationWorker / ReplayWorker]
   Worker --> Camera
+  Camera <--> Relay[LiveDevices：前台会话 / 新帧请求与回传]
+  Relay <--> Clients[iOS/Web 官方播放器]
   Video --> DB[(SQLite + 媒体文件)]
   Worker --> DB
   Harness --> DB
@@ -31,6 +34,9 @@ flowchart TD
   Score --> Policy[确定性策略：免打扰 / 上限 / 去重 / 合并 / 时效]
   Policy --> Inbox[assistant_messages：助手主动消息]
   Inbox --> App
+  Inbox --> Web
+  Inbox --> Push[PushService：APNs 队列 / 发送与点开回执]
+  Push --> App
 ```
 
 API Token 在云端服务接入层验证；模型 Key 只在云端。当前安装 ID 是内部演示的命名空间，不是正式用户身份认证。摄像头、Skill、证据仍属于演示家庭共享数据；会话目录和主动提醒按安装实例隔离，尚未完成生产级多租户设备授权。
@@ -42,19 +48,20 @@ API Token 在云端服务接入层验证；模型 Key 只在云端。当前安�
 现在使用“长期主对话 + 独立话题”：
 
 - 助手主对话保留原 ID、旧消息和主动提醒，不因新建聊天而换绑。
-- 右上角新对话：创建独立 topic ID，在当前 AI 标签切换到空白话题；第一条用户消息作为默认标题，不额外调用模型。
+- 新对话入口创建独立 topic ID，在“助手”中切换到空白话题；第一条用户消息作为默认标题，不额外调用模型。
 - 左上角会话列表：主对话置顶、独立话题按最近活动排序，支持标题/摘要搜索、重命名、继续对话。
 - 每段话题分别保存聊天记录；切换保留未发送草稿。会话 ID、草稿、模式和未确认发送请求在手机持久化，并按服务 origin 隔离；重开 App 可恢复，只有确认服务器已接收后才清理请求。相同内容及范围重试复用 requestId，修改内容则产生新请求。
 - 同一话题的“实时守护 / 历史回顾”对应独立工具作用域和独立 transcript 流；历史流带 `-history` 后缀，列表只展示一个话题。切换或重开话题时恢复持久化的模式选择。
 - 新话题不会停止 Skill、不清空用户确认的偏好与记忆，也不会把前一个话题的聊天正文加入新话题上下文。它不是无痕模式；共享家庭事实仍可通过受限工具查询。
 - 一个对话流同时只能有一个 run；可以切换到其他话题继续工作。切换页面不等于取消后台 run，取消需要点“停止本次回复”。
-- 没有待编辑草案时收起顶部提示；新建 Skill、取新图、展开摄像头放进输入框上方的操作菜单。已有草案仍直接显示编辑/圈选按钮。
+- 两端助手草案卡可继续设置；“任务 → 草案详情 → 继续设置守护”进入“对象 / 条件 / 确认”。“摄像头 Skill”提供设备、圈选守护与录像入口。保存草案不启用。
 
 API：
 
 | 方法与路径 | 行为 |
 |---|---|
 | `PUT /api/personal/conversation` | 注册固定助手主对话，不能被独立话题替换 |
+| `POST /api/agent/conversations/main` | 按安装标识幂等恢复/创建主会话，保留旧 iOS 绑定，无需传会话 ID |
 | `GET /api/agent/conversations` | 当前安装实例的会话目录、标题、摘要、运行状态 |
 | `POST /api/agent/conversations` | 用 requestId 幂等创建独立话题 |
 | `PATCH /api/agent/conversations/{id}` | 重命名独立话题 |
@@ -73,6 +80,7 @@ API：
 - `Tool Registry`：查询设备/任务/证据、读取图片、检索录像、取新图、起草 Skill、请求复核。历史模式仅开放 search_evidence / read_stored_image / search_recordings。主动模式仅开放 read_proactive_context / read_observation_image。
 - `Skill`：受约束配置，不是生成出的新程序。草案还要编辑对象、区域、条件，经过能力检查、试跑与人工核验才允许适用范围内的执行；真机部署验收未完成不能冒充已发布。
 - `CameraService`：按物理设备互斥，并以 executionEpoch 复核旧任务是否过期；一个摄像头只能有一个 active 实时 Skill。历史分析不取得摄像头执行权。
+- 产品入口说明在 `harness/runtime.py` 的 `PRODUCT_GUIDANCE` 中供普通/主动对话共用；工具描述与草案摘要同步更新。对话没有平台字段，不能拿媒体采集端的 `platform` 推断用户正在使用的界面。
 
 本项目借鉴 MiiMiao 的上下文、冻结权限、任务封装和可追踪执行。此前对照版本为 `c225f46465aaadf460bfc5e736a648192205323e`（Codex 0.153.4）；本轮没有重新审计桌面仓库最新提交。手机云端没有运行 Codex 二进制或 App Server，不能声称完整移植了桌面 Harness。
 
@@ -87,24 +95,25 @@ API：
 - 模型输出 valueScore / reason / 来源 / 消息草稿。普通主动事项低于 50 静默，50–79 进入摘要候选，80 及以上也要通过确定性策略。用户单独订阅的每日概况允许 50 及以上的有用汇总，仍受免打扰、频率、来源和当前状态检查约束；低价值空概况也可静默。汇总附带原始证据及视觉回执，不只传上次模型草稿。
 - 代码决定最终投递：已开启、当前事实仍有效、来源可核验、免打扰、每日最多 6 条新主动消息、最短 300 s 间隔、同类 600 s 内合并。模型不能选择推送时间或绕过这些规则。
 - 消息单独写 assistant_messages，不伪造一条用户消息来启动对话。App 主对话合并显示，支持已读、已处理、忽略、1 小时后再看。
-- 目前只有 App 内轮询与角标。没有接 APNs，因此 App 关闭后的系统远程通知未实现。
+- 两端均通过主助手对话显示应用内提醒；iOS 另接 APNs 注册、持久队列、测试发送与点开回执，需用户授权和服务端配置，Apple 接受不代表手机已展示。Web 没有 Web Push，关闭网页后不提供系统通知。接口和投递策略见 [APNs](../Docs/APNS.md)。
 
 这些分值是演示的产品策略起点，尚未做真实安防场景校准。视觉“是否可靠”、任务“是否满足条件”、消息“是否值得打扰”是三种判断，不能把 80 分理解为“事件有 80% 概率发生”。
 
-实时 Skill 仍按秒抽样：最小 3 s，默认确认跨度 6 s，且不得小于采样间隔。官方事件缩略图上传不等于实现了真机每 3 s 取图，更不等于全天持续覆盖。
+实时 Skill 仍按秒抽样：最小 3 s，默认确认跨度 6 s，且不得小于采样间隔。iOS/Web 已有前台直播新帧回传，但官方事件缩略图上传、前台单次观察和真机持续执行是不同链路；`publish` 当前始终返回未就绪。客户端取样时间不是设备传感器时间。详见 [实时接入](../Docs/LIVE-DEVICE-INTEGRATION.md)。
 
 ## 5. 记忆与录像
 
 - Personal Context：用户明确保存的偏好/长期记忆/临时上下文，带来源和到期控制；聊天窗口属于短期上下文。还没有自动从所有聊天构建可靠的长期记忆，也不推断用户情绪为事实。
-- VideoService：上传 → 可播放副本和分段 → Embedding → SQLite 中向量精确余弦检索 → Lite 看候选复核 → 证据卡定位原片秒数。不是每次把全部录像交给模型，也不是全天视频索引。
+- VideoService：上传 → 可播放副本和分段 → Embedding → SQLite 中向量精确余弦检索 → 配置的视觉模型复核候选 → 证据卡定位原片秒数。iOS/Web 都能上传录像；设备 SD 卡/官方云录像自动导入仍未实现。
+- 模型名称由 `EG_MODEL_*`、`EG_VIDEO_*`、`EG_EMBED_*` 决定，实际标识由 `/api/bootstrap` 返回。官方 Demo 独立使用固定 Nova Pro 网关。图片核验同时服务事件图片与直播取样；系统提示词仍在源码中，没有提示词管理 API。
 - 日历、Gmail、飞书尚未接入。未来结构化数据直接解析；邮件/消息先白名单、关键词、@ 等规则筛选，批量抽取，复用上述确定性提醒策略。
 
 ## 6. 当前边界与下一步
 
-1. 2026-10-13，手机独立 demo 服务已部署会话目录、主动队列、视觉缓存预算、SDK 事件导入和合成测试场景；公网鉴权与真实模型调用已通过。iOS 构建上传状态见 [TestFlight 记录](../Docs/TESTFLIGHT.md)。
-2. 官方设备账号、摄像头实物、扫码完成真实绑定和全天媒体入口仍需联调。现有 iOS 前台事件同步不能保证手机关闭后继续接收新事件。
+1. Web 与 Cloud 需一起更新；旧服务没有 `/api/agent/conversations/main`。历史部署结果不能替代本分支验收，iOS 构建上传状态见 [TestFlight 记录](../Docs/TESTFLIGHT.md)。
+2. 官方设备账号、摄像头实物与全天媒体入口仍需联调。iOS 可切换官方工作区完成其配网/绑定流程；保存 SN 和 Cloud 设备登记不能代替真实绑定。前台事件同步、iOS/Web 采集不能保证客户端关闭后继续接收新画面。
 3. 当前是一个内部演示家庭的数据模型。正式多人使用前补账号身份、设备所有权、租户隔离、分页、媒体保留策略和独立任务工作进程。
-4. 新版原生 UI 需安装新的 iOS 构建，现有 build 3 不会因云端部署自动获得新入口。
+4. 新版原生 UI 需安装对应 iOS 构建；云端部署不会自动更新手机界面。Web 有编辑与试跑页面也不等于真机持续 Skill 已可发布。
 
 ## 7. 手机交互参考
 

@@ -168,6 +168,56 @@ def test_unselected_images_never_claim_to_have_been_reviewed(tmp_path):
         assert len(ep['reviewedEvidenceIds'])==3
         unread=[e for e in s.evidence() if e['id'] not in ep['reviewedEvidenceIds']]
         assert len(unread)==2 and all('未完成视觉核验' in e['reason'] for e in unread)
+        timeline=i.timeline()['events']
+        assert {e['id'] for e in timeline if e['reviewStatus']=='completed'}==set(ep['reviewedEvidenceIds'])
         assert {x['evidenceId'] for x in i.sources(ep['id']) if x['type']=='camera_evidence'}==set(ep['reviewedEvidenceIds'])
         s.close()
     asyncio.run(check())
+
+
+def test_official_mode_starts_empty_then_exposes_discovered_identity_without_live_claims(tmp_path,monkeypatch):
+    monkeypatch.setenv('EG_CAMERA_SOURCE','official_sdk')
+    monkeypatch.setenv('EG_ENABLE_SYNTHETIC_DEMO','1')
+    monkeypatch.setenv('EG_ACCESS_TOKEN','x'*40)
+    app=create_app(tmp_path/'official.sqlite',start_worker=False)
+    with TestClient(app) as client:
+        assert client.post('/api/sdk/devices',json={'devices':[]}).status_code==401
+        client.headers.update({'Authorization':'Bearer '+'x'*40,'X-EG-Installation-ID':str(uuid4())})
+        initial=client.get('/api/bootstrap').json()
+        assert initial['cameras']==[] and initial['cameraEvents']['events']==[]
+        assert client.get('/api/demo/scenes').json()['enabled'] is False
+        receipt=client.post('/api/sdk/devices',json={'devices':[dict(deviceSn='actual-sdk-test-sn',model='T8214',deviceName='门铃')]}).json()
+        camera=client.get('/api/bootstrap').json()['cameras'][0]
+        assert camera['id']==receipt['cameraIds'][0] and camera['name']=='门铃'
+        assert camera['adapter']=='official-sdk/event-relay' and camera['connection']=='event_only'
+        assert camera['lastCapturedAt'] is None and camera['capabilities']['liveSnapshot']=='unsupported'
+        assert 'actual-sdk-test-sn' not in json.dumps(camera)
+        assert client.post('/api/sdk/devices',json={'devices':[dict(deviceSn='x',model='INVALID',deviceName='x')]}).status_code==422
+
+
+def test_official_events_reach_read_only_agent_tool_and_device_scope(tmp_path,monkeypatch):
+    monkeypatch.setenv('EG_CAMERA_SOURCE','official_sdk')
+    app=create_app(tmp_path/'tools.sqlite',start_worker=False)
+    with TestClient(app) as client:
+        client.headers['X-EG-Installation-ID']=str(uuid4())
+        body=dict(events=[event(deviceSn='camera-one'),event(deviceSn='camera-two')])
+        assert client.post('/api/sdk/events',json=body).status_code==202
+        timeline=client.get('/api/sdk/events').json()
+        assert len(timeline['events'])==2 and all(e['reviewStatus']=='saved' for e in timeline['events'])
+        assert all('deviceSn' not in e for e in timeline['events'])
+        camera=timeline['events'][0]['cameraId']
+        assert len(client.get('/api/sdk/events',params={'cameraId':camera}).json()['events'])==1
+        result=client.portal.call(lambda: app.state.agent.tools.call('list_camera_events',period='today'))
+        assert result['count']==2 and result['continuousCoverage'] is False
+        assert app.state.store.skills()==[]
+
+
+def test_event_timeline_is_bounded_by_device_event_time_not_import_order(tmp_path):
+    s,p,v,i=environment(tmp_path); at=int(time.time())-1000
+    for n in reversed(range(105)):
+        i.accept(SDKBatch(events=[SDKEvent.model_validate(event(str(n),at+n,image=False))]),'client')
+    timeline=i.timeline()
+    assert timeline['truncated'] is True and len(timeline['events'])==100
+    assert timeline['events'][0]['startMs']==(at+104)*1000
+    assert timeline['events'][-1]['startMs']==(at+5)*1000
+    s.close()

@@ -1,12 +1,19 @@
 import SwiftUI
 
 struct OfficialSDKSettingsView: View {
+    @EnvironmentObject private var store: AppStore
     @ObservedObject var connection: OfficialSDKConnection
     @State private var credentials = SDKCredentials()
     @State private var feedback: String?
 
     var body: some View {
         Form {
+            Section("完整官方功能") {
+                Button("切换到官方原版：配网、绑定与设备设置") { Task { await connection.enterOfficialWorkspace() } }
+                    .disabled(!connection.canDiscover || connection.switchingWorkspace)
+                Text("顶部工作区按钮可随时返回。官方页面中的更改实际作用于设备，返回后请重新查询并同步。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
             Section("接入状态") {
                 Text(connection.buildStatus).font(.subheadline)
                 Text(connection.message).font(.caption).foregroundStyle(Brand.muted)
@@ -28,7 +35,7 @@ struct OfficialSDKSettingsView: View {
                     do { try connection.save(credentials); feedback = "配置已保存" }
                     catch { feedback = error.localizedDescription }
                 }.disabled(!credentials.isComplete || connection.checking)
-                Button { connection.discover(credentials) } label: {
+                Button { connection.discover(credentials, client: store.client) } label: {
                     HStack { if connection.checking { ProgressView() }; Text("检查官方设备") }
                 }.disabled(!credentials.isComplete || connection.checking || connection.inspecting || !connection.canDiscover)
                     .accessibilityIdentifier("sdk.discover")
@@ -36,6 +43,9 @@ struct OfficialSDKSettingsView: View {
             }
             if !connection.devices.isEmpty {
                 Section("官方账号下的设备") {
+                    Button("同步到我的设备") {
+                        Task { do { let imported = try await connection.importDevices(client: store.client); await store.refresh(); feedback = "已同步 \(imported.count) 台设备" } catch { feedback = error.localizedDescription } }
+                    }
                     ForEach(connection.devices) { camera in
                         VStack(alignment: .leading, spacing: 5) {
                             Text(camera.name).font(.headline)
@@ -48,6 +58,7 @@ struct OfficialSDKSettingsView: View {
                                 .font(.caption).foregroundStyle(Brand.muted)
                             if !camera.isCompetitionCamera { Text("此设备不属于本次接入的两款型号").font(.caption) }
                             if camera.isCompetitionCamera {
+                                NavigationLink("实时查看与 Agent") { OfficialLiveCameraView(camera: camera) }
                                 NavigationLink("检查图片与历史事件") {
                                     OfficialSDKInspectionView(connection: connection, camera: camera)
                                 }
@@ -73,7 +84,7 @@ struct OfficialSDKSettingsView: View {
                     catch { feedback = error.localizedDescription }
                 }
             }
-        }.pageStyle("官方摄像头接入")
+        }.pageStyle("连接摄像头")
             .task {
                 do { if let saved = try SDKCredentialVault.load() { credentials = saved } }
                 catch { feedback = error.localizedDescription }

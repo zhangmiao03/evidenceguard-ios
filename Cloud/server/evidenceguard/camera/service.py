@@ -1,5 +1,6 @@
 """Capability-checked capture with durable receipts shared by Agent and Worker."""
 from __future__ import annotations
+from ..ops import traced
 import asyncio, time, uuid
 from dataclasses import asdict
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -25,6 +26,7 @@ class CameraService:
                 for d in sorted(devices): await stack.enter_async_context(self.gate(d))
                 yield
 
+    @traced('camera.capture')
     async def capture(self, device_id, skill_id=None, purpose='用户请求观察'):
         request_id = 'capture-' + uuid.uuid4().hex
         epoch = self.store.capture_context(device_id, skill_id)
@@ -56,13 +58,22 @@ class CameraService:
                         receipt.update(status=result.status, reason=result.reason, deviceRequestId=result.request_id)
                         if result.status == 'completed' and result.frame:
                             f = result.frame
-                            if f.device_id != device_id or f.captured_at < receipt['requestedAt'] - (f.uncertainty_ms or 0)/1000 or not -.5 <= time.time()-f.captured_at <= 6:
+                            if f.device_id != device_id:
+                                raise ValueError('返回画面身份或采集时间无效')
+                            if f.captured_at is None:
+                                if (f.freshness != 'sampled_after_request' or f.request_id != request_id
+                                    or not f.session_id or f.sampled_at is None
+                                    or not receipt['requestedAt'] <= f.received_at <= time.time()
+                                    or time.time() - f.received_at > 6):
+                                    raise ValueError('返回画面未对应本轮实时取样请求')
+                            elif f.captured_at < receipt['requestedAt'] - (f.uncertainty_ms or 0)/1000 or not -.5 <= time.time()-f.captured_at <= 6:
                                 raise ValueError('返回画面身份或采集时间无效')
                             raw, mime = await self.cameras.frame_bytes(device_id, f.frame_id)
                             media = self.store.save_media(asdict(f), raw, mime)
                             receipt.update(status='completed', frameId=f.frame_id, capturedAt=f.captured_at,
                                            imageUrl=media['imageUrl'], mediaId=media['id'], sourceType=f.source_type,
-                                           viewRevision=f.view_revision)
+                                           viewRevision=f.view_revision, sampledAt=f.sampled_at, receivedAt=f.received_at,
+                                           timestampMeaning='device_capture' if f.captured_at is not None else 'client_live_sample')
             except asyncio.CancelledError:
                 receipt.update(status='cancelled', reason='已取消本次画面请求')
                 self.store.event(skill_id or request_id, 'camera_cancelled', receipt)

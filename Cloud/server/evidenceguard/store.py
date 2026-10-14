@@ -264,6 +264,18 @@ class Store:
             seq=self.db.execute('SELECT COALESCE(MAX(sequence),0)+1 FROM events WHERE run_id=?',(run_id,)).fetchone()[0]
             at=time.time()
             self.db.execute('INSERT INTO events(run_id,sequence,type,at,payload) VALUES (?,?,?,?,?)',(run_id,seq,event_type,at,json.dumps(payload,ensure_ascii=False)))
+        if getattr(self, 'ops', None):
+            from .ops import CTX
+            context = CTX.get()
+            # run_id is also a skill/capture ID in legacy events. Do not claim
+            # that it is always an Agent run or join unrelated runs together.
+            allowed = {'step','name','tool','status','cameraId','deviceId','requestId','sourceType',
+                       'sampledAt','receivedAt','timestampMeaning','mediaId','inputKind','code','reasonCode'}
+            metadata = {k:v for k,v in payload.items() if k in allowed} if isinstance(payload,dict) else {}
+            metadata.update(legacySubjectId=run_id, sequence=seq)
+            self.ops.emit(event_type, data=metadata,
+                status=metadata.get('status') or ('failed' if event_type.endswith('failed') else 'observed'),
+                trace=context or {'traceId':'subject:'+str(run_id)})
         return dict(runId=run_id,sequence=seq,type=event_type,at=at,payload=payload)
 
     def events(self, run_id, after=0):

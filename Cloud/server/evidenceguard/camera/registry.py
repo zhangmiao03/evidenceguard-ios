@@ -1,6 +1,13 @@
 from __future__ import annotations
+from dataclasses import replace
 
 from .contracts import CameraAdapter, DeviceManifest, SnapshotKind, SnapshotReceipt, CameraCommandContext
+
+class EmptyCameraAdapter:
+    async def manifests(self): return []
+    async def state(self): return {'cameras': []}
+    async def snapshot(self, *args): raise KeyError('camera')
+    async def frame_bytes(self, *args): raise KeyError('frame')
 
 class RoutedCameraAdapter:
     """Bind cam-a/cam-b to separate official SDK adapters without changing business code."""
@@ -37,21 +44,36 @@ class CameraRegistry:
     def __init__(self, active: CameraAdapter) -> None:
         self.active = active
         self.replay = None
+        self.live = None
 
     async def manifests(self) -> list[DeviceManifest]:
-        return await self.active.manifests()
+        devices = {m.id: m for m in await self.active.manifests()}
+        for live in await self.live.manifests() if self.live else []:
+            event = devices.get(live.id)
+            devices[live.id] = replace(live,
+                capabilities=event.capabilities | live.capabilities,
+                evidence=live.evidence + ' ' + event.evidence,
+                last_frame_url=live.last_frame_url or event.last_frame_url) if event else live
+        return list(devices.values())
 
     async def snapshot(self, device_id: str, kind: SnapshotKind, context: CameraCommandContext | None = None) -> SnapshotReceipt:
         manifests = await self.manifests()
         if not any(item.id == device_id for item in manifests):
             raise KeyError(device_id)
-        return await self.active.snapshot(device_id, kind, context)
+        adapter = self.live if self.live and any(d['id'] == device_id for d in self.live.records()) else self.active
+        return await adapter.snapshot(device_id, kind, context)
 
     async def state(self) -> dict:
-        return await self.active.state()
+        value = await self.active.state()
+        if self.live:
+            devices = {d['id']: d for d in value.get('cameras', [])}
+            devices.update({d['id']: d for d in (await self.live.state())['cameras']})
+            value = {'cameras': list(devices.values())}
+        return value
 
     async def frame_bytes(self, device_id: str, frame_id: str) -> tuple[bytes, str]:
-        return await self.active.frame_bytes(device_id, frame_id)
+        adapter = self.live if self.live and any(d['id'] == device_id for d in self.live.records()) else self.active
+        return await adapter.frame_bytes(device_id, frame_id)
 
     async def replay_window(self, device_id, recording_id, start, end, context, region):
         if self.replay is None: raise ValueError('回放适配器未接入')

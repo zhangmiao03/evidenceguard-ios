@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+inputs/
+*.partial
+results/*
+!results/README.md
+!results/local-20261014/
+results/**/*.npy
+results/**/*.log
