@@ -1,5 +1,6 @@
-import { installationID, requireSecureConnection } from "./browser-support";
+import { installationID, requireSecureConnection, newID } from "./browser-support";
 import type { Conflict } from "./product-types";
+import { observe, routeTemplate } from "./telemetry";
 
 export type Device = {
   id: string;
@@ -11,8 +12,10 @@ export type Device = {
   capabilities: Record<string, string>;
   lastFrameUrl?: string;
 };
-export type MediaSession = { id: string; token: string; deviceId: string };
+export type MediaSession = { id: string; token: string; deviceId: string; traceId?: string };
 export type CaptureCommand = {
+  traceId?: string;
+  parentSpanId?: string;
   requestId: string;
   afterSequence: number;
   deadline: number;
@@ -55,11 +58,18 @@ export const api = {
     body?: unknown,
     session?: MediaSession,
     method?: string,
+    traceOverride?: string,
   ): Promise<T> {
     if (!path.startsWith("/api/")) throw new Error("请求不属于当前服务");
     if (this.token) requireSecureConnection();
+    const candidate = body && typeof body === "object" && "requestId" in body ? String(body.requestId) : "";
+    const traceID = traceOverride || (/^[A-Za-z0-9_.:-]{1,120}$/.test(candidate) ? candidate : session?.traceId || newID());
+    const track = (body !== undefined || (method && method !== "GET")) && !/\/(heartbeat|presence)$/.test(path);
+    const started = performance.now();
+    let outcome = "failed";
     const headers: Record<string, string> = {
       "X-EG-Installation-ID": installation!,
+      "X-EG-Trace-ID": traceID,
     };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (session) headers["X-EG-Media-Session"] = session.token;
@@ -87,9 +97,12 @@ export const api = {
           data.conflicts || [],
         );
       }
-      return await response.json();
+      const value = await response.json();
+      outcome = "completed";
+      return value;
     } finally {
       clearTimeout(timeout);
+      if (track) observe({ name: outcome === "completed" ? "api.completed" : "api.failed", traceId: traceID, status: outcome, durationMs: performance.now() - started, route: routeTemplate(path) }, this.token);
     }
   },
   async uploadRecording(

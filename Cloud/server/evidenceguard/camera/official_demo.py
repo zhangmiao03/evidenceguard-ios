@@ -7,6 +7,7 @@ import re
 
 import httpx
 from fastapi import HTTPException, Request
+from ..ops import model_post, OPERATION
 
 OFFICIAL_AI_URL = 'https://ai-router-cn-pub.anker-in.com/chat/completions'
 OFFICIAL_AI_MODEL = 'hackathon/v_model/nova-pro'
@@ -60,9 +61,10 @@ def install_official_demo_routes(app):
         except (ValueError, UnicodeDecodeError):
             raise HTTPException(422, '请求格式不正确')
         data = validate_demo_request(data)
+        operation_token = OPERATION.set('official_demo_vision')
         try:
             async with httpx.AsyncClient(timeout=80, follow_redirects=False) as client:
-                response = await client.post(OFFICIAL_AI_URL, json=data,
+                response = await model_post(client, OFFICIAL_AI_URL, json=data,
                                              headers={'Authorization': f'Bearer {key}'})
                 if response.status_code != 200:
                     raise HTTPException(502, f'官方 AI 网关返回 {response.status_code}，请核对赛事模型权限')
@@ -74,4 +76,6 @@ def install_official_demo_routes(app):
                     raise ValueError('unexpected content')
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
             raise HTTPException(502, '官方 AI 暂不可用，请检查服务端配置与网络')
+        finally:
+            OPERATION.reset(operation_token)
         return {'choices': [{'message': {'role': 'assistant', 'content': text}}]}

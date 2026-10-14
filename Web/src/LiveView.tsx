@@ -8,6 +8,8 @@ import {
 } from "./api";
 import { type SDKFrame } from "./sdk";
 import { FrameGate } from "./frame-gate.mjs";
+import { observe } from "./telemetry";
+import { newID } from "./browser-support";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function base64(blob: Blob): Promise<string> {
@@ -48,6 +50,10 @@ export function LiveView({
       fallbackID: number | undefined;
     let fallbackBusy = false;
     const gate = new FrameGate();
+    const liveTrace = newID();
+    const liveStarted = performance.now();
+    let firstFrameReported = false;
+    const report = (name: string) => observe({ name, traceId: liveTrace, deviceId: device.id, durationMs: performance.now() - liveStarted }, api.token);
     let finish!: () => void;
     const finished = new Promise<void>((resolve) => {
       finish = resolve;
@@ -67,6 +73,7 @@ export function LiveView({
     });
     const fail = (message: string) => {
       if (!disposed) {
+        report("live.failed");
         stop.current = true;
         setError(message);
         statusRef.current(false);
@@ -133,7 +140,8 @@ export function LiveView({
         session = await api.request<MediaSession>("/api/media-sessions", {
           deviceId: device.id,
           platform: "web",
-        });
+        }, undefined, undefined, liveTrace);
+        report("live.started");
         if (disposed || stop.current) return;
         // Do not mount the auto-starting vendor player before obtaining the
         // shared iOS/Web capture lease.
@@ -171,6 +179,7 @@ export function LiveView({
             | null;
           const age = f ? Date.now() - f.localAt : null;
           const ready = age !== null && age < 3000;
+          if (ready && !firstFrameReported) { firstFrameReported = true; report("live.first_frame"); }
           await api.request(
             `/api/media-sessions/${session.id}/heartbeat`,
             {
@@ -216,6 +225,7 @@ export function LiveView({
               | null;
             if (!next) continue;
             const imageBase64 = await base64(next.blob);
+            observe({ name: "capture.sampled", traceId: pending.command.traceId || id, parentSpanId: pending.command.parentSpanId, requestId: id, deviceId: device.id }, api.token);
             if (disposed || stop.current) break;
             try {
               await api.request(
@@ -226,6 +236,8 @@ export function LiveView({
                   frameAgeMs: Math.max(0, Date.now() - next.sampledAt * 1000),
                 },
                 session,
+                undefined,
+                pending.command.traceId,
               );
               await api.request(
                 `/api/media-sessions/${session.id}/frames`,
@@ -239,6 +251,8 @@ export function LiveView({
                   channelId: "main",
                 },
                 session,
+                undefined,
+                pending.command.traceId,
               );
             } catch (e) {
               // A cancelled Agent request need not tear down a healthy player.
@@ -252,6 +266,7 @@ export function LiveView({
       } catch (e) {
         fail(e instanceof Error ? e.message : "媒体会话未完成");
       } finally {
+        report("live.stopped");
         if (!disposed) setLeased(false);
         unsubscribe?.();
         if (fallbackVideo && fallbackID !== undefined)

@@ -1,5 +1,13 @@
 # EvidenceGuard · iOS / Web / Cloud
 
+## 本地研发 Dashboard（dongrunze）
+
+新增参考 AIBuddy 的 `/dashboard`：运行总览、设备与取流、Trace、模型调用、提示词、任务、证据、试跑、用量与离线数据。可在没有云端/root 权限时本地运行，导入/导出版本化 JSON；模拟样例需要手动载入且持续标识。iOS、Web 和后端新增关联埋点，官方 SDK 切换与 App 五栏功能保留。
+
+先在 `Web` 执行 `npm ci`、`npm run build`，回仓库根目录用已安装 Cloud 依赖的 Python 执行 `scripts/run_dashboard.py`，打开 **http://127.0.0.1:8790/dashboard**。Windows 例如 `.venv/Scripts/python.exe scripts/run_dashboard.py`；macOS/Linux 使用自己的虚拟环境 Python 路径。默认使用隔离的 `Cloud/data/local-dashboard/`，不读取生产环境文件。
+
+追踪默认不影响已有服务：现有后端需显式设置 `EG_OPS_ENABLED=1` 才采集。默认提示词动态内容仅存摘要；需要全文时用启动器 `--capture-content`。独立 Dashboard 访问权限、采集口径、模型覆盖、导入格式和完整操作见 [Dashboard 开发与使用说明](Docs/DASHBOARD.md)。
+
 本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
@@ -13,7 +21,7 @@
 
 ## 当前进度
 
-2026-10-14 · **联合整合**：整合官方事件同步、iOS/Web 前台直播、新画面工具与五栏框架；同一 SDK 设备统一身份，事件缩略图不能代替新画面回执。正常来源为空设备起步，历史合成资料保留但不混入。助手保留自然简短表达，模型继续统一豆包系列。195 项 Cloud 测试、7 项 Swift 契约、Web 协议/类型/生产构建，以及 Simulator 和重新编译 Kotlin 桥接后的真实 SDK arm64 本地构建通过；界面和浏览器验证单独记录。真实设备验证仍待赛事硬件和凭证。
+2026-10-15 · **联合整合**：整合官方事件同步、iOS/Web 前台直播、新画面工具与五栏框架；同一 SDK 设备统一身份，事件缩略图不能代替新画面回执。正常来源为空设备起步，历史合成资料保留但不混入。助手保留自然简短表达，模型继续统一豆包系列。209 项 Cloud 测试、7 项 Swift 契约、9 项 Web 协议/数据检查、类型/生产构建，以及 Simulator 和重新编译 Kotlin 桥接后的真实 SDK arm64 本地构建通过；界面和浏览器验证单独记录。真实设备验证仍待赛事硬件和凭证。
 
 **分发节奏**：先完成框架与联调，用户明确要求分发后再上传并加入测试组。build 9 已于 21:32 上传，但未加入内部或外部组；当前内部可更新的是 `1.0 (8)`。本轮后续只做代码整合与本地验证。
 

@@ -30,6 +30,7 @@ struct ConversationView: View {
     }
     @State private var input = ""
     @State private var runs: [AgentRun] = []
+    @State private var reportedRuns: Set<String> = []
     @State private var events: [RunEvent] = []
     @State private var sending = false
     @State private var error: String?
@@ -340,6 +341,11 @@ struct ConversationView: View {
             }
             if let text = run.text {
                 Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).textSelection(.enabled)
+                    .onAppear {
+                        if reportedRuns.insert(run.id).inserted {
+                            store.client.observe(name: "agent.displayed", traceID: run.id, status: run.status)
+                        }
+                    }
             }
             if let error = run.error {
                 Text(error).foregroundStyle(.orange).font(.subheadline)

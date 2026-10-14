@@ -38,6 +38,7 @@ from .camera.ingest import SDKIngest, SDKBatch, SDKDevices
 from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
 from .push import PushService, DeviceRegistration, Presence
+from .ops import install_ops
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -137,9 +138,13 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await videos.shutdown()
             await scheduler.shutdown()
             await camera.live.shutdown()
+            if getattr(store, 'ops', None): await asyncio.to_thread(store.ops.close)
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
     install_access(app)
+    install_ops(app, store)
+    for model in (agent.model_provider, videos.vision, getattr(videos, 'embedding', None)):
+        if model is not None: model.ops = store.ops
     install_live_routes(app, camera, captures)
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
@@ -499,7 +504,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     web_setting = os.getenv('EG_WEB_ROOT')
     web_root = Path(web_setting) if web_setting else None
     if web_root is not None and (web_root/'index.html').is_file():
+        @app.get('/dashboard', include_in_schema=False)
+        @app.get('/dashboard/', include_in_schema=False)
+        async def dashboard_shell(): return FileResponse(web_root/'index.html')
         app.mount('/', StaticFiles(directory=web_root, html=True), name='web')
     return app
 
-app=create_app()
+app=create_app(start_worker=os.getenv('EG_DISABLE_WORKERS') != '1')

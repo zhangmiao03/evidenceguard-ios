@@ -6,9 +6,9 @@ import SampleCore
 #endif
 
 struct RegisteredCamera: Decodable, Identifiable { var id: String; var sn: String; var model: String; var name: String }
-struct LiveSession: Decodable { var id: String; var deviceId: String; var token: String }
+struct LiveSession: Decodable { var id: String; var deviceId: String; var token: String; var traceId: String? }
 struct LiveAcknowledgement: Decodable { var status: String }
-struct LiveCaptureCommand: Decodable { var requestId: String; var afterSequence: Int; var deadline: Double }
+struct LiveCaptureCommand: Decodable { var requestId: String; var afterSequence: Int; var deadline: Double; var traceId: String?; var parentSpanId: String? }
 struct LiveFrameUpload: Encodable {
     var requestId: String; var sequence: Int; var imageBase64: String
     var width: Int; var height: Int; var sampledAt: Double; var channelId = "main"
@@ -55,13 +55,14 @@ struct LiveFrameUpload: Encodable {
             guard let player = connection.makeLive(camera: camera) else { throw APIProblem(message: "设备不在当前官方会话内，请重新查询设备") }
             media = player
             renderView = player.renderView()
-            let opened = try await Task { try await client.startMedia(registered.id) }.value
+            let opened = try await Task { try await client.startMedia(registered.id, traceID: current.uuidString) }.value
             guard current == generation, !Task.isCancelled else {
                 player.stop()
                 await releaseSession(opened, client: client)
                 return
             }
             session = opened
+            client.observe(name: "live.started", traceID: current.uuidString, deviceID: registered.id)
             player.start { [weak self] state in
                 Task { @MainActor in
                     guard let self, self.generation == current else { return }
@@ -84,6 +85,8 @@ struct LiveFrameUpload: Encodable {
         var activity = 0
         var lastSample: Date?
         let startedAt = Date()
+        let monotonicStart = ProcessInfo.processInfo.systemUptime
+        var firstFrameReported = false
         do {
             while !Task.isCancelled && generation == current {
                 let nextActivity = Int(player.activitySequence())
@@ -92,6 +95,11 @@ struct LiveFrameUpload: Encodable {
                 }
                 let age = lastSample.map { Int(Date().timeIntervalSince($0) * 1000) }
                 ready = age.map { $0 < 3000 } ?? false
+                if ready && !firstFrameReported {
+                    firstFrameReported = true
+                    client.observe(name: "live.first_frame", traceID: current.uuidString,
+                        durationMS: (ProcessInfo.processInfo.systemUptime - monotonicStart) * 1000, deviceID: session.deviceId)
+                }
                 status = ready ? "实时画面可用 · Agent 可请求新取样" : "等待有效视频帧…"
                 try await client.liveHeartbeat(session, state: ready ? "streaming" : "connecting", sequence: sequence, age: age)
                 let commands = try await client.liveCommands(session)
@@ -109,12 +117,14 @@ struct LiveFrameUpload: Encodable {
                     // Read the SDK player after receiving the server challenge.
                     sequence = max(sequence, command.afterSequence) + 1
                     let sampledAt = Date().timeIntervalSince1970
+                    client.observe(name: "capture.sampled", traceID: command.traceId ?? command.requestId, parentSpanID: command.parentSpanId,
+                        deviceID: session.deviceId, requestID: command.requestId)
                     // Waiting for the next media callback may exceed the last
                     // heartbeat's freshness window. Advertise this new sample.
                     try await client.liveHeartbeat(session, state: "streaming", sequence: sequence, age: 0)
                     do {
                         try await client.uploadLiveFrame(session, body: LiveFrameUpload(requestId: command.requestId, sequence: sequence,
-                            imageBase64: bytes.base64EncodedString(), width: pixels.width, height: pixels.height, sampledAt: sampledAt))
+                            imageBase64: bytes.base64EncodedString(), width: pixels.width, height: pixels.height, sampledAt: sampledAt), traceID: command.traceId)
                     } catch let problem as APIProblem where problem.statusCode == 409 {
                         // The requester may have cancelled while we sampled.
                         // The next heartbeat still detects a stale session.
@@ -131,6 +141,7 @@ struct LiveFrameUpload: Encodable {
     #endif
 
     func stop(message: String = "已停止直播") {
+        if running { client?.observe(name: "live.stopped", traceID: generation.uuidString, deviceID: deviceID) }
         generation = UUID(); task?.cancel(); task = nil
         #if canImport(SampleCore) && !targetEnvironment(simulator)
         media?.stop(); media = nil
@@ -164,6 +175,7 @@ struct LiveFrameUpload: Encodable {
     }
 
     func stopForWorkspaceSwitch() async {
+        client?.observe(name: "sdk.mode_changed", traceID: UUID().uuidString, deviceID: deviceID)
         stop(message: "正在切换到官方 SDK")
         // Also cover a switch while startMedia is still in flight. Its late
         // response is explicitly stopped before the official player can mount.
