@@ -35,6 +35,12 @@ Release/validate/
 Release/export/
 Release/upload/
 EvidenceGuard.xcworkspace/xcuserdata/
+# Signing and service credentials are restored privately on each development machine.
+*.p8
+*.pem
+*.key
+*.p12
+*.mobileprovision
 # Local validation captures can include conversations or camera frames.
 Docs/*.png
 Docs/*.json

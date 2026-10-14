@@ -7,13 +7,11 @@ struct CreateSkillView: View {
     var initialRegionCameraID: String? = nil
     @State private var regionEditor = false
     @State private var cameraID = ""
-    @State private var selection = "region"
     @State private var saving = false
     @State private var error: String?
     @State private var exitWarning = false
     @State private var fixtureAcknowledged = false
     @State private var replayAcknowledged = false
-    @State private var replayAspectRatio = 16.0 / 9.0
     @State private var original: VisualSkill?
     @State private var conflicts: [CameraOccupancy] = []
     @State private var showConflict = false
@@ -21,132 +19,56 @@ struct CreateSkillView: View {
     @State private var trial: SkillTrial?
     @State private var trialReviewed = false
     @State private var expectedOutcome = "explore"
+    @State private var step = 0
     private var unchanged: Bool { original == skill }
     private var executionReady: Bool { unchanged && capability?.canActivate == true && (skill.replay == nil || (trial?.canConfirm == true && trialReviewed)) }
     private var rules: Binding<SkillRules> { Binding(get: { skill.rules ?? SkillRules() }, set: { skill.rules = $0 }) }
-    private var roi: Binding<ROI> { Binding(get: { selection == "target" ? skill.target.box : skill.regions[cameraID] ?? .initial }, set: { value in if selection == "target" { skill.target.box = value } else { skill.regions[cameraID] = value } }) }
     private var valid: Bool { !skill.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && skill.prompt.count >= 2 && !skill.target.description.isEmpty && !skill.devices.isEmpty && skill.devices.contains(skill.target.cameraId) }
     var body: some View {
         NavigationStack {
             Form {
-                Section { Text("这是一份待确认的草案。修改已运行的任务时，旧规则会持续生效，直到你确认这一版。").font(.subheadline).foregroundStyle(Brand.muted) }
-                Section("画面与圈选") {
-                    Button { regionEditor = true } label: { Label("进入画面，圈选目标与关注区域", systemImage: "viewfinder") }.accessibilityIdentifier("draft.openRegion")
-                    Text("橙框标记要关注的物体，蓝框标记范围。完成圈选后返回本页继续设置条件；保存不会自动启用。").font(.caption).foregroundStyle(Brand.muted)
-                }
-                Section("执行方式 · 实时守护") {
-                    Label("每台摄像头同时只运行一个实时 Skill", systemImage: "video.badge.checkmark")
-                    Text("所选的主视角与补证视角会一起占用。保存草案不占用设备；暂停或完成后释放。回顾过去的资料，请在 AI 助手选择“历史回顾”。").font(.caption).foregroundStyle(Brand.muted)
-                }
-                Section("你想关注什么") {
-                    TextField("Skill 名称", text: $skill.name).accessibilityIdentifier("draft.name")
-                    TextField("需求描述", text: $skill.prompt, axis: .vertical).lineLimit(2...5)
-                    TextField("观察对象", text: $skill.target.description)
-                }
-                Section("可观察的任务类型") {
-                    Picker("任务类型", selection: Binding(get: { rules.wrappedValue.taskKind ?? "unspecified" }, set: { rules.wrappedValue.taskKind = $0 })) {
-                        Text("请选择具体类型").tag("unspecified")
-                        Text("包裹离开关注区域").tag("parcel_removal")
-                        Text("测试标记区域进出").tag("marker_region")
-                        Text("宠物行为（暂不支持）").tag("pet_activity")
-                        Text("车辆行为（暂不支持）").tag("vehicle_activity")
-                        Text("其他需求（暂不支持）").tag("custom")
-                    }.accessibilityIdentifier("draft.taskKind")
-                    TextField("额外行为持续时间（s，0 为无）", value: Binding(get: { rules.wrappedValue.durationSeconds ?? 0 }, set: { rules.wrappedValue.durationSeconds = max(0, $0) }), format: .number).keyboardType(.decimalPad)
-                    Text("这里指“宠物静止 N s”等额外行为要求，目前尚无执行器。包裹离区的检测间隔和确认跨度在下方设置。").font(.caption).foregroundStyle(Brand.muted)
-                }
-                capabilitySection
-                Section("观察输入") {
-                    Picker("数据来源", selection: Binding(get: { skill.replay?.recordingId ?? "" }, set: { value in
-                        skill.replay = value.isEmpty ? nil : ReplayConfig(recordingId: value)
-                        if !value.isEmpty {
-                            var updatedRules = skill.rules ?? SkillRules()
-                            updatedRules.trigger = "leaves_region"; updatedRules.completion = "once"
-                            updatedRules.saveEvidence = true
-                            skill.rules = updatedRules
-                        }
-                        fixtureAcknowledged = false; replayAcknowledged = false
-                        if let recording = store.data.recordings?.first(where: { $0.id == value }) {
-                            skill.devices = [recording.cameraId]; skill.target.cameraId = recording.cameraId
-                            skill.regions = [recording.cameraId: .initial]; cameraID = recording.cameraId
-                        }
-                    })) {
-                        Text("合成摄像头测试标记").tag("")
-                        ForEach((store.data.recordings ?? []).filter { ($0.duration ?? 0) >= 2 && ($0.duration ?? 0) <= 60 }) { recording in
-                            Text("回放：\(recording.title)").tag(recording.id)
-                        }
-                    }.accessibilityIdentifier("draft.replaySource")
-                    if skill.replay != nil {
-                        Text("按设置的秒数间隔提取采样图，判断区域内是否仍有目标。首次提醒或片尾结束；模型慢时回放会变慢。不是已接入的真机守护。")
-                            .font(.caption).foregroundStyle(.orange)
-                    }
-                }
-                Section("选择摄像头") {
-                    ForEach(store.data.cameras) { camera in
-                        Toggle(isOn: Binding(get: { skill.devices.contains(camera.id) }, set: { enabled in
-                            if enabled { if !skill.devices.contains(camera.id) { skill.devices.append(camera.id); skill.regions[camera.id] = .initial } }
-                            else if skill.devices.count > 1 {
-                                skill.devices.removeAll { $0 == camera.id }; skill.regions.removeValue(forKey: camera.id)
-                                if skill.target.cameraId == camera.id { skill.target.cameraId = skill.devices[0] }
-                                if cameraID == camera.id { cameraID = skill.devices[0] }
-                            }
-                        })) { VStack(alignment: .leading) {
-                            Text(camera.name + " · " + camera.model)
-                            Text(skill.replay == nil ? camera.connectionLabel : "录像绑定的摄像头").font(.caption).foregroundStyle(Brand.muted)
-                            if let owner = store.data.skills.first(where: { $0.status == "active" && $0.devices.contains(camera.id) }) {
-                                Text("正在执行：\(owner.name)").font(.caption).foregroundStyle(.orange)
-                            } else { Text("暂无实时任务占用").font(.caption).foregroundStyle(Brand.muted) }
-                        } }.disabled(skill.replay != nil)
-                    }
-                    Picker("主观察视角", selection: $skill.target.cameraId) { ForEach(skill.devices, id: \.self) { id in Text(store.camera(id)?.name ?? id).tag(id) } }
-                }
-                Section("分别圈选对象与关注区域") {
-                    Picker("编辑视角", selection: $cameraID) { ForEach(skill.devices, id: \.self) { id in Text(store.camera(id)?.name ?? id).tag(id) } }
-                    Picker("圈选类型", selection: $selection) { Text("关注区域").tag("region"); if cameraID == skill.target.cameraId { Text("目标物体").tag("target") } }.pickerStyle(.segmented)
-                    RegionCanvas(camera: store.camera(cameraID), region: roi, color: selection == "target" ? .orange : Brand.blue, previewURL: skill.replay.flatMap { store.client.absoluteURL("/api/recordings/\($0.recordingId)/preview") }, previewAspect: replayAspectRatio)
-                    Text("蓝色为当前视角的关注区域，橙色为主视角目标。拖动框可移动，下方可精确调整；两台设备各自保存。").font(.caption).foregroundStyle(Brand.muted)
-                    slider("水平位置", value: Binding(get: { roi.wrappedValue.x }, set: { roi.wrappedValue.x = $0 }), range: 0...max(0.001, 1 - roi.wrappedValue.width))
-                    slider("垂直位置", value: Binding(get: { roi.wrappedValue.y }, set: { roi.wrappedValue.y = $0 }), range: 0...max(0.001, 1 - roi.wrappedValue.height))
-                    slider("宽度", value: Binding(get: { roi.wrappedValue.width }, set: { var v = roi.wrappedValue; v.width = $0; v.x = min(v.x, 1 - $0); roi.wrappedValue = v }), range: 0.05...1)
-                    slider("高度", value: Binding(get: { roi.wrappedValue.height }, set: { var v = roi.wrappedValue; v.height = $0; v.y = min(v.y, 1 - $0); roi.wrappedValue = v }), range: 0.05...1)
-                }
-                Section("何时提醒") {
-                    Picker("触发条件", selection: rules.trigger) { Text("离开区域").tag("leaves_region"); if skill.replay == nil { Text("进入区域").tag("enters_region"); Text("记录活动（执行待接入）").tag("record_activity") } }
-                    TextField("需求补充（不改变下方执行合同）", text: rules.description, axis: .vertical)
-                    Stepper("每隔 \(rules.wrappedValue.sampleEvery) s 检测", value: Binding(get: { rules.wrappedValue.sampleEvery }, set: { value in rules.wrappedValue.sampleEvery = value; rules.wrappedValue.confirmationSpan = max(value, rules.wrappedValue.confirmationSpan) }), in: 3...300).accessibilityIdentifier("draft.sampleInterval")
-                    Stepper("确认跨度：\(rules.wrappedValue.confirmationSpan) s", value: rules.confirmationSpan, in: rules.wrappedValue.sampleEvery...600).accessibilityIdentifier("draft.confirmationSpan")
-                    Text("例如每 3 s 检测、确认跨度 6 s：在 0、3、6 s 的采样均满足条件后确认。采样之间不可见，短暂动作可能漏过；报告时间是确认时刻，不是精确动作时刻。").font(.caption).foregroundStyle(Brand.muted)
-                    if skill.replay == nil {
-                        Picker("任务方式", selection: rules.completion) { Text("持续守护").tag("continuous"); Text("触发一次后完成").tag("once") }
-                    } else {
-                        Text("回放在首次提醒或片尾结束").font(.footnote).foregroundStyle(.secondary)
-                    }
-                    Text("无法确认时：保留判断、请求补充观察；不会把遮挡或离线视为物品离开。").font(.caption).foregroundStyle(Brand.muted)
-                }
-                Section("测试执行范围") {
-                    if skill.replay != nil {
-                        Text("蓝框为录像中的关注区域，橙框为首帧目标。离散采样图会交给当前视觉模型；结果需人工核验，最多 20 次模型观察。暂停或断流后重建基线，不把缺失画面当成包裹消失。").font(.caption).foregroundStyle(Brand.muted)
-                        Toggle("我确认使用录像回放测试此规则", isOn: $replayAcknowledged).accessibilityIdentifier("draft.replayAck")
-                    } else {
-                        Text("当前合成摄像头执行器只识别编号 17 的测试标记；真实摄像头 SDK 尚待接入。").font(.caption).foregroundStyle(Brand.muted)
-                        Toggle("使用测试标记验证此规则", isOn: $fixtureAcknowledged).accessibilityIdentifier("draft.fixture")
-                    }
-                }
-                trialSection
-                Section("真机验收与发布") {
-                    Text("门铃和屋檐摄像头需要实际视野、正反例与遮挡验收。离线试跑通过不会直接发布真机任务。").font(.caption).foregroundStyle(Brand.muted)
-                    if unchanged { NavigationLink { DeploymentPreparationView(id: skill.id, revision: skill.revision) } label: { Label("查看设备适配与配合事项", systemImage: "checklist") } }
-                    else { Text("保存草案后查看对应的验收准备。").font(.caption) }
-                }
-                if let error { Section { Text(error).foregroundStyle(.orange).font(.subheadline) } }
                 Section {
-                    Button { Task { await save(activate: false) } } label: { Label("保存草案，稍后启用", systemImage: "square.and.arrow.down") }.disabled(!valid || saving || !store.isConnected)
-                    Button { Task { await save(activate: true) } } label: { HStack { if saving { ProgressView() }; Text(skill.replay == nil ? "确认并开始标记测试" : "确认并开始回放") }.frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).disabled(!valid || !executionReady || saving || !(skill.replay == nil ? fixtureAcknowledged : replayAcknowledged) || !store.isConnected).accessibilityIdentifier("draft.confirm")
+                    HStack(spacing: 8) {
+                        ForEach(Array(["对象", "条件", "确认"].enumerated()), id: \.offset) { index, name in
+                            Button { step = index } label: {
+                                Text("\(index + 1) · " + name).font(.subheadline.weight(.medium))
+                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+                                    .background(step == index ? Brand.paleBlue : Color.clear)
+                                    .clipShape(Capsule())
+                            }.buttonStyle(.plain).foregroundStyle(step == index ? Brand.blue : Brand.muted)
+                                .disabled(index > step || saving).accessibilityIdentifier("draft.step.\(index)")
+                        }
+                    }
+                    Text(step == 0 ? "先选对象和画面。保存草案不会开始守护。" : step == 1 ? "设置什么时候提醒，看不清时保留判断。" : "核对能力与数据来源，确认后才会开始测试。")
+                        .font(.caption).foregroundStyle(Brand.muted)
                 }
+                if step == 0 { objectStep }
+                else if step == 1 { conditionStep }
+                else { confirmationStep }
+                if let error { Section { Text(error).foregroundStyle(.orange).font(.subheadline) } }
             }
-            .navigationTitle("编辑守护规则").navigationBarTitleDisplayMode(.inline)
+            .id(step)
+            .scrollDismissesKeyboard(.interactively)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    if step < 2 {
+                        Button {
+                            if step == 0 { step = 1 }
+                            else { Task { await prepare(); if error == nil { step = 2 } } }
+                        } label: {
+                            HStack { if saving { ProgressView() }; Text(step == 0 ? "下一步：提醒条件" : "保存草案，检查并确认") }.frame(maxWidth: .infinity)
+                        }.buttonStyle(.borderedProminent).disabled(!valid || saving || (step == 1 && !store.isConnected)).accessibilityIdentifier("draft.next")
+                    } else {
+                        Button { Task { await save(activate: true) } } label: {
+                            HStack { if saving { ProgressView() }; Text(skill.replay == nil ? "确认并开始标记测试" : "确认并开始回放") }.frame(maxWidth: .infinity)
+                        }.buttonStyle(.borderedProminent).disabled(!valid || !executionReady || saving || !(skill.replay == nil ? fixtureAcknowledged : replayAcknowledged) || !store.isConnected).accessibilityIdentifier("draft.confirm")
+                        if !executionReady { Text("完成上方能力检查与必要的试跑后才能开始。").font(.caption).foregroundStyle(Brand.muted) }
+                    }
+                }.padding(16).background(.regularMaterial)
+            }
+            .navigationTitle("设置守护").navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("返回") { if original != skill { exitWarning = true } else { dismiss() } }.disabled(saving) }
+                ToolbarItem(placement: .cancellationAction) { Button("关闭") { if original != skill { exitWarning = true } else { dismiss() } }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) { Button("保存草案") { Task { await save(activate: false) } }.disabled(!valid || saving || !store.isConnected).accessibilityIdentifier("draft.save") }
             }
             .interactiveDismissDisabled(original != skill || saving)
@@ -165,9 +87,6 @@ struct CreateSkillView: View {
                 SkillRegionEditor(skill: $skill, initialCameraID: initialRegionCameraID ?? skill.target.cameraId)
             }
             .onAppear { if original == nil { original = skill; cameraID = skill.target.cameraId; regionEditor = initialRegionCameraID != nil } }
-            .task(id: skill.replay?.recordingId) {
-                if let id = skill.replay?.recordingId, let video = try? await store.client.recording(id) { replayAspectRatio = video.aspectRatio ?? 16.0 / 9.0 }
-            }
             .task {
                 do { capability = try await store.client.capability(skill.id); trial = try await store.client.trials(skill.id).first }
                 catch { self.error = error.localizedDescription }
@@ -179,7 +98,119 @@ struct CreateSkillView: View {
                 }
             }
             .onChange(of: skill) { _, _ in trialReviewed = false }
-            .onChange(of: cameraID) { _, _ in selection = "region" }
+        }
+    }
+    @ViewBuilder private var objectStep: some View {
+        Section("你想关注什么") {
+            TextField("守护名称", text: $skill.name).accessibilityIdentifier("draft.name")
+            TextField("需求描述", text: $skill.prompt, axis: .vertical).lineLimit(2...5)
+            TextField("观察对象", text: $skill.target.description)
+        }
+        Section("选择摄像头") {
+            ForEach(store.data.cameras) { camera in
+                Toggle(isOn: Binding(get: { skill.devices.contains(camera.id) }, set: { enabled in
+                    if enabled { if !skill.devices.contains(camera.id) { skill.devices.append(camera.id); skill.regions[camera.id] = .initial } }
+                    else if skill.devices.count > 1 {
+                        skill.devices.removeAll { $0 == camera.id }; skill.regions.removeValue(forKey: camera.id)
+                        if skill.target.cameraId == camera.id { skill.target.cameraId = skill.devices[0] }
+                        if cameraID == camera.id { cameraID = skill.devices[0] }
+                    }
+                })) { VStack(alignment: .leading) {
+                    Text(camera.name + " · " + camera.model)
+                    Text(skill.replay == nil ? camera.connectionLabel : "录像绑定的摄像头").font(.caption).foregroundStyle(Brand.muted)
+                    if let owner = store.data.skills.first(where: { $0.status == "active" && $0.devices.contains(camera.id) }) {
+                        Text("正在执行：\(owner.name)").font(.caption).foregroundStyle(.orange)
+                    } else { Text("暂无实时任务占用").font(.caption).foregroundStyle(Brand.muted) }
+                } }.disabled(skill.replay != nil)
+            }
+            Picker("主观察视角", selection: $skill.target.cameraId) { ForEach(skill.devices, id: \.self) { id in Text(store.camera(id)?.name ?? id).tag(id) } }
+        }
+        Section("观察输入") {
+            Picker("数据来源", selection: Binding(get: { skill.replay?.recordingId ?? "" }, set: { value in
+                skill.replay = value.isEmpty ? nil : ReplayConfig(recordingId: value)
+                if !value.isEmpty {
+                    var updatedRules = skill.rules ?? SkillRules()
+                    updatedRules.trigger = "leaves_region"; updatedRules.completion = "once"
+                    updatedRules.saveEvidence = true
+                    skill.rules = updatedRules
+                }
+                fixtureAcknowledged = false; replayAcknowledged = false
+                if let recording = store.data.recordings?.first(where: { $0.id == value }) {
+                    skill.devices = [recording.cameraId]; skill.target.cameraId = recording.cameraId
+                    skill.regions = [recording.cameraId: .initial]; cameraID = recording.cameraId
+                }
+            })) {
+                Text("合成摄像头测试标记").tag("")
+                ForEach((store.data.recordings ?? []).filter { ($0.duration ?? 0) >= 2 && ($0.duration ?? 0) <= 60 }) { recording in
+                    Text("回放：\(recording.title)").tag(recording.id)
+                }
+            }.accessibilityIdentifier("draft.replaySource")
+            if skill.replay != nil {
+                Text("按设置的秒数间隔提取采样图，判断区域内是否仍有目标。首次提醒或片尾结束；模型慢时回放会变慢。不是已接入的真机守护。")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+        }
+        Section("画面与圈选") {
+            Button { regionEditor = true } label: { Label("进入画面，圈选目标与关注区域", systemImage: "viewfinder") }.accessibilityIdentifier("draft.openRegion")
+            Text("橙框标记要关注的物体，蓝框标记范围。完成圈选后返回本页继续设置条件；保存不会自动启用。").font(.caption).foregroundStyle(Brand.muted)
+        }
+    }
+    @ViewBuilder private var conditionStep: some View {
+        Section("可观察的任务类型") {
+            Picker("任务类型", selection: Binding(get: { rules.wrappedValue.taskKind ?? "unspecified" }, set: { rules.wrappedValue.taskKind = $0 })) {
+                Text("请选择具体类型").tag("unspecified")
+                Text("包裹离开关注区域").tag("parcel_removal")
+                Text("测试标记区域进出").tag("marker_region")
+                Text("宠物行为（暂不支持）").tag("pet_activity")
+                Text("车辆行为（暂不支持）").tag("vehicle_activity")
+                Text("其他需求（暂不支持）").tag("custom")
+            }.accessibilityIdentifier("draft.taskKind")
+            DisclosureGroup("额外行为要求（暂不支持）") {
+            TextField("额外行为持续时间（s，0 为无）", value: Binding(get: { rules.wrappedValue.durationSeconds ?? 0 }, set: { rules.wrappedValue.durationSeconds = max(0, $0) }), format: .number).keyboardType(.decimalPad)
+            Text("这里指“宠物静止 N s”等额外行为要求，目前尚无执行器。包裹离区的检测间隔和确认跨度在下方设置。").font(.caption).foregroundStyle(Brand.muted)
+            }
+        }
+        Section("何时提醒") {
+            Picker("触发条件", selection: rules.trigger) { Text("离开区域").tag("leaves_region"); if skill.replay == nil { Text("进入区域").tag("enters_region"); Text("记录活动（执行待接入）").tag("record_activity") } }
+            TextField("需求补充（不改变下方执行合同）", text: rules.description, axis: .vertical)
+            Stepper("每隔 \(rules.wrappedValue.sampleEvery) s 检测", value: Binding(get: { rules.wrappedValue.sampleEvery }, set: { value in rules.wrappedValue.sampleEvery = value; rules.wrappedValue.confirmationSpan = max(value, rules.wrappedValue.confirmationSpan) }), in: 3...300).accessibilityIdentifier("draft.sampleInterval")
+            Stepper("确认跨度：\(rules.wrappedValue.confirmationSpan) s", value: rules.confirmationSpan, in: rules.wrappedValue.sampleEvery...600).accessibilityIdentifier("draft.confirmationSpan")
+            Text("例如每 3 s 检测、确认跨度 6 s：在 0、3、6 s 的采样均满足条件后确认。采样之间不可见，短暂动作可能漏过；报告时间是确认时刻，不是精确动作时刻。").font(.caption).foregroundStyle(Brand.muted)
+            if skill.replay == nil {
+                Picker("任务方式", selection: rules.completion) { Text("持续守护").tag("continuous"); Text("触发一次后完成").tag("once") }
+            } else {
+                Text("回放在首次提醒或片尾结束").font(.footnote).foregroundStyle(.secondary)
+            }
+            Text("无法确认时：保留判断、请求补充观察；不会把遮挡或离线视为物品离开。").font(.caption).foregroundStyle(Brand.muted)
+        }
+        Section {
+            Text("每台摄像头同时运行一项守护；新规则确认前，原任务继续运行。")
+                .font(.caption).foregroundStyle(Brand.muted)
+        }
+    }
+    @ViewBuilder private var confirmationStep: some View {
+        Section("将要测试的守护") {
+            Text(skill.name).font(.headline)
+            Text(skill.target.description)
+            Text(skill.devices.compactMap { store.camera($0)?.name }.joined(separator: "、")).font(.caption).foregroundStyle(Brand.muted)
+            Label(skill.replay == nil ? "合成标记测试 · 非真实现场" : "已存录像回放 · 非实时守护", systemImage: "info.circle")
+                .font(.caption).foregroundStyle(.orange)
+        }
+        capabilitySection
+        trialSection
+        Section("测试执行范围") {
+            if skill.replay != nil {
+                Text("蓝框为录像中的关注区域，橙框为首帧目标。离散采样图会交给当前视觉模型；结果需人工核验，最多 20 次模型观察。暂停或断流后重建基线，不把缺失画面当成包裹消失。").font(.caption).foregroundStyle(Brand.muted)
+                Toggle("我确认使用录像回放测试此规则", isOn: $replayAcknowledged).accessibilityIdentifier("draft.replayAck")
+            } else {
+                Text("当前合成摄像头执行器只识别编号 17 的测试标记；真实摄像头 SDK 尚待接入。").font(.caption).foregroundStyle(Brand.muted)
+                Toggle("使用测试标记验证此规则", isOn: $fixtureAcknowledged).accessibilityIdentifier("draft.fixture")
+            }
+        }
+        Section("真机验收与发布") {
+            Text("门铃和屋檐摄像头需要实际视野、正反例与遮挡验收。离线试跑通过不会直接发布真机任务。").font(.caption).foregroundStyle(Brand.muted)
+            if unchanged { NavigationLink { DeploymentPreparationView(id: skill.id, revision: skill.revision) } label: { Label("查看设备适配与配合事项", systemImage: "checklist") } }
+            else { Text("保存草案后查看对应的验收准备。").font(.caption) }
         }
     }
     @ViewBuilder private var capabilitySection: some View {
@@ -191,7 +222,7 @@ struct CreateSkillView: View {
                 if let contract = capability.contract { ContractSummary(contract: contract) }
                 ForEach(capability.warnings, id: \.self) { Text($0).font(.caption).foregroundStyle(Brand.muted) }
             } else { Text("等待能力检查") }
-            Button("保存并检查能力") { Task { await prepare() } }.disabled(saving || !valid).accessibilityIdentifier("draft.checkCapability")
+            Button("保存并检查能力") { Task { await prepare() } }.disabled(saving || !valid || !store.isConnected).accessibilityIdentifier("draft.checkCapability")
         }
     }
     @ViewBuilder private var trialSection: some View {
@@ -204,7 +235,7 @@ struct CreateSkillView: View {
                     Text("这段不应提醒").tag("no_alert")
                 }.disabled(trial?.running == true)
                 Button(trial?.running == true ? "试跑进行中" : "保存并试跑当前草案") { Task { await startTrial() } }
-                    .disabled(saving || trial?.running == true || !valid).accessibilityIdentifier("draft.startTrial")
+                    .disabled(saving || trial?.running == true || !valid || !store.isConnected).accessibilityIdentifier("draft.startTrial")
                 if let trial {
                     Text(unchanged ? trial.label : "草案已变化，需重新试跑").font(.headline)
                     Text(trial.summary).font(.subheadline)
@@ -232,18 +263,6 @@ struct CreateSkillView: View {
             guard capability?.canTrial == true else { error = capability?.blockers.joined(separator: "；"); return }
             trialReviewed = false; trial = try await store.client.startTrial(skill, expectedOutcome: expectedOutcome); await store.refresh()
         } catch { self.error = error.localizedDescription }
-    }
-    private func slider(_ name: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Text(name).font(.caption)
-                Spacer()
-                TextField(name, value: Binding(get: { value.wrappedValue }, set: { value.wrappedValue = min(range.upperBound, max(range.lowerBound, $0)) }), format: .number.precision(.fractionLength(0...3)))
-                    .keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 80)
-                    .accessibilityLabel(name + "数值")
-            }
-            Slider(value: value, in: range)
-        }
     }
     private func save(activate: Bool, switchFrom: [String: String] = [:]) async {
         saving = true; error = nil; defer { saving = false }

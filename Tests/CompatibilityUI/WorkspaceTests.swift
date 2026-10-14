@@ -11,7 +11,7 @@ final class WorkspaceTests: XCTestCase {
     }
 
     func testAllProductTabsRemainReachable() {
-        for title in ["首页", "Skill", "AI", "证据", "我的"] {
+        for title in ["助手", "摄像头Skill", "任务", "记忆", "我的"] {
             let tab = app.tabBars.buttons[title]
             XCTAssertTrue(tab.exists, "Missing native tab: \(title)")
             tab.tap()
@@ -29,6 +29,16 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "当前是模拟器")).firstMatch.exists)
         app.buttons["完成"].tap()
         XCTAssertTrue(app.buttons["workspace.switch"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["首页"].exists)
+        XCTAssertTrue(app.tabBars.buttons["助手"].exists)
+    }
+
+    func testProfileKeepsNotificationsAndOfficialCameraEntry() {
+        app.tabBars.buttons["我的"].tap()
+        XCTAssertTrue(app.buttons["profile.notifications"].exists)
+        let official = app.buttons["profile.officialSDK"]
+        if !official.isHittable { app.swipeUp() }
+        official.tap()
+        XCTAssertTrue(app.navigationBars["官方摄像头接入"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["workspace.switch"].exists)
     }
 }

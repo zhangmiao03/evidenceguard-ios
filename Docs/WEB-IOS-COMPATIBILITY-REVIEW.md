@@ -2,6 +2,20 @@
 
 日期：2026-10-14。分支：`dongrunze`。审核基线：`b75f9b1630fe05bc9a0f07984d831c0312e298de`。
 
+## 最新主分支同步
+
+本次已将远端 `main` 的 `0959463` 合入 `dongrunze`，处理下方记录的 8 个冲突文件。保留 main 的五栏界面、APNs、提醒偏好自动保存，以及本分支的 iOS / Web 实时采集和官方工作区。
+
+- AppDelegate 合并为一个 `PushAppDelegate`，同时实现 APNs 回调和官方播放器方向控制。
+- 推送注册与前台状态维护放在持续存在的工作区外壳。官方页面、切换期间、后台或弹窗占用界面时保留通知点击；返回释放完成后只路由一次，保留助手、任务、记忆导航。
+- APIClient 同时保留 `X-EG-Push-Key` 与 `X-EG-Media-Session`，各自只用于对应请求。新增 HTTP 联合回归，核对关闭推送不停止直播、停止直播不关闭推送，且两种凭证不能互相授权。
+- 普通与 SDK 两个 Xcode 目标均保留 LiveCameraView、PushNotifications、ReminderSettings 和推送 entitlement；官方账号入口在内部演示配置也可访问。
+- 环境示例、忽略规则、仓库扫描同时保留 APNs 私钥与官方 Demo 的保护条目。Web 保持设备工作台定位，与合并后的 Cloud 共用实时接口。
+
+合并后本地后端 **179 项通过**，Web **4 项协议测试及生产构建通过**。新增通知延期导航契约检查，原生 UI 用例更新为新的五栏，并增加“我的”中的通知 / 官方摄像头入口检查。合并后 Apple 平台和跨浏览器 CI 结果待本次提交运行完成后补充；下方既有结果明确属于合并前代码。
+
+## 合并前验收记录
+
 修复后验收代码：`f4db02e66cea45ee59507523f452b19798ad6b7c`。[GitHub Checks 四个任务全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38544089264)，测试完成时间为 2026-10-14 17:44（UTC+8）。本报告与 README 的后续提交只补充验收结果，不改变受测代码。
 
 ## 结论与范围
@@ -110,7 +124,7 @@ bash scripts/test_ios_compatibility.sh
 
 当前仍为单团队、单后端进程、前台取样。成员权限、独立归属核验、后台采集、完整 Web 配网/设置产品流程不属于本轮。官方页面存在与设备实际支持分别记录。
 
-## 审核期间主分支发生的变化
+## 合并前发现的主分支差异（上述同步已处理）
 
 审核过程中远端 `main` 从 `1bf084e` 更新到 `0959463`（个人 Agent 五标签与 APNs 合并）。本轮修复提交 `2fec234` 仍位于 `dongrunze`。对两个真实 Git 树执行 `git merge-tree --write-tree --name-only HEAD origin/main`，**存在 8 个冲突文件，不能将本分支通过解释为已与最新 main 完成兼容**：
 
@@ -123,4 +137,4 @@ bash scripts/test_ios_compatibility.sh
 - APIClient.send 必须同时保留 `push` 与 `mediaSession` 参数、推送密钥头和采集会话头。
 - Xcode 工程同时保留 LiveCameraView、PushNotifications、ReminderSettings 和推送 entitlements；环境示例、忽略规则与仓库检查合并两边新增条目。
 
-这里只做了不改工作区的合并预检，没有合并主分支或覆盖对方的新界面。合并后须重跑本报告的整套检查，并增加“收到推送时处于官方工作区”的路由测试。
+这段记录对应首次复审时不改工作区的合并预检。用户随后要求同步主分支，处理与重新验证情况见本文最上方“最新主分支同步”。

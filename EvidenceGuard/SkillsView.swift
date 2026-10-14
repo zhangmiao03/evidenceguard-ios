@@ -1,19 +1,199 @@
 import SwiftUI
 
-struct SkillsView: View {
-    @EnvironmentObject var store: AppStore
-    @State private var filter = "all"
-    private var filtered: [VisualSkill] { store.data.skills.filter { filter == "all" || $0.status == filter } }
+struct CameraSkillsView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var creatingDraft = false
+    private var camera: CameraDevice? { store.camera(store.selectedCameraID) ?? store.data.cameras.first }
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
                 ConnectionBanner()
-                Picker("任务筛选", selection: $filter) { Text("全部").tag("all"); Text("运行中").tag("active"); Text("待确认").tag("draft"); Text("已暂停").tag("paused") }.pickerStyle(.segmented)
-                if filtered.isEmpty { EmptyState(title: "这里还没有 Skill", detail: "可先用文字或语音向 AI 描述需求。", icon: "square.3.layers.3d") }
-                ForEach(filtered) { skill in NavigationLink(value: AppRoute.skill(skill.id)) { SkillRow(skill: skill) }.buttonStyle(.plain).accessibilityIdentifier("skill.\(skill.id)") }
-                Button { store.openAI() } label: { Label("创建新技能", systemImage: "plus") }.buttonStyle(PrimaryAction())
-            }.padding(16)
-        }.pageStyle("我的 Skill").refreshable { await store.refresh() }
+                HStack {
+                    Text("选择摄像头").font(.headline)
+                    Spacer()
+                    NavigationLink("管理设备", value: AppRoute.cameras)
+                        .font(.subheadline).accessibilityIdentifier("cameraSkills.devices")
+                }
+                if let camera {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(store.data.cameras) { device in
+                                Button { store.selectedCameraID = device.id } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: device.id == camera.id ? "checkmark.circle.fill" : "video")
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(device.name).font(.subheadline.weight(.semibold))
+                                            Text(device.connectionLabel).font(.caption)
+                                        }
+                                    }.padding(14)
+                                        .foregroundStyle(device.id == camera.id ? Brand.blue : Brand.muted)
+                                        .background(device.id == camera.id ? Color.white : Color.white.opacity(0.4))
+                                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                                }.buttonStyle(.plain).accessibilityIdentifier("cameraSkills.camera." + device.id)
+                                    .accessibilityAddTraits(device.id == camera.id ? .isSelected : [])
+                            }
+                        }
+                    }.disabled(creatingDraft)
+                    NavigationLink(value: AppRoute.camera(camera.id)) {
+                        CameraFrame(camera: camera)
+                    }.buttonStyle(.plain).accessibilityLabel("查看\(camera.name)的画面")
+                        .accessibilityIdentifier("cameraSkills.preview")
+                    VStack(spacing: 0) {
+                        Button { Task { await createDraft(camera: camera.id) } } label: {
+                            capabilityRow("圈选守护", detail: creatingDraft ? "正在创建草案…" : "选对象、定条件，确认后启用", icon: "square.dashed")
+                        }.disabled(creatingDraft || store.busy || !store.isConnected)
+                            .accessibilityIdentifier("cameraSkills.create")
+                        Divider().padding(.leading, 58)
+                        NavigationLink(value: AppRoute.recordings) {
+                            capabilityRow("录像资料", detail: "查看已保存的录像和分析结果", icon: "play.rectangle")
+                        }.accessibilityIdentifier("cameraSkills.recordings")
+                    }.buttonStyle(.plain).background(.white.opacity(0.83)).clipShape(RoundedRectangle(cornerRadius: 22))
+                    Text("创建的守护会出现在“任务”，进度和提醒在那里查看。")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                } else {
+                    EmptyState(title: "先添加一台摄像头", detail: "连接后，可以查看画面、圈选对象并设置守护。", icon: "video.badge.plus")
+                    NavigationLink("添加设备", value: AppRoute.addDevice).buttonStyle(PrimaryAction())
+                }
+            }.padding(20)
+        }.agentPageStyle("摄像头 Skill", largeTitle: true)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: AppRoute.addDevice) { Image(systemName: "plus") }
+                        .accessibilityLabel("添加摄像头").accessibilityIdentifier("cameraSkills.addDevice")
+                }
+            }.refreshable { await store.refresh() }
+    }
+
+    private func capabilityRow(_ title: String, detail: String, icon: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.title3).foregroundStyle(Brand.blue).frame(width: 26)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.headline).foregroundStyle(Brand.dark)
+                Text(detail).font(.caption).foregroundStyle(Brand.muted)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted)
+        }.padding(16).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+    }
+
+    private func createDraft(camera: String) async {
+        guard !creatingDraft, !store.busy, store.isConnected else { return }
+        creatingDraft = true
+        defer { creatingDraft = false }
+        do {
+            let draft = try await store.client.createDraft(camera: camera, conversation: store.generalConversation,
+                prompt: "请选择画面中的观察对象并完善提醒条件", replacesID: nil)
+            await store.refresh()
+            store.openEditor(draft, regionCameraID: camera)
+        } catch { store.errorMessage = error.localizedDescription }
+    }
+}
+
+struct TasksView: View {
+    @EnvironmentObject private var store: AppStore
+    @State private var section = "tasks"
+    private var archived: [VisualSkill] { store.data.skills.filter { !["active", "draft", "paused"].contains($0.status) } }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ConnectionBanner()
+                HStack(spacing: 12) {
+                    NavigationLink(value: AppRoute.alerts) {
+                        Label("需要关注", systemImage: "bell")
+                    }.accessibilityIdentifier("skills.alerts")
+                    Spacer()
+                    NavigationLink(value: AppRoute.evidenceList(nil)) {
+                        Label("证据", systemImage: "doc.text.image")
+                    }.accessibilityIdentifier("skills.evidence")
+                }.font(.subheadline).padding(14).background(.white.opacity(0.7)).clipShape(RoundedRectangle(cornerRadius: 18))
+                Picker("任务分类", selection: $section) {
+                    Label("任务", systemImage: "checklist").tag("tasks")
+                    Label("定时", systemImage: "clock").tag("scheduled")
+                }.pickerStyle(.segmented).accessibilityIdentifier("skills.sections")
+                if section == "tasks" {
+                    if store.data.skills.isEmpty {
+                        EmptyState(title: "想让摄像头帮你关注什么？", detail: "告诉助手你的需求，一起确认对象、区域和提醒条件。", icon: "video")
+                    }
+                    taskGroup("运行中", status: "active")
+                    taskGroup("待确认", status: "draft")
+                    taskGroup("已暂停", status: "paused")
+                    if !archived.isEmpty {
+                        DisclosureGroup("已结束 · \(archived.count)") {
+                            VStack(spacing: 12) { ForEach(archived) { taskRow($0) } }.padding(.top, 10)
+                        }.font(.subheadline).tint(Brand.muted)
+                    }
+                    Button { beginTask() } label: { Label("告诉助手一个新任务", systemImage: "plus.bubble") }
+                        .font(.subheadline).padding(.vertical, 6).accessibilityIdentifier("skills.create")
+                } else { scheduledTasks }
+            }.padding(20)
+        }.agentPageStyle("任务", largeTitle: true)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { beginTask() } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("新建任务").accessibilityIdentifier("skills.new")
+                }
+            }.refreshable { await store.refresh() }
+    }
+    @ViewBuilder private func taskGroup(_ title: String, status: String) -> some View {
+        let items = store.data.skills.filter { $0.status == status }.sorted { $0.createdAt > $1.createdAt }
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("\(title) · \(items.count)").font(.headline).foregroundStyle(Brand.dark)
+                VStack(spacing: 0) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        taskRow(item)
+                        if index < items.count - 1 { Divider().padding(.horizontal, 16) }
+                    }
+                }.background(.white.opacity(0.83)).clipShape(RoundedRectangle(cornerRadius: 22))
+            }
+        }
+    }
+    private func taskRow(_ skill: VisualSkill) -> some View {
+        NavigationLink(value: AppRoute.skill(skill.id)) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: skill.status == "active" ? "play.circle" : skill.status == "draft" ? "square.and.pencil" : "checklist")
+                    .foregroundStyle(Brand.blue).frame(width: 24).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 7) {
+                    Text(skill.name).font(.headline).foregroundStyle(Brand.dark)
+                    Text(skill.status == "draft" ? skill.prompt : skill.resultReason)
+                        .font(.subheadline).foregroundStyle(Brand.muted).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(store.isConnected ? skill.resultLabel : "等待连接")
+                            .foregroundStyle(skill.result == "needs_attention" ? .orange : Brand.blue)
+                        Text("·")
+                        Text(skill.replay != nil ? "录像测试" : skill.devices.contains(where: { store.camera($0)?.adapter.contains("fixture") == true }) ? "合成测试" : skill.devices.compactMap { store.camera($0)?.name }.joined(separator: "、"))
+                    }.font(.caption).foregroundStyle(Brand.muted).lineLimit(1)
+
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption).foregroundStyle(Brand.muted).padding(.top, 4)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        }.buttonStyle(.plain).accessibilityIdentifier("skill.\(skill.id)")
+    }
+    @ViewBuilder private var scheduledTasks: some View {
+        if let preferences = store.data.personal?.preferences {
+            VStack(alignment: .leading, spacing: 14) {
+                Label("每日守护概况", systemImage: "sun.max").font(.headline)
+                Text(preferences.dailySummary ? "每天 \(preferences.summaryHour):00" : "尚未开启")
+                    .font(.title3.weight(.medium))
+                if preferences.dailySummary && !preferences.enabled {
+                    Text("已暂停：主动提醒总开关已关闭").font(.caption).foregroundStyle(.orange)
+                }
+                Text("汇总已保存的观察与待处理事项，发到助手主对话。")
+                    .font(.subheadline).foregroundStyle(Brand.muted)
+                Text("时区：\(preferences.timezone) · 应用内提醒").font(.caption).foregroundStyle(Brand.muted)
+                NavigationLink("设置时间与免打扰", value: AppRoute.personalAgent).font(.subheadline.bold())
+                    .accessibilityIdentifier("skills.scheduleSettings")
+            }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.83)).clipShape(RoundedRectangle(cornerRadius: 22))
+            Text("当前支持每日概况；摄像头任务按各自规则持续或单次执行，暂不支持预约启停。")
+                .font(.caption).foregroundStyle(Brand.muted)
+        } else { Text("正在读取定时设置…").font(.subheadline).foregroundStyle(Brand.muted) }
+    }
+    private func beginTask() {
+        let draft = store.conversationDrafts[store.generalConversation] ?? ""
+        store.openAI(prompt: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                     ? "我想创建一项摄像头 Skill，请先帮我确认观察对象和提醒条件。" : draft)
     }
 }
 
@@ -32,6 +212,9 @@ struct SkillDetailView: View {
                 ConnectionBanner()
                 if let skill = store.skill(id) {
                     VStack(alignment: .leading, spacing: 12) { Text(skill.name).font(.title2.bold()); StatusBadge(text: store.isConnected ? skill.resultLabel : "等待连接", value: store.isConnected ? skill.result : "unknown"); Text(skill.resultReason).font(.subheadline); Text("最近观察：\(displayTime(skill.lastObservedAt))").font(.caption).foregroundStyle(Brand.muted) }.frame(maxWidth: .infinity, alignment: .leading).padding(18).cardStyle()
+                    if skill.status == "draft" {
+                        Button("继续设置守护") { store.openEditor(skill) }.buttonStyle(PrimaryAction()).accessibilityIdentifier("watch.continue")
+                    }
                     if let replay = skill.replay {
                         VStack(alignment: .leading, spacing: 8) {
                             Label("录像回放测试", systemImage: "film").font(.headline)
@@ -46,7 +229,7 @@ struct SkillDetailView: View {
                         }.padding(16).cardStyle()
                     }
                     if skill.replay == nil { ForEach(skill.devices, id: \.self) { cameraID in NavigationLink(value: AppRoute.camera(cameraID)) { CameraFrame(camera: store.camera(cameraID)) }.buttonStyle(.plain) } }
-                    VStack(alignment: .leading, spacing: 12) { Text("守护规则").font(.headline); Text(skill.prompt); Text("需求补充：" + (skill.rules?.description ?? "等待完善规则")).font(.subheadline); Text(skill.rules?.consecutiveFrames != nil ? "历史按帧规则，仅保留过去的结果；重新创建时使用秒数配置" : "看不清时保留判断 · \(skill.rules?.sampleEvery ?? 3) s 检测 · 确认跨度 \(skill.rules?.confirmationSpan ?? 6) s · \(skill.replay != nil ? "有限录像回放" : skill.mode == "once" ? "一次性任务" : "持续守护")").font(.caption).foregroundStyle(Brand.muted) }.padding(16).cardStyle()
+                    DisclosureGroup("守护规则与采样说明") { VStack(alignment: .leading, spacing: 12) { Text(skill.prompt); Text("需求补充：" + (skill.rules?.description ?? "等待完善规则")).font(.subheadline); Text(skill.rules?.consecutiveFrames != nil ? "历史按帧规则，仅保留过去的结果；重新创建时使用秒数配置" : "看不清时保留判断 · \(skill.rules?.sampleEvery ?? 3) s 检测 · 确认跨度 \(skill.rules?.confirmationSpan ?? 6) s · \(skill.replay != nil ? "有限录像回放" : skill.mode == "once" ? "一次性任务" : "持续守护")").font(.caption).foregroundStyle(Brand.muted) } }.padding(16).cardStyle()
                     if skill.replay != nil && skill.alert == "open" {
                         Button("标记已核验（保留证据）") {
                             Task { await store.perform { _ = try await store.client.acknowledgeReplay(id) } }
@@ -59,15 +242,15 @@ struct SkillDetailView: View {
                         NavigationLink { SkillTrialReportView(id: trial.id) } label: { Label("试跑报告 · " + trial.label, systemImage: "checklist") }
                     }
                     if !events.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("最近运行记录").font(.headline)
+                        DisclosureGroup("最近运行记录") {
+                            VStack(alignment: .leading, spacing: 12) {
                             ForEach(events.suffix(6).reversed()) { event in
                                 HStack(alignment: .top) { Text(event.label).font(.subheadline); Spacer(); Text(displayTime(event.at)).font(.caption2).foregroundStyle(Brand.muted) }
+                            }
                             }
                         }.padding(16).cardStyle()
                     }
                     if let eventsError { Text(eventsError).font(.caption).foregroundStyle(.orange) }
-                    if skill.status == "draft" { Button("检查并编辑草案") { store.editor = skill }.buttonStyle(.borderedProminent) }
                     if skill.status == "active" {
                         if skill.replay == nil { Button("重新观察") { Task { await store.recheck(id) } }.buttonStyle(.bordered)
                         if skill.alert == "open" { Button("我已处理，请复核") { Task { await store.recheck(id, acknowledged: true) } }.buttonStyle(.borderedProminent) }
@@ -79,7 +262,7 @@ struct SkillDetailView: View {
                     if ["active", "paused", "draft"].contains(skill.status) { Button(skill.status == "draft" ? "丢弃草案" : "停止任务", role: .destructive) { stopping = true }.buttonStyle(.bordered) }
                 } else { EmptyState(title: "没有找到任务", detail: "返回列表刷新后重试。") }
             }.padding(16).disabled(store.busy)
-        }.pageStyle("Skill 详情")
+        }.pageStyle("守护详情")
         .task(id: id) {
             trialReports = (try? await store.client.trials(id)) ?? []
             while !Task.isCancelled {

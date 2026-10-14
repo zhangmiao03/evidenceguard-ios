@@ -30,6 +30,7 @@ class AgentRuntime:
         self.store,self.tools=store,tools
         self.model_provider=provider or OpenAICompatibleProvider()
         self.cameras=cameras
+        self.push=None
         self.tasks={}; self.scheduler=scheduler or TaskScheduler()
         for run in store.runs():
             if run['status'] in {'queued','running'}:
@@ -257,7 +258,10 @@ class AgentRuntime:
         except Exception as error:
             message=str(error) if isinstance(error,ProviderError) else '本次请求未完成，请重试；没有自动启用任务。'
             run.update(status='failed',error=message); self.store.event(run['id'],'run_failed',{'reason':message})
-        finally: self.store.save_run(run)
+        finally:
+            with self.store.transaction():
+                self.store.save_run(run)
+                if self.push: self.push.completed_run(run)
 
 
 def video_answer(result):

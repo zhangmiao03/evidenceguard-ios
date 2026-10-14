@@ -291,7 +291,7 @@ enum SDKCredentialVault {
         officialOrientation = ToggleScreenOrientationKt.fullScreen.collectData { [weak self] value in
             Task { @MainActor in
                 guard self?.officialDemoController != nil else { return }
-                WorkspaceAppDelegate.setOrientation((value as? Bool) == true ? .landscape : .portrait)
+                PushAppDelegate.setOrientation((value as? Bool) == true ? .landscape : .portrait)
             }
         }
         #endif
@@ -310,7 +310,7 @@ enum SDKCredentialVault {
         }
         #endif
         officialDemoController = nil
-        WorkspaceAppDelegate.setOrientation(.portrait)
+        PushAppDelegate.setOrientation(.portrait)
         connectedCredentials = nil; devices = []
         message = "已从官方工作区返回，请重新查询账号下的设备并同步。"
         workspaceMessage = "已返回 EvidenceGuard；直播不会自动恢复"

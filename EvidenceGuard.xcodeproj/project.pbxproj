@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		AF1020261014000000000001 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
 		AF1020261014000000000002 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
+		AC8800000000000000000001 /* ReminderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8800000000000000000003 /* ReminderSettings.swift */; };
+		AC8800000000000000000002 /* ReminderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8800000000000000000003 /* ReminderSettings.swift */; };
+		AB9900000000000000000001 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9900000000000000000003 /* PushNotifications.swift */; };
+		AB9900000000000000000002 /* PushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB9900000000000000000003 /* PushNotifications.swift */; };
 		022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */; };
 		03AE49A9BBD66F7270098AAA /* DeviceQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */; };
 		145DF8C0457707043D197721 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* Assets.xcassets */; };
@@ -75,6 +79,8 @@
 
 /* Begin PBXFileReference section */
 		BF1020261014000000000001 /* LiveCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCameraView.swift; sourceTree = "<group>"; };
+		AC8800000000000000000003 /* ReminderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderSettings.swift; sourceTree = "<group>"; };
+		AB9900000000000000000003 /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
 		017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileServiceConfiguration.swift; sourceTree = "<group>"; };
 		1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceQRCode.swift; sourceTree = "<group>"; };
 		19CD50DD08657A3BA91F3763 /* EvidenceGuardSDK.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EvidenceGuardSDK.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -170,6 +176,8 @@
 			isa = PBXGroup;
 			children = (
 				B10000000000000000000001 /* EvidenceGuardApp.swift */,
+				AB9900000000000000000003 /* PushNotifications.swift */,
+				AC8800000000000000000003 /* ReminderSettings.swift */,
 				B10000000000000000000002 /* AppModels.swift */,
 				B10000000000000000000003 /* APIClient.swift */,
 				B10000000000000000000004 /* AppStore.swift */,
@@ -376,6 +384,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* EvidenceGuardApp.swift in Sources */,
+				AB9900000000000000000001 /* PushNotifications.swift in Sources */,
+				AC8800000000000000000001 /* ReminderSettings.swift in Sources */,
 				A10000000000000000000002 /* AppModels.swift in Sources */,
 				A10000000000000000000003 /* APIClient.swift in Sources */,
 				A10000000000000000000004 /* AppStore.swift in Sources */,
@@ -404,6 +414,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				8584A7473D89CD4E8E9D7769 /* EvidenceGuardApp.swift in Sources */,
+				AB9900000000000000000002 /* PushNotifications.swift in Sources */,
+				AC8800000000000000000002 /* ReminderSettings.swift in Sources */,
 				DF3F94B327698F0B584A8707 /* AppModels.swift in Sources */,
 				21C35FE1B78E2B0042D84E2F /* APIClient.swift in Sources */,
 				647262E8F663A54E08B4622C /* AppStore.swift in Sources */,
@@ -437,6 +449,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EvidenceGuard/EvidenceGuard.entitlements;
+				APS_ENVIRONMENT = production;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
@@ -469,6 +483,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EvidenceGuard/EvidenceGuard.entitlements;
+				APS_ENVIRONMENT = development;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				EG_APP_BUNDLE_ID = com.anker.evidenceguard.sdkdemo;
@@ -538,6 +554,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EvidenceGuard/EvidenceGuard.entitlements;
+				APS_ENVIRONMENT = development;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
@@ -563,6 +581,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = EvidenceGuard/EvidenceGuard.entitlements;
+				APS_ENVIRONMENT = production;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;

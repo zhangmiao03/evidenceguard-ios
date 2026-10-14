@@ -13,11 +13,11 @@ private struct ProductRootView: View {
     @AppStorage("showFeedback") private var showFeedback = true
     var body: some View {
         TabView(selection: $store.selectedTab) {
-            tab(0) { HomeView() }.tabItem { Label("首页", systemImage: "house.fill") }.tag(0)
-            tab(1) { SkillsView() }.tabItem { Label("Skill", systemImage: "square.3.layers.3d") }.tag(1)
-            tab(2) { TeachAIView() }.tabItem { Label("AI", systemImage: "sparkles") }.badge(store.unreadAssistantCount).tag(2)
-            tab(3) { EvidenceView() }.tabItem { Label("证据", systemImage: "doc.text.image") }.tag(3)
-            tab(4) { ProfileView() }.tabItem { Label("我的", systemImage: "person.fill") }.tag(4)
+            tab(.assistant) { TeachAIView() }.tabItem { Label("助手", systemImage: "bubble.left.and.bubble.right.fill") }.badge(store.unreadAssistantCount).tag(AppTab.assistant)
+            tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头Skill", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
+            tab(.tasks) { TasksView() }.tabItem { Label("任务", systemImage: "checklist") }.tag(AppTab.tasks)
+            tab(.memory) { MemoryView() }.tabItem { Label("记忆", systemImage: "brain.head.profile") }.tag(AppTab.memory)
+            tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
         .tint(Brand.blue)
         .sheet(item: $store.editor, onDismiss: { store.editorRegionCameraID = nil }) { skill in CreateSkillView(skill: skill, initialRegionCameraID: store.editorRegionCameraID).environmentObject(store) }
@@ -26,8 +26,8 @@ private struct ProductRootView: View {
             if showFeedback, let toast = store.toast { Text(toast).font(.subheadline).padding(14).background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 14)).padding().onTapGesture { store.toast = nil }.task(id: toast) { try? await Task.sleep(for: .seconds(3)); store.toast = nil } }
         }
     }
-    private func tab<Content: View>(_ index: Int, @ViewBuilder content: () -> Content) -> some View {
-        NavigationStack(path: $store.tabPaths[index]) {
+    private func tab<Content: View>(_ tab: AppTab, @ViewBuilder content: () -> Content) -> some View {
+        NavigationStack(path: $store.tabPaths[tab.rawValue]) {
             content().navigationDestination(for: AppRoute.self) { route in
                 destination(route).toolbar(.hidden, for: .tabBar)
             }
@@ -35,13 +35,15 @@ private struct ProductRootView: View {
     }
     @ViewBuilder private func destination(_ route: AppRoute) -> some View {
         switch route {
+        case .pushDelivery(let id, let scope): PushDeliveryView(id: id, scope: scope)
+        case .pushConversation(let id, let skill, let mode): ConversationView(conversationID: id, skillID: skill, initialMode: mode)
         case .demoScene: DemoSceneView()
         case .skill(let id): SkillDetailView(id: id)
         case .evidence(let id): EvidenceDetailView(id: id)
         case .evidenceList(let skill): EvidenceView(skillID: skill)
         case .cameras: CameraListView()
         case .addDevice: AddDeviceView()
-        case .personalAgent: PersonalAgentView()
+        case .personalAgent: NotificationSettingsView()
         case .personalInbox: PersonalInboxView()
         case .camera(let id): CameraDetailView(id: id)
         case .alerts: AlertsView()
@@ -54,6 +56,7 @@ private struct ProductRootView: View {
         case .privacy: PrivacyView()
         case .help: HelpView()
         case .profile: EditProfileView()
+        case .account: ProfileView()
         case .recordings: RecordingLibraryView()
         case .replayVideo(let id, let offset): RecordingPlayerView(id: id, offset: offset, replayEvidence: true)
         case .video(let id, let offset): RecordingPlayerView(id: id, offset: offset)
@@ -64,8 +67,11 @@ private struct ProductRootView: View {
 
 private struct SDKWorkspaceContainer<Content: View>: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var connection: OfficialSDKConnection
+    @ObservedObject private var push = PushNotifications.shared
     @State private var guide = false
+    @State private var returningToProduct = false
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(spacing: 0) {
@@ -80,16 +86,22 @@ private struct SDKWorkspaceContainer<Content: View>: View {
                         else { guide = true }
                     } else {
                         Task {
+                            returningToProduct = true
                             await connection.leaveOfficialWorkspace()
-                            store.tabPaths = Array(repeating: [], count: 5)
-                            store.selectedTab = 4; store.tabPaths[4] = [.officialSDK]
+                            // SDK device routes need a fresh account check; keep
+                            // assistant, task and memory navigation intact.
+                            store.tabPaths[AppTab.cameraSkills.rawValue] = []
+                            store.selectedTab = .profile
+                            store.tabPaths[AppTab.profile.rawValue] = [.officialSDK]
+                            returningToProduct = false
+                            routePush()
                             await store.refresh()
                         }
                     }
                 }.font(.caption.bold()).buttonStyle(.bordered)
                     .accessibilityIdentifier("workspace.switch")
             }.padding(.horizontal, 16).padding(.vertical, 7).background(.regularMaterial)
-                .disabled(connection.switchingWorkspace || store.editor != nil)
+                .disabled(connection.switchingWorkspace || returningToProduct || store.editor != nil)
             if connection.switchingWorkspace {
                 HStack { ProgressView(); Text(connection.workspaceMessage).font(.caption) }.padding(10)
             }
@@ -99,7 +111,30 @@ private struct SDKWorkspaceContainer<Content: View>: View {
             } else { content().allowsHitTesting(!connection.switchingWorkspace) }
         }
         .tint(Brand.blue)
+        // Stay attached while the product tabs are replaced by the official UI.
+        .task(id: store.client.baseURL) {
+            push.attach(store.client)
+            routePush()
+            while !Task.isCancelled {
+                if scenePhase == .active { await push.setActive(true) }
+                do { try await Task.sleep(for: .seconds(30)) } catch { break }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            routePush()
+            Task { await push.setActive(phase == .active) }
+        }
+        .onChange(of: push.pending) { _, _ in routePush() }
+        .onChange(of: store.editor == nil) { _, _ in routePush() }
+        .onChange(of: guide) { _, _ in routePush() }
+        .onChange(of: connection.switchingWorkspace) { _, _ in routePush() }
+        .onChange(of: connection.officialDemoController == nil) { _, _ in routePush() }
         .sheet(isPresented: $guide) { OfficialWorkspaceGuide(connection: connection) }
+    }
+    private func routePush() {
+        PushNavigation.consume(&push.pending, selection: &store.selectedTab, paths: &store.tabPaths,
+            productVisible: connection.officialDemoController == nil && !connection.switchingWorkspace && !returningToProduct,
+            presentationBlocked: guide || store.editor != nil || scenePhase != .active)
     }
 }
 

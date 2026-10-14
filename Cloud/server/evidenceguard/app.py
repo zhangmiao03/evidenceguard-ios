@@ -35,6 +35,7 @@ from .visual_review import VisualReview
 from .camera.ingest import SDKIngest, SDKBatch
 from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
+from .push import PushService, DeviceRegistration, Presence
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -91,6 +92,9 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     preparation=SitePreparation(store)
     tools=build_tools(store,camera,captures,video_service=videos); agent=AgentRuntime(store,tools,provider,camera,scheduler)
     proactive=ProactiveEngine(personal,agent)
+    push=PushService(store,personal)
+    proactive.push=push
+    agent.push=push
     conversations=Conversations(store,proactive)
     visual_review=VisualReview(store,videos.vision)
     agent.visual_review=visual_review
@@ -106,8 +110,12 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         personal_task=asyncio.create_task(proactive.run()) if start_worker else None
         ingest_task=asyncio.create_task(ingest.run()) if start_worker else None
         demo_task=asyncio.create_task(demo.run()) if start_worker and demo.enabled else None
+        push_task=asyncio.create_task(push.run()) if start_worker else None
         try: yield
         finally:
+            if push_task:
+                push_task.cancel(); await asyncio.gather(push_task,return_exceptions=True)
+            await push.provider.close()
             if demo_task:
                 demo_task.cancel(); await asyncio.gather(demo_task,return_exceptions=True)
             if ingest_task:
@@ -135,6 +143,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.ingest=ingest
     app.state.visual_review=visual_review
     app.state.demo=demo
+    app.state.push=push
     @app.exception_handler(KeyError)
     async def missing(request,error):
         from fastapi.responses import JSONResponse
@@ -155,6 +164,21 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         skills=[s | {'capability':assess(s,videos,manifests)} for s in store.skills()]
         return dict(personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
     def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
+    def push_key(request): return request.headers.get('X-EG-Push-Key')
+    @app.get('/api/push/status')
+    async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
+    @app.put('/api/push/device')
+    async def push_register(request: Request,body: DeviceRegistration):
+        return push.register(personal_client(request),push_key(request),body)
+    @app.delete('/api/push/device')
+    async def push_disable(request: Request): return push.disable(personal_client(request),push_key(request))
+    @app.put('/api/push/presence')
+    async def push_presence(request: Request,body: Presence):
+        return push.presence(personal_client(request),push_key(request),body.active)
+    @app.post('/api/push/test',status_code=202)
+    async def push_test(request: Request): return push.test(personal_client(request),push_key(request))
+    @app.post('/api/push/deliveries/{key}/open')
+    async def push_open(request: Request,key: str): return push.open(personal_client(request),push_key(request),key)
     @app.get('/api/demo/scenes')
     async def demo_scenes(request: Request): return demo.snapshot(personal_client(request))
     @app.post('/api/demo/scenes',status_code=202)

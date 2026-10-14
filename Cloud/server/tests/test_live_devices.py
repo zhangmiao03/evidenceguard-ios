@@ -166,6 +166,35 @@ def test_http_capture_exchange(tmp_path):
     asyncio.run(run())
 
 
+def test_push_binding_and_live_lease_remain_independent(tmp_path, monkeypatch):
+    monkeypatch.setenv('EG_ACCESS_TOKEN', 'a' * 40)
+    monkeypatch.setenv('EG_APNS_ENABLED', '0')
+    monkeypatch.setenv('EG_APNS_TOPIC', 'com.evidenceguard.integration')
+    monkeypatch.setenv('EG_APNS_ENVIRONMENT', 'production')
+    app = create_app(tmp_path / 'db.sqlite3', start_worker=False)
+    headers = {'Authorization': 'Bearer ' + 'a' * 40,
+               'X-EG-Installation-ID': '00000000-0000-4000-8000-000000000001'}
+    push_headers = headers | {'X-EG-Push-Key': 'ab' * 32}
+    registration = dict(token='cd' * 32, environment='production', topic='com.evidenceguard.integration')
+    with TestClient(app) as client:
+        assert client.put('/api/push/device', headers=push_headers, json=registration).json()['enabled']
+        device = client.post('/api/devices/import', headers=headers, json=dict(accountId='test-account', platform='ios',
+            devices=[dict(sn='T8171TEST0001', model='T8171', name='Test camera')])).json()[0]
+        session = client.post('/api/media-sessions', headers=headers, json=dict(deviceId=device['id'], platform='ios')).json()
+        media_headers = headers | {'X-EG-Media-Session': session['token']}
+        url = '/api/media-sessions/' + session['id']
+        heartbeat = dict(state='streaming', sequence=1, frameAgeMs=0)
+        assert client.post(url + '/heartbeat', headers=media_headers, json=heartbeat).status_code == 200
+        # The two private proofs must never authorize each other's endpoints.
+        assert client.get('/api/push/status', headers=media_headers).status_code == 403
+        assert client.get(url + '/commands', headers=push_headers).status_code == 404
+        assert not client.delete('/api/push/device', headers=push_headers).json()['enabled']
+        assert client.post(url + '/heartbeat', headers=media_headers, json=heartbeat).status_code == 200
+        assert client.put('/api/push/device', headers=push_headers, json=registration).json()['enabled']
+        assert client.post(url + '/stop', headers=media_headers).json()['status'] == 'stopped'
+        assert client.get('/api/push/status', headers=push_headers).json()['enabled']
+
+
 @pytest.mark.parametrize('direct_vision', [True, False])
 def test_agent_receives_challenged_live_image_or_completed_visual_review(tmp_path, monkeypatch, direct_vision):
     async def run():

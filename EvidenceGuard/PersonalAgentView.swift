@@ -1,73 +1,134 @@
 import SwiftUI
 
-struct PersonalAgentView: View {
+struct MemoryView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var preferences = PersonalPreferences()
-    @State private var memory = ""
-    @State private var temporary = false
-    @State private var loaded = false
+    @State private var filter = "all"
+    @State private var adding = false
+    @State private var pendingRemoval: PersonalMemory?
+    @State private var showRemoval = false
+    private var memories: [PersonalMemory] {
+        (store.data.personal?.memories ?? []).filter { $0.expiresAt.map { $0 > Date().timeIntervalSince1970 } ?? true }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+    private var filtered: [PersonalMemory] {
+        memories.filter { filter == "all" || (filter == "temporary" ? $0.expiresAt != nil : $0.expiresAt == nil) }
+    }
     var body: some View {
-        Form {
-            Section("主动提醒") {
-                Toggle("关注摄像头事件与后续变化", isOn: $preferences.enabled)
-                Toggle("每日守护概况", isOn: $preferences.dailySummary).disabled(!preferences.enabled)
-                Stepper("每日 \(preferences.summaryHour):00", value: $preferences.summaryHour, in: 0...23).disabled(!preferences.dailySummary || !preferences.enabled)
-                Stepper("免打扰开始：\(preferences.quietStart):00", value: $preferences.quietStart, in: 0...23)
-                Stepper("免打扰结束：\(preferences.quietEnd):00", value: $preferences.quietEnd, in: 0...23)
-                Text("使用手机当前时区：\(TimeZone.current.identifier)。助手根据摄像头已有观察和证据主动检查，消息会进入 AI 对话与提醒列表。此版仅应用内通知；不会在锁屏时弹出系统推送。免打扰期间暂存，之后重新核对；起止相同则全天允许提醒。").font(.caption).foregroundStyle(Brand.muted)
-                Button("保存提醒偏好") {
-                    preferences.timezone = TimeZone.current.identifier
-                    let values = preferences
-                    Task { await store.perform { store.data.personal = try await store.client.savePreferences(values); store.toast = "提醒偏好已保存" } }
-                }.disabled(!loaded || !store.isConnected || store.busy)
-                if let error = store.data.personal?.lastError { Text(error).foregroundStyle(.orange) }
-            }
-            Section("摄像头优先的主动守护") {
-                if MobileServiceConfiguration.current.isInternalDemo {
-                    NavigationLink("用测试场景验证主动提醒", value: AppRoute.demoScene)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ConnectionBanner()
+                VStack(alignment: .leading, spacing: 14) {
+                    Label("让助手更了解你", systemImage: "sparkles").font(.title3.bold())
+                    Text("记下你的关注点和沟通偏好，下次对话时继续使用。")
+                        .font(.subheadline).foregroundStyle(Brand.muted)
+                    Button { adding = true } label: {
+                        HStack { Label("添加一条记忆", systemImage: "plus"); Spacer(); Image(systemName: "chevron.right").font(.caption) }
+                            .font(.subheadline.weight(.medium)).padding(15).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 16))
+                    }.buttonStyle(.plain).foregroundStyle(Brand.blue).accessibilityIdentifier("memory.add")
+                    Text("只保存你确认的内容；临时情况可设置为 24 小时有效。")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                }.padding(20).background(Brand.paleBlue.opacity(0.86)).clipShape(RoundedRectangle(cornerRadius: 24))
+                HStack {
+                    Text("已确认的记忆").font(.headline)
+                    Spacer()
+                    Text("\(memories.count) 条").font(.caption).foregroundStyle(Brand.muted)
                 }
-                Label("事件变化 → 核对证据 → 按提醒偏好展示", systemImage: "video")
-                Text("助手关注已接收的摄像头事件、Skill 观察记录和未处理事项，不会另外抢占摄像头。模型评估信息价值，免打扰、每天最多6条普通提醒、至少5分钟间隔和同类合并由固定规则执行。每日概况需单独开启。没有正在运行的守护时，不会假装正在看现场。").font(.caption).foregroundStyle(Brand.muted)
-                Text("助手只建议或请求你配合；启用、替换 Skill 仍需要你确认。飞书、日历暂未接入。").font(.caption).foregroundStyle(Brand.muted)
-            }
-            Section("最近的后台检查") {
-                if store.data.personal?.activity?.isEmpty ?? true {
-                    Text("尚无待检查事项。开启主动提醒后，摄像头任务产生新变化时会显示在这里。").foregroundStyle(Brand.muted)
+                Picker("记忆类型", selection: $filter) {
+                    Text("全部").tag("all"); Text("长期").tag("longterm"); Text("24 小时").tag("temporary")
+                }.pickerStyle(.segmented).accessibilityIdentifier("memory.filter")
+                if filtered.isEmpty {
+                    Text(memories.isEmpty ? "还没有保存的记忆。可以先告诉我：你最关心什么，或希望我怎样回复。" : "这里还没有这类记忆。")
+                        .font(.subheadline).foregroundStyle(Brand.muted).padding(20)
+                        .frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.78)).clipShape(RoundedRectangle(cornerRadius: 22))
                 }
-                ForEach(Array((store.data.personal?.activity ?? []).prefix(8))) { item in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.statusLabel).font(.subheadline.bold())
-                        Text(item.reason).font(.caption).foregroundStyle(Brand.muted)
-                    }
+                ForEach(filtered) { item in
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label(item.expiresAt == nil ? "长期记忆" : "临时记忆", systemImage: item.expiresAt == nil ? "bookmark" : "clock")
+                                .font(.caption.weight(.medium)).foregroundStyle(Brand.blue)
+                            Spacer()
+                            Menu {
+                                Button("移除这条记忆", role: .destructive) { pendingRemoval = item; showRemoval = true }
+                            } label: { Image(systemName: "ellipsis").frame(width: 32, height: 32) }
+                                .accessibilityLabel("管理这条记忆").disabled(store.busy || !store.isConnected)
+                        }
+                        Text(item.content).font(.body).textSelection(.enabled)
+                        Text(item.expiresAt.map { "有效至 " + displayTime($0) } ?? "保存于 " + displayTime(item.createdAt))
+                            .font(.caption).foregroundStyle(Brand.muted)
+                    }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white.opacity(0.85)).clipShape(RoundedRectangle(cornerRadius: 22))
+                        .accessibilityIdentifier("memory.item.\(item.id)")
+                }
+                Text("当前为团队演示空间，请使用测试信息。记忆不会自动启用或修改摄像头任务。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }.padding(20)
+        }.agentPageStyle("记忆", largeTitle: true)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { adding = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("添加记忆").accessibilityIdentifier("memory.new")
                 }
             }
-            Section("告诉助手需要记住什么") {
-                TextField("例如：回复简洁一些，先说需要我做什么", text: $memory, axis: .vertical).lineLimit(2...4)
-                Toggle("仅保留 24 小时", isOn: $temporary)
-                Text("当天心情等临时情况可开启 24 小时有效期。只保存你主动确认的内容，不从摄像头推断心情。当前仍是团队演示空间，请使用测试信息。").font(.caption).foregroundStyle(Brand.muted)
-                Button("确认记住") {
-                    let content = memory.trimmingCharacters(in: .whitespacesAndNewlines)
-                    Task { await store.perform { store.data.personal = try await store.client.remember(content, temporary: temporary); memory = ""; store.toast = "已记住，可随时移除" } }
-                }.disabled(memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || memory.count > 500 || !store.isConnected || store.busy)
-            }
-            Section("已确认的记忆") {
-                if store.data.personal?.memories.isEmpty ?? true { Text("尚未保存记忆").foregroundStyle(Brand.muted) }
-                ForEach(store.data.personal?.memories ?? []) { item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(item.content)
-                        Text(item.expiresAt.map { "有效至 " + displayTime($0) } ?? "保留至你主动移除").font(.caption).foregroundStyle(Brand.muted)
-                        Button("移除这条记忆", role: .destructive) { Task { await store.perform { store.data.personal = try await store.client.forget(item.id) } } }.font(.caption).disabled(store.busy)
-                    }
+            .sheet(isPresented: $adding) { MemoryComposerView() }
+            .alert("移除这条记忆？", isPresented: $showRemoval, presenting: pendingRemoval) { item in
+                Button("移除", role: .destructive) {
+                    Task { await store.perform { store.data.personal = try await store.client.forget(item.id); store.toast = "已移除这条记忆" } }
                 }
-            }
-            Section { NavigationLink("查看助手提醒", value: AppRoute.personalInbox) }
-        }.pageStyle("助手记忆与提醒")
-            .task { await store.refresh(); if let snapshot = store.data.personal { preferences = snapshot.preferences; loaded = true } }
-            .onChange(of: store.data.personal?.revision) { _, _ in
-                if !loaded, let snapshot = store.data.personal { preferences = snapshot.preferences; loaded = true }
-            }
+                Button("取消", role: .cancel) {}
+            } message: { item in Text(item.content) }
+            .refreshable { await store.refresh() }
     }
 }
+
+private struct MemoryComposerView: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var content = ""
+    @State private var temporary = false
+    @State private var saving = false
+    @State private var error: String?
+    @State private var discard = false
+    private var cleaned: String { content.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("希望助手记住什么") {
+                    TextField("例如：回复简洁一些，先说需要我做什么", text: $content, axis: .vertical)
+                        .lineLimit(4...8).accessibilityIdentifier("memory.content")
+                    Text("\(content.count)/500").font(.caption).foregroundStyle(content.count > 500 ? .orange : Brand.muted)
+                }
+                Section("保存多久") {
+                    Toggle("仅保留 24 小时", isOn: $temporary).accessibilityIdentifier("memory.temporary")
+                    Text(temporary ? "适合今天的临时安排，到期后不再用于后续对话。" : "保存为长期记忆，之后可在记忆页移除。")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                }
+                Section { Text("点击“确认记住”后才会保存。当前为团队演示空间，请勿填写敏感个人信息。").font(.caption).foregroundStyle(Brand.muted) }
+                if let error { Section { Text(error).foregroundStyle(.orange).font(.subheadline) } }
+            }.navigationTitle("添加记忆").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { if cleaned.isEmpty { dismiss() } else { discard = true } }.disabled(saving)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { Task { await save() } } label: { if saving { ProgressView() } else { Text("确认记住") } }
+                            .disabled(cleaned.isEmpty || content.count > 500 || saving || store.busy || !store.isConnected)
+                            .accessibilityIdentifier("memory.save")
+                    }
+                }.interactiveDismissDisabled(!cleaned.isEmpty || saving)
+                .confirmationDialog("放弃这条尚未保存的记忆？", isPresented: $discard, titleVisibility: .visible) {
+                    Button("放弃", role: .destructive) { dismiss() }; Button("继续编辑", role: .cancel) {}
+                }
+        }
+    }
+    private func save() async {
+        saving = true; error = nil; defer { saving = false }
+        do {
+            store.data.personal = try await store.client.remember(cleaned, temporary: temporary)
+            store.toast = "已记住，可在记忆页管理"; dismiss()
+        } catch { self.error = error.localizedDescription }
+    }
+}
+
 
 struct DemoSceneView: View {
     @EnvironmentObject private var store: AppStore
@@ -99,7 +160,7 @@ struct DemoSceneView: View {
                         }.buttonStyle(.bordered).disabled(!store.isConnected || store.busy)
                         Text("提醒未开启时仍能测试视觉核验，只保留证据。").font(.caption).foregroundStyle(Brand.muted)
                     }
-                    NavigationLink("查看免打扰和提醒偏好", value: AppRoute.personalAgent).font(.caption)
+                    NavigationLink("通知与提醒", value: AppRoute.personalAgent).font(.caption)
                     Button { Task { await start() } } label: {
                         Label(starting ? "正在提交…" : "开始测试", systemImage: "play.fill").frame(maxWidth: .infinity)
                     }.buttonStyle(PrimaryAction()).disabled(starting || snapshot?.enabled != true || !store.isConnected || snapshot?.scenes.first?.isRunning == true)
@@ -125,9 +186,9 @@ struct DemoSceneView: View {
                             }.buttonStyle(.plain)
                         }
                         if scene.policyStatus == "sent" || scene.policyStatus == "merged" {
-                            Button("进入助手主对话，继续追问") {
+                            Button("回到助手继续追问") {
                                 store.selectConversation(store.generalConversation)
-                                store.tabPaths[2] = []; store.selectedTab = 2
+                                store.openAI()
                             }.buttonStyle(.borderedProminent)
                         }
                         Text("合成测试 · 生成于 \(displayTime(scene.createdAt)) · 非真实摄像头采集时间").font(.caption2).foregroundStyle(Brand.muted)
@@ -160,8 +221,8 @@ struct PersonalInboxView: View {
     var body: some View {
         List {
             Section {
-                NavigationLink("提醒偏好与记忆", value: AppRoute.personalAgent)
-                Button("进入 AI 对话继续处理") { store.selectedTab = 2; store.tabPaths[2] = [] }
+                NavigationLink("通知与提醒", value: AppRoute.personalAgent)
+                Button("回到助手继续处理") { store.openAI() }
             }
             if store.data.personal?.inbox.isEmpty ?? true {
                 Text("暂时没有助手提醒。开启后，新的任务事件、未处理事项的后续提醒和每日概况会出现在这里。")
@@ -184,6 +245,14 @@ struct ProactiveMessageCard: View {
     @EnvironmentObject private var store: AppStore
     let message: AssistantMessage
     var onReply: () -> Void
+    private var limitations: [String] {
+        var values: [String] = []
+        for source in message.sources {
+            if let value = source.limitation, !value.isEmpty, !values.contains(value) { values.append(value) }
+        }
+        return values
+    }
+    private var testSource: Bool { message.sources.contains { ["fixture", "replay", "synthetic_demo"].contains($0.sourceType ?? "") } }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -192,10 +261,13 @@ struct ProactiveMessageCard: View {
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
             Text(message.title).font(.headline)
-            Text(message.body).textSelection(.enabled)
             Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
-            DisclosureGroup("为什么提醒我") {
+            Label(testSource ? "测试 / 回放资料 · 非真实现场" : "依据已有记录 · 不代表此刻现场", systemImage: "info.circle")
+                .font(.caption).foregroundStyle(Brand.muted)
+            ForEach(limitations, id: \.self) { Text($0).font(.caption2).foregroundStyle(Brand.muted) }
+            DisclosureGroup("展开详情与依据") {
                 VStack(alignment: .leading, spacing: 8) {
+                    Text(message.body).font(.subheadline).textSelection(.enabled)
                     Text(message.why).font(.caption)
                     ForEach(message.sources) { source in
                         VStack(alignment: .leading, spacing: 3) {
@@ -207,16 +279,21 @@ struct ProactiveMessageCard: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }.font(.caption).tint(Brand.muted)
-            if let skill = message.skillId { NavigationLink("查看任务与画面", value: AppRoute.skill(skill)).font(.subheadline) }
             HStack {
-                Button("继续沟通") { respond("read"); onReply() }.buttonStyle(.borderedProminent)
+                if let evidence = message.sources.compactMap(\.evidenceId).first {
+                    NavigationLink("查看证据", value: AppRoute.evidence(evidence)).buttonStyle(.borderedProminent)
+                } else if let skill = message.skillId {
+                    NavigationLink("查看守护", value: AppRoute.skill(skill)).buttonStyle(.borderedProminent)
+                }
+                Button("追问") { respond("read"); onReply() }.buttonStyle(.bordered)
+                Spacer(minLength: 0)
                 if message.feedback == "handled" { Text("已处理此提醒").font(.caption).foregroundStyle(Brand.muted) }
                 else {
-                    Menu("处理提醒") {
+                    Menu {
                         Button("我已处理") { respond("handled") }
                         Button("1 小时后再提醒") { respond("snooze") }
                         Button("不再提醒此事件") { respond("dismiss") }
-                    }
+                    } label: { Image(systemName: "ellipsis") }.accessibilityLabel("处理提醒")
                 }
             }.disabled(store.busy)
             if message.feedback == "handled" { Text("已记下你的反馈；摄像头告警仍以新观察为准。").font(.caption2).foregroundStyle(Brand.muted) }
