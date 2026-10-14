@@ -1,98 +1,129 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type Capture, type Device, type Run } from "./api";
+import { api, type Capture, type Device } from "./api";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
 import { LiveView } from "./LiveView";
 import { OfficialWorkspace } from "./OfficialWorkspace";
-import { newID } from "./browser-support";
+import {
+  Assistant,
+  clearChatDrafts,
+  type AssistantHandle,
+  type AssistantIntent,
+} from "./Assistant";
+import { MemoryPage, SettingsPage } from "./Personal";
+import { RecordingsPanel, TasksPage } from "./Skills";
+import { ImageEvidence } from "./ProductUI";
+import {
+  emptyBootstrap,
+  type Bootstrap,
+  type Evidence,
+  type Personal,
+  type Skill,
+  type Tab,
+} from "./product-types";
 
-function ImageEvidence({ path, alt }: { path: string; alt: string }) {
-  const [url, setURL] = useState("");
-  useEffect(() => {
-    setURL("");
-    let alive = true,
-      resource = "";
-    void api
-      .media(path)
-      .then((value) => {
-        resource = value;
-        if (alive) setURL(value);
-        else URL.revokeObjectURL(value);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-      if (resource) URL.revokeObjectURL(resource);
-    };
-  }, [path]);
-  return url ? (
-    <img className="evidence-image" src={url} alt={alt} />
-  ) : (
-    <div className="image-unavailable">图片待读取</div>
-  );
-}
-
+const tabs: [Tab, string, string][] = [
+  ["assistant", "✧", "助手"],
+  ["cameras", "◉", "摄像头 Skill"],
+  ["tasks", "☷", "任务"],
+  ["memory", "◇", "记忆"],
+  ["settings", "⚙", "设置"],
+];
+const headings: Record<Tab, [string, string]> = {
+  assistant: [
+    "今天，有什么想关注的？",
+    "聊聊任务，回顾记忆，让每个答案都有依据。",
+  ],
+  cameras: [
+    "让看见，成为一种能力。",
+    "连接设备，查看现场，教摄像头一个新 Skill。",
+  ],
+  tasks: ["你关心的事，都在这里。", "查看运行结果、处理提醒，回看每一份证据。"],
+  memory: ["记住你在意的。", "只保存你确认的内容，让每次对话更贴近你的需要。"],
+  settings: ["按你的方式，安心守护。", "管理连接、提醒和数据使用范围。"],
+};
 export default function App() {
-  const [token, setToken] = useState("");
-  const [officialMode, setOfficialMode] = useState(false);
-  const [switching, setSwitching] = useState(false);
-  const [stoppingLive, setStoppingLive] = useState(false);
-  const stopLive = useRef<(() => Promise<void>) | null>(null);
-  const releaseLive = useRef<Promise<void> | null>(null);
-  const connectionEpoch = useRef(0);
-  const [connected, setConnected] = useState(false);
-  const [cloudOnline, setCloudOnline] = useState(false);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [selected, setSelected] = useState("");
-  const [auth, setAuth] = useState<Auth>(emptyAuth);
-  const [integration, setIntegration] = useState<unknown>(null);
-  const [settings, setSettings] = useState(false);
-  const [live, setLive] = useState<Device | null>(null);
-  const [ready, setReady] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [sn, setSN] = useState("");
-  const [name, setName] = useState("");
-  const [runs, setRuns] = useState<Run[]>([]);
-  const [sending, setSending] = useState(false);
-  const [capture, setCapture] = useState<Capture | null>(null);
-  const [tab, setTab] = useState("devices");
-  const [evidence, setEvidence] = useState<
-    { id: string; reason: string; imageUrl?: string; deviceName?: string }[]
-  >([]);
-  const conversation = useRef("");
-  const generation = useRef(0);
-  const activeRun = useRef("");
-  const modal = useRef<HTMLElement>(null);
-  const settingsTrigger = useRef<HTMLElement | null>(null);
+  const [token, setToken] = useState(""),
+    [connected, setConnected] = useState(false),
+    [cloudOnline, setCloudOnline] = useState(false);
+  const [officialMode, setOfficialMode] = useState(false),
+    [switching, setSwitching] = useState(false),
+    [stoppingLive, setStoppingLive] = useState(false);
+  const [devices, setDevices] = useState<Device[]>([]),
+    [selected, setSelected] = useState("");
+  const [data, setData] = useState<Bootstrap>(emptyBootstrap),
+    [evidence, setEvidence] = useState<Evidence[]>([]);
+  const [auth, setAuth] = useState<Auth>(emptyAuth),
+    [integration, setIntegration] = useState<unknown>(null),
+    [settings, setSettings] = useState(false);
+  const [live, setLive] = useState<Device | null>(null),
+    [ready, setReady] = useState(false),
+    [capture, setCapture] = useState<Capture | null>(null);
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [sn, setSN] = useState(""),
+    [name, setName] = useState("");
+  const [tab, setTab] = useState<Tab>("assistant"),
+    [recordings, setRecordings] = useState(false),
+    [selectedSkill, setSelectedSkill] = useState("");
+  const [intent, setIntent] = useState<AssistantIntent | null>(null);
+  const assistant = useRef<AssistantHandle>(null),
+    stopLive = useRef<(() => Promise<void>) | null>(null),
+    releaseLive = useRef<Promise<void> | null>(null);
+  const connectionEpoch = useRef(0),
+    generation = useRef(0),
+    refreshSequence = useRef(0);
+  const modal = useRef<HTMLElement>(null),
+    settingsTrigger = useRef<HTMLElement | null>(null);
   const openSettings = (trigger: HTMLElement) => {
     settingsTrigger.current = trigger;
     setSettings(true);
   };
   const device = devices.find((d) => d.id === selected);
   const refresh = async () => {
-    const epoch = connectionEpoch.current;
-    const all = await api.request<Device[]>("/api/devices");
-    const bootstrap = await api.request<{ evidence: typeof evidence }>(
-      "/api/bootstrap",
-    );
-    const captures =
-      await api.request<(Capture & { deviceName: string })[]>("/api/captures");
-    if (epoch !== connectionEpoch.current) return;
+    const epoch = connectionEpoch.current,
+      sequence = ++refreshSequence.current;
+    const [all, bootstrap, captures] = await Promise.all([
+      api.request<Device[]>("/api/devices"),
+      api.request<Bootstrap>("/api/bootstrap"),
+      api.request<(Capture & { deviceName: string })[]>("/api/captures"),
+    ]);
+    if (
+      epoch !== connectionEpoch.current ||
+      sequence !== refreshSequence.current
+    )
+      return;
     setDevices(all);
-    setSelected((old) =>
-      all.some((d) => d.id === old) ? old : all[0]?.id || "",
-    );
-    setEvidence([...captures, ...bootstrap.evidence]);
+    setData({
+      ...emptyBootstrap,
+      ...bootstrap,
+      cameras: bootstrap.cameras || all,
+    });
+    setEvidence([...captures, ...(bootstrap.evidence || [])]);
     setCloudOnline(true);
+  };
+  const onPersonal = (value: Personal) => {
+    refreshSequence.current++;
+    setData((old) => ({ ...old, personal: value }));
   };
   useEffect(() => {
     if (!connected || officialMode) return;
-    const timer = setInterval(
-      () => void refresh().catch(() => setCloudOnline(false)),
-      5000,
-    );
-    return () => clearInterval(timer);
+    let alive = true,
+      loading = false;
+    const timer = setInterval(async () => {
+      if (loading || document.hidden) return;
+      loading = true;
+      try {
+        await refresh();
+      } catch {
+        if (alive) setCloudOnline(false);
+      } finally {
+        loading = false;
+      }
+    }, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, [connected, officialMode]);
   useEffect(() => {
     if (!settings) return;
@@ -147,6 +178,48 @@ export default function App() {
       await refresh();
       setConnected(true);
     });
+  const endLive = (): Promise<void> => {
+    if (releaseLive.current) return releaseLive.current;
+    setStoppingLive(true);
+    generation.current++;
+    const stop = stopLive.current;
+    const release = (async () => {
+      try {
+        if (stop) await assistant.current?.cancel();
+        await stop?.();
+      } finally {
+        if (stopLive.current === stop) stopLive.current = null;
+        setLive(null);
+        setReady(false);
+        setStoppingLive(false);
+        releaseLive.current = null;
+      }
+    })();
+    if (stop) releaseLive.current = release;
+    return release;
+  };
+  const chooseDevice = async (id: string) => {
+    if (id !== selected) {
+      await assistant.current?.cancel();
+      await endLive();
+      setCapture(null);
+    }
+    setSelected(id);
+  };
+  const navigate = async (next: Tab) => {
+    if (!["assistant", "cameras"].includes(next)) await endLive();
+    setTab(next);
+  };
+  const beginAssistant = (prompt: string, skillId?: string) => {
+    setIntent({ nonce: Date.now(), prompt, skillId });
+    setTab("assistant");
+  };
+  const openSkill = (id: string) => {
+    void endLive().then(() => {
+      setSelectedSkill(id);
+      setTab("tasks");
+    });
+  };
   const login = () =>
     action(async () => {
       if (Object.values(auth).some((v) => !v.trim()))
@@ -179,133 +252,51 @@ export default function App() {
       setSN("");
       setName("");
       setSettings(false);
+      setTab("cameras");
     });
-  const ask = async (text = message) => {
-    if (!text.trim() || sending) return;
-    if (!device) {
-      setError("请先选择设备");
-      return;
-    }
-    setSending(true);
-    setError("");
-    setMessage("");
-    const current = generation.current;
-    try {
-      if (!conversation.current) {
-        const c = await api.request<{ id: string }>(
-          "/api/agent/conversations",
-          { requestId: newID() },
-        );
-        if (current !== generation.current) return;
-        conversation.current = c.id;
-      }
-      let run = await api.request<Run>("/api/agent/runs", {
-        message: text,
-        conversationId: conversation.current,
-        requestId: newID(),
-        cameraId: device.id,
-        executionMode: "live",
+  const createDraft = () =>
+    action(async () => {
+      if (!selected) throw new Error("请先选择摄像头");
+      const main = await api.request<{ id: string }>(
+        "/api/agent/conversations/main",
+        {},
+      );
+      const draft = await api.request<Skill>("/api/skills/drafts", {
+        cameraId: selected,
+        conversationId: main.id,
+        prompt: "请选择画面中的观察对象并完善提醒条件",
       });
-      if (current !== generation.current) {
-        void api.request(`/api/runs/${run.id}/cancel`, {}).catch(() => {});
-        return;
-      }
-      activeRun.current = run.id;
-      setRuns((old) => [...old, run]);
-      while (
-        ["queued", "running"].includes(run.status) &&
-        current === generation.current
-      ) {
-        await new Promise((r) => setTimeout(r, 1000));
-        run = await api.request<Run>(`/api/runs/${run.id}`);
-        if (current === generation.current)
-          setRuns((old) =>
-            old.map((item) => (item.id === run.id ? run : item)),
-          );
-      }
-    } catch (e) {
-      if (current === generation.current)
-        setError(e instanceof Error ? e.message : "Agent 暂不可用");
-    } finally {
-      if (current === generation.current) {
-        setSending(false);
-        activeRun.current = "";
-      }
-    }
-  };
-  const endLive = (): Promise<void> => {
-    if (releaseLive.current) return releaseLive.current;
-    setStoppingLive(true);
-    const stop = stopLive.current;
-    if (stop) {
-      const id = activeRun.current;
-      generation.current++;
-      activeRun.current = "";
-      setSending(false);
-      if (id) void api.request(`/api/runs/${id}/cancel`, {}).catch(() => {});
-    }
-    const release = (async () => {
-      try {
-        await stop?.();
-      } finally {
-        if (stopLive.current === stop) stopLive.current = null;
-        setLive(null);
-        setReady(false);
-        setStoppingLive(false);
-        releaseLive.current = null;
-      }
-    })();
-    // When there is no mounted player, return without storing a synchronously
-    // completed cleanup promise that would hide a later player's stop handler.
-    if (stop) releaseLive.current = release;
-    return release;
-  };
-  const chooseDevice = async (id: string) => {
-    if (id !== selected) {
-      if (activeRun.current)
-        void api
-          .request(`/api/runs/${activeRun.current}/cancel`, {})
-          .catch(() => {});
-      generation.current++;
-      activeRun.current = "";
-      conversation.current = "";
-      setRuns([]);
-      setSending(false);
+      await refresh();
       await endLive();
-      setReady(false);
-      setCapture(null);
-      setMessage("");
-    }
-    setSelected(id);
-  };
+      setSelectedSkill(draft.id);
+      setTab("tasks");
+    });
   const logout = async () => {
     if (switching) return;
     setSwitching(true);
     connectionEpoch.current++;
-    if (activeRun.current)
-      void api
-        .request(`/api/runs/${activeRun.current}/cancel`, {})
-        .catch(() => {});
     generation.current++;
-    activeRun.current = "";
+    await assistant.current?.cancel(true);
     await endLive();
-    setReady(false);
+    clearChatDrafts();
     setIntegration(null);
     setAuth(emptyAuth);
     clearSDKCredentials();
     setConnected(false);
+    setCloudOnline(false);
     setToken("");
     setDevices([]);
     setSelected("");
     setEvidence([]);
-    setRuns([]);
+    setData(emptyBootstrap);
     setCapture(null);
-    conversation.current = "";
-    setSending(false);
+    setIntent(null);
+    setSelectedSkill("");
+    setSettings(false);
+    setRecordings(false);
     api.token = "";
     setSwitching(false);
   };
-
   const openOfficial = async () => {
     if (switching) return;
     setSwitching(true);
@@ -313,14 +304,8 @@ export default function App() {
     try {
       connectionEpoch.current++;
       generation.current++;
-      if (activeRun.current)
-        await api
-          .request(`/api/runs/${activeRun.current}/cancel`, {})
-          .catch(() => {});
-      activeRun.current = "";
-      setSending(false);
+      await assistant.current?.cancel(true);
       await endLive();
-      setReady(false);
       setCapture(null);
       setIntegration(null);
       clearSDKCredentials();
@@ -332,7 +317,6 @@ export default function App() {
       setSwitching(false);
     }
   };
-
   if (officialMode)
     return (
       <OfficialWorkspace
@@ -343,15 +327,13 @@ export default function App() {
           setLive(null);
           setReady(false);
           setIntegration(null);
-          conversation.current = "";
-          setRuns([]);
+          setIntent(null);
           if (connected) void refresh().catch(() => setCloudOnline(false));
         }}
       />
     );
-
   return (
-    <div className="app-shell">
+    <div className="app-shell product-shell">
       <aside className="sidebar">
         <a className="brand" href="/" aria-label="EvidenceGuard 首页">
           <span className="brand-mark">
@@ -363,21 +345,13 @@ export default function App() {
         </a>
         <div className="workspace-label">家庭工作空间</div>
         <nav aria-label="主导航">
-          {[
-            ["devices", "◉", "设备工作台"],
-            ["assistant", "✧", "AI 助手"],
-            ["evidence", "▤", "证据库"],
-          ].map(([id, icon, label]) => (
+          {tabs.map(([id, icon, label]) => (
             <button
               key={id}
               className={tab === id ? "nav-item active" : "nav-item"}
+              aria-current={tab === id ? "page" : undefined}
               disabled={switching || stoppingLive}
-              onClick={async () => {
-                if (id === "evidence") {
-                  await endLive();
-                }
-                setTab(id);
-              }}
+              onClick={() => void navigate(id)}
             >
               <span aria-hidden>{icon}</span>
               {label}
@@ -387,7 +361,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="privacy-icon">◇</div>
           <strong>你的画面，由你决定</strong>
-          <p>开启直播后，Agent 仅在请求时获取一张新画面。</p>
+          <p>开启直播后，Agent 仅在请求时获取新画面。</p>
           <button
             className="text-button"
             onClick={(e) => openSettings(e.currentTarget)}
@@ -435,14 +409,8 @@ export default function App() {
         <header className="page-header">
           <div>
             <span className="eyebrow">EVIDENCE, BEFORE ANSWERS</span>
-            <h1>
-              {tab === "evidence"
-                ? "每个结论，都能回看。"
-                : tab === "assistant"
-                  ? "让 AI 看见，再回答。"
-                  : "在意的空间，一眼看清。"}
-            </h1>
-            <p>连接摄像头，查看现场，把有依据的观察交给你的 Agent。</p>
+            <h1>{headings[tab][0]}</h1>
+            <p>{headings[tab][1]}</p>
           </div>
           <button
             className="primary"
@@ -456,8 +424,8 @@ export default function App() {
             {error}
             <button
               className="text-button"
-              onClick={() => setError("")}
               aria-label="关闭提示"
+              onClick={() => setError("")}
             >
               ×
             </button>
@@ -465,326 +433,289 @@ export default function App() {
         )}
         {!connected ? (
           <section className="access-card">
-            <div className="large-symbol">◈</div>
-            <span className="eyebrow">开始连接</span>
-            <h2>欢迎来到你的设备工作台</h2>
-            <p>输入团队访问令牌连接当前后端。本地未启用鉴权时，可直接进入。</p>
-            <label>
-              团队访问令牌
-              <input
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                autoComplete="off"
-                placeholder="仅保留在本次页面会话"
-              />
-            </label>
-            <button className="primary" disabled={busy} onClick={enter}>
-              {busy ? "正在连接…" : "进入工作台 →"}
-            </button>
-            <div className="subtle-note">
-              摄像头首次配网由原生 SDK 完成；网页连接已绑定且有权访问的设备。
-            </div>
+            <div className="large-symbol">◇</div>
+            <h2>欢迎来到你的守护工作台</h2>
+            <p>连接团队服务，继续对话、管理任务与记忆，或接入真实摄像头。</p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void enter();
+              }}
+            >
+              <label>
+                团队访问令牌
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="本地未启用鉴权时可留空"
+                />
+              </label>
+              <button className="primary" disabled={busy}>
+                {busy ? "正在连接…" : "进入工作台 →"}
+              </button>
+            </form>
+            <small>
+              令牌仅在当前页面内存中保存。刷新后需重新连接，已保存的会话与设置仍可恢复。
+            </small>
           </section>
         ) : (
           <>
-            <div className="overview">
-              <div>
-                <span className={cloudOnline ? "dot" : "dot gray"} />
-                {cloudOnline ? "云端已连接" : "云端连接中断"}
-              </div>
+            <div className="overview-bar">
+              <span className="connection-state">
+                <i className={cloudOnline ? "dot" : "dot muted"} />
+                {cloudOnline ? "云端已连接" : "等待云端连接"}
+              </span>
               <div>
                 <strong>{devices.length}</strong> 已登记设备
               </div>
               <div>
-                <strong>{ready ? "1" : "0"}</strong> 当前画面输入
+                <strong>
+                  {data.skills.filter((s) => s.status === "active").length}
+                </strong>{" "}
+                运行中 Skill
               </div>
               <span className="overview-note">
-                {ready ? "前台会话正在提供新画面" : "未开启持续守护"}
+                {ready ? "前台会话正在提供新画面" : "未开启前台取样"}
               </span>
             </div>
-            {tab === "evidence" ? (
-              <section className="card">
+            <div
+              className={
+                tab === "assistant" && live
+                  ? "content-grid product-content"
+                  : "product-content"
+              }
+              hidden={!["assistant", "cameras"].includes(tab)}
+            >
+              <section
+                className="device-column"
+                hidden={tab !== "cameras" && !(tab === "assistant" && !!live)}
+              >
                 <div className="section-heading">
-                  <h2>已保存的证据</h2>
-                  <span>与 App 同步</span>
+                  <h2>
+                    我的设备 <span className="count">{devices.length}</span>
+                  </h2>
+                  <button
+                    className="text-button"
+                    onClick={() => void action(refresh)}
+                  >
+                    刷新 ↻
+                  </button>
                 </div>
-                <div className="evidence-grid">
-                  {evidence.length ? (
-                    evidence.map((e) => (
-                      <article className="evidence-tile" key={e.id}>
-                        {e.imageUrl && (
-                          <ImageEvidence
-                            path={e.imageUrl}
-                            alt="已保存的摄像头证据"
-                          />
-                        )}
-                        <strong>{e.deviceName || "观察记录"}</strong>
-                        <p>{e.reason}</p>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="empty-inline">
-                      暂时没有证据。设备事件和完成的观察会保留各自来源。
-                    </div>
-                  )}
-                </div>
-              </section>
-            ) : (
-              <div className="content-grid">
-                <section className="device-column">
-                  <div className="section-heading">
-                    <h2>
-                      我的设备 <span className="count">{devices.length}</span>
-                    </h2>
+                <div className="device-tabs">
+                  {devices.map((d) => (
                     <button
-                      className="text-button"
-                      onClick={() => void action(refresh)}
+                      key={d.id}
+                      disabled={switching || stoppingLive}
+                      onClick={() => void chooseDevice(d.id)}
+                      className={
+                        d.id === selected
+                          ? "device-chip selected"
+                          : "device-chip"
+                      }
                     >
-                      刷新 ↻
+                      <span className="camera-icon">◉</span>
+                      <span>
+                        <strong>{d.name}</strong>
+                        <small>
+                          {d.model} ·{" "}
+                          {d.connection === "online"
+                            ? "画面输入可用"
+                            : "待开启直播"}
+                        </small>
+                      </span>
                     </button>
-                  </div>
-                  <div className="device-tabs">
-                    {devices.map((d) => (
-                      <button
-                        key={d.id}
-                        disabled={switching || stoppingLive}
-                        onClick={() => void chooseDevice(d.id)}
-                        className={
-                          d.id === selected
-                            ? "device-chip selected"
-                            : "device-chip"
-                        }
-                      >
-                        <span className="camera-icon">◉</span>
-                        <span>
-                          <strong>{d.name}</strong>
-                          <small>
-                            {d.model} ·{" "}
-                            {d.connection === "online"
-                              ? "画面输入可用"
-                              : "待开启直播"}
-                          </small>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  <div className="card video-card">
-                    <div className="section-heading">
-                      <div>
-                        <h2>{device?.name || "连接你的第一台摄像头"}</h2>
-                        <span>
-                          {device
-                            ? `${device.model} · ${device.sn}`
-                            : "支持 T8171 云台摄像头与 T8214 双摄门铃"}
-                        </span>
-                      </div>
-                      <span className="pill">
-                        {live ? "前台直播" : "尚未开流"}
+                  ))}
+                </div>
+                <div className="card video-card">
+                  <div className="section-heading">
+                    <div>
+                      <h2>{device?.name || "连接你的第一台摄像头"}</h2>
+                      <span>
+                        {device
+                          ? `${device.model} · ${device.sn}`
+                          : "支持 T8171 云台摄像头与 T8214 双摄门铃"}
                       </span>
                     </div>
-                    {live && integration ? (
-                      <LiveView
-                        key={live.id}
-                        device={live}
-                        integration={integration}
-                        onClose={() => {
-                          void endLive();
-                        }}
-                        onStatus={setReady}
-                        registerStop={(stop) => {
-                          stopLive.current = stop;
-                        }}
-                      />
-                    ) : (
-                      <div className="video-empty">
-                        <div className="lens">
-                          <div />
-                        </div>
-                        <h3>
-                          {device ? "现在，看看现场" : "把你的空间连接起来"}
-                        </h3>
-                        <p>
-                          {device
-                            ? "实时画面通过官方媒体链路播放。"
-                            : "完成官方鉴权，导入账号下的设备，即可开始。"}
-                        </p>
-                        <button
-                          className="primary"
-                          disabled={busy || switching || stoppingLive}
-                          onClick={async (e) => {
-                            if (!device || !integration) {
-                              openSettings(e.currentTarget);
-                              return;
-                            }
-                            await endLive();
-                            setCapture(null);
-                            setLive(device);
-                          }}
-                        >
-                          {" "}
-                          {device && integration
-                            ? "▶ 开始直播"
-                            : "连接官方设备 →"}
-                        </button>
-                      </div>
-                    )}
-                    <div className="video-actions">
-                      <span>◇ 画面不会自动上传</span>
-                      <button
-                        className="secondary"
-                        disabled={!ready || busy}
-                        onClick={() =>
-                          void action(async () => {
-                            const current = generation.current;
-                            const c = await api.request<Capture>(
-                              `/api/devices/${selected}/capture`,
-                              {},
-                            );
-                            if (current !== generation.current) return;
-                            setCapture(c);
-                            if (c.status !== "completed")
-                              throw new Error(c.reason);
-                          })
-                        }
-                      >
-                        获取一张新画面
-                      </button>
-                    </div>
+                    <span className="pill">
+                      {live ? "前台直播" : "尚未开流"}
+                    </span>
                   </div>
-                  {capture?.imageUrl && (
-                    <div className="card capture-card">
-                      <ImageEvidence
-                        path={capture.imageUrl}
-                        alt="本次请求后的直播取样"
-                      />
-                      <div>
-                        <strong>本次新画面已收到</strong>
-                        <p>{capture.reason}</p>
-                        <small>
-                          设备拍摄时间未知 · 客户端取样{" "}
-                          {capture.sampledAt
-                            ? new Date(
-                                capture.sampledAt * 1000,
-                              ).toLocaleTimeString()
-                            : "—"}
-                        </small>
+                  {live && integration ? (
+                    <LiveView
+                      key={live.id}
+                      device={live}
+                      integration={integration}
+                      onClose={() => {
+                        void endLive();
+                      }}
+                      onStatus={setReady}
+                      registerStop={(stop) => {
+                        stopLive.current = stop;
+                      }}
+                    />
+                  ) : (
+                    <div className="video-empty">
+                      <div className="lens">
+                        <div />
                       </div>
+                      <h3>
+                        {device ? "现在，看看现场" : "把你的空间连接起来"}
+                      </h3>
+                      <p>
+                        {device
+                          ? "实时画面通过官方媒体链路播放。"
+                          : "完成官方鉴权，导入账号下的设备，即可开始。"}
+                      </p>
+                      <button
+                        className="primary"
+                        disabled={busy || switching || stoppingLive}
+                        onClick={async (e) => {
+                          if (!device || !integration) {
+                            openSettings(e.currentTarget);
+                            return;
+                          }
+                          await endLive();
+                          setCapture(null);
+                          setLive(device);
+                        }}
+                      >
+                        {" "}
+                        {device && integration
+                          ? "▶ 开始直播"
+                          : "连接官方设备 →"}
+                      </button>
                     </div>
                   )}
-                  <div className="context-card">
-                    <span>01</span>
-                    <div>
-                      <strong>从看见，到有依据的回答</strong>
-                      <p>
-                        选择设备并打开直播。提问后，Agent
-                        会请求新画面；没有输入时会说明原因。
-                      </p>
-                    </div>
+                  <div className="video-actions">
+                    <span>◇ 画面不会自动上传</span>
+                    <button
+                      className="secondary"
+                      disabled={!ready || busy}
+                      onClick={() =>
+                        void action(async () => {
+                          const current = generation.current;
+                          const c = await api.request<Capture>(
+                            `/api/devices/${selected}/capture`,
+                            {},
+                          );
+                          if (current !== generation.current) return;
+                          setCapture(c);
+                          if (c.status !== "completed")
+                            throw new Error(c.reason);
+                        })
+                      }
+                    >
+                      获取一张新画面
+                    </button>
                   </div>
-                </section>
-                <section className="card assistant-card">
-                  <div className="section-heading">
-                    <div className="assistant-title">
-                      <span className="agent-icon">✧</span>
-                      <div>
-                        <h2>你的守护助手</h2>
-                        <span>
-                          {device
-                            ? `当前关注 · ${device.name}`
-                            : "选择设备后开始"}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="pill blue">Agent</span>
-                  </div>
-                  <div className="messages" aria-live="polite">
-                    {!runs.length ? (
-                      <div className="assistant-welcome">
-                        <div className="agent-orbit">✧</div>
-                        <h3>现场有什么，问问我。</h3>
-                        <p>
-                          我会从正在播放的摄像头获取一张新画面，再依据实际内容回答。
-                        </p>
-                        {[
-                          "现在画面里有什么？",
-                          "门口的包裹还在吗？",
-                          "看看客厅有什么活动",
-                        ].map((q) => (
-                          <button
-                            key={q}
-                            className="suggestion"
-                            disabled={!device || sending}
-                            onClick={() => void ask(q)}
-                          >
-                            {q}
-                            <span>↗</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      runs.map((run) => (
-                        <div className="turn" key={run.id}>
-                          <p className="user-message">{run.message}</p>
-                          <div className="agent-message">
-                            <span className="agent-icon small">✧</span>
-                            <div>
-                              {run.text ||
-                                run.error ||
-                                "正在获取信息与观察画面…"}
-                              {run.captures?.map((c) => (
-                                <div className="capture-receipt" key={c.id}>
-                                  {c.imageUrl && (
-                                    <ImageEvidence
-                                      path={c.imageUrl}
-                                      alt="Agent 本次观察图片"
-                                    />
-                                  )}
-                                  <small>{c.reason}</small>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <form
-                    className="composer"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void ask();
-                    }}
-                  >
-                    <label className="sr-only" htmlFor="question">
-                      向 Agent 提问
-                    </label>
-                    <textarea
-                      id="question"
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="告诉我，你想看什么…"
-                      rows={2}
-                      maxLength={2000}
+                </div>
+                {capture?.imageUrl && (
+                  <div className="card capture-card">
+                    <ImageEvidence
+                      path={capture.imageUrl}
+                      alt="本次请求后的直播取样"
                     />
                     <div>
-                      <small>{ready ? "● 新画面可用" : "○ 尚无实时输入"}</small>
-                      <button
-                        className="send-button"
-                        aria-label="发送问题"
-                        disabled={sending || !device || !message.trim()}
-                      >
-                        {sending ? "…" : "↑"}
-                      </button>
+                      <strong>本次新画面已收到</strong>
+                      <p>{capture.reason}</p>
+                      <small>
+                        设备拍摄时间未知 · 客户端取样{" "}
+                        {capture.sampledAt
+                          ? new Date(
+                              capture.sampledAt * 1000,
+                            ).toLocaleTimeString()
+                          : "—"}
+                      </small>
                     </div>
-                  </form>
-                </section>
-              </div>
+                  </div>
+                )}
+                <div className="button-row camera-tools">
+                  <button
+                    className="primary"
+                    disabled={!selected || busy || switching}
+                    onClick={() => void createDraft()}
+                  >
+                    圈选守护 · 创建 Skill
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => setRecordings(true)}
+                  >
+                    录像资料
+                  </button>
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      beginAssistant(
+                        "请查看当前摄像头的新画面，说明你看到了什么。",
+                      )
+                    }
+                  >
+                    让助手看看 →
+                  </button>
+                </div>
+                <div className="context-card">
+                  <span>01</span>
+                  <div>
+                    <strong>从看见，到有依据的回答</strong>
+                    <p>
+                      选择设备并打开直播。提问后，Agent
+                      会请求新画面；没有输入时会说明原因。
+                    </p>
+                  </div>
+                </div>
+              </section>
+              <Assistant
+                ref={assistant}
+                active={tab === "assistant"}
+                data={data}
+                selected={selected}
+                ready={ready}
+                intent={intent}
+                onCamera={chooseDevice}
+                onSkill={openSkill}
+                onRefresh={refresh}
+                onPersonal={onPersonal}
+              />
+            </div>
+            <div hidden={tab !== "tasks"}>
+              <TasksPage
+                data={data}
+                evidence={evidence}
+                selectedSkill={selectedSkill}
+                onSkill={setSelectedSkill}
+                onRefresh={refresh}
+                onAssistant={beginAssistant}
+                onSettings={() => void navigate("settings")}
+              />
+            </div>
+            <div hidden={tab !== "memory"}>
+              <MemoryPage personal={data.personal} onUpdate={onPersonal} />
+            </div>
+            <div hidden={tab !== "settings"}>
+              <SettingsPage
+                data={data}
+                online={cloudOnline}
+                onUpdate={onPersonal}
+                onConnection={openSettings}
+                onOfficial={() => void openOfficial()}
+                onAssistant={() => beginAssistant("")}
+                onSkill={openSkill}
+              />
+            </div>
+            {recordings && (
+              <RecordingsPanel
+                data={data}
+                onClose={() => setRecordings(false)}
+                onRefresh={refresh}
+              />
             )}
           </>
         )}
         <footer>
-          EvidenceGuard{" "}
+          EvidenceGuard Web 0.2
           <span>设备原生录像、前台直播与 Agent 观察分别运行。</span>
         </footer>
       </main>

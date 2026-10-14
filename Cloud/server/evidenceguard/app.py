@@ -425,6 +425,9 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     @app.post('/api/agent/conversations',status_code=201)
     async def conversation_create(body:NewConversation,request:Request):
         return conversations.create(personal_client(request),body.requestId)
+    @app.post('/api/agent/conversations/main')
+    async def conversation_main(request:Request):
+        return conversations.ensure_main(personal_client(request))
     @app.patch('/api/agent/conversations/{conversation_id}')
     async def conversation_rename(conversation_id:str,body:ConversationTitle,request:Request):
         return conversations.rename(conversation_id,personal_client(request),body.title)

@@ -96,7 +96,13 @@ async function setup(
     });
     let json: unknown = {};
     if (path === "/api/devices") json = [camera];
-    if (path === "/api/bootstrap") json = { evidence: [] };
+    if (path === "/api/bootstrap")
+      json = {
+        evidence: [],
+        skills: [],
+        cameras: [camera],
+        agent: { ready: true, provider: "test" },
+      };
     if (path === "/api/captures") json = [];
     if (path === "/api/media-sessions") {
       if (options.delayStart)
@@ -121,7 +127,11 @@ async function setup(
             ]
           : [];
     if (path.endsWith("/frames")) uploads.push(route.request().postDataJSON());
-    if (path === "/api/agent/conversations") json = { id: "chat-test" };
+    if (path === "/api/agent/conversations/main")
+      json = { id: "chat-test", kind: "main", title: "助手主对话" };
+    if (path === "/api/agent/conversations")
+      json = [{ id: "chat-test", kind: "main", title: "助手主对话" }];
+    if (path === "/api/agent/conversations/chat-test") json = [];
     if (path === "/api/agent/runs") {
       if (options.lateRun)
         await new Promise((resolve) => setTimeout(resolve, 1200));
@@ -147,6 +157,11 @@ async function enter(page: Page) {
 
 async function live(page: Page) {
   await enter(page);
+  await page
+    .getByRole("navigation", { name: "主导航" })
+    .getByRole("button", { name: "摄像头 Skill", exact: true })
+    .click();
+  await page.getByRole("button", { name: /测试客厅.*T8171/ }).click();
   await page.getByRole("button", { name: "＋ 接入设备", exact: true }).click();
   const dialog = page.getByRole("dialog");
   for (const input of await dialog.locator("input").all()) {
@@ -366,6 +381,10 @@ test("stopping live cancels an Agent run returned after navigation", async ({
   const calls = await setup(page, { lateRun: true });
   await live(page);
   await expect(page.getByTestId("vendor-player")).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "主导航" })
+    .getByRole("button", { name: "助手", exact: true })
+    .click();
   await page.getByPlaceholder("告诉我，你想看什么…").fill("现在画面里有什么？");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect

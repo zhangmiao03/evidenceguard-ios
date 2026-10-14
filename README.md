@@ -1,6 +1,6 @@
 # EvidenceGuard · iOS / Web / Cloud
 
-本仓库维护原生 iOS App、响应式 Web 设备工作台和共用的 Cloud Agent。设备、实时取帧、观察回执和媒体统一经过同一套 API；两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入功能在 `dongrunze` 分支开发。
+本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
 - [此前独立 Web 原型](https://github.com/zhangmiao03/evidenceguard-web)：历史参考；本轮 Web 实现在本仓库 `Web/`。
@@ -9,8 +9,11 @@
 - [深度与光流实测、复现工具和模型](Docs/VISION-RESOURCE-BENCHMARK.md)：本机 CPU/内存限额实验，三份 ONNX 权重通过 Git LFS 获取。
 - [团队拉取与开发](CONTRIBUTING.md)：开发环境、分支流程、模型配置和提交前检查。
 - [手机通知与提醒](Docs/APNS.md)：APNs、自动保存、投递策略和已验证范围。
+- [Web 五栏功能与验收](Docs/WEB-PRODUCT-PARITY.md)：新版 iOS 功能对齐、前后端接口、浏览器差异与团队联调。
 
 ## 当前进度
+
+2026-10-14 · **Web 0.2 五栏功能对齐**：助手支持主会话、独立话题、草稿恢复、只读历史查询与主动提醒；摄像头 Skill 保留设备接入、实时取流、新图回传和官方 SDK 切换，并加入圈选编辑与录像库；任务支持状态筛选、暂停 / 恢复 / 停止、回放试跑、人工验收和设备占用确认；记忆支持长期 / 24 小时记录；设置支持提醒时间、免打扰、时区与连接管理。后端新增幂等主会话初始化接口，兼容既有 iOS 绑定。Cloud 与 Web 必须一起更新。后端 182 项、Web 协议 4 项、本机跨浏览器 152 项通过，另有 4 项因 Windows WebKit 缺少逐帧 API 跳过；类型检查与生产构建通过。测试范围和平台限制见 [Web 0.2 验收](Docs/WEB-PRODUCT-PARITY.md)。本次提交源码，未部署或上传 TestFlight。
 
 2026-10-14 · 同步主分支：`dongrunze` 合入 `main` 的 `0959463`，合并提交 `60ca514`。保留新的“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏、APNs 和自动保存提醒设置，并整合实时设备接入、Agent 新画面采集、Web 与官方 SDK 工作区。AppDelegate 同时处理推送与播放器旋转；官方工作区内点开的通知会保留，返回并释放完成后再进入助手。合并后后端 179 项、Web 协议 4 项、Linux 浏览器 48 项、macOS WebKit 24 项、原生 UI 3 项及 Swift 契约检查通过，iOS 编译与 Web 构建通过。跳过项和实机边界见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次是源码同步，未部署或上传 TestFlight。
 
@@ -47,7 +50,7 @@
 | 目录 | 用途 |
 | --- | --- |
 | `EvidenceGuard/`、`EvidenceGuard.xcodeproj` | 原生 SwiftUI App；助手、摄像头 Skill、任务、记忆、我的五栏导航 |
-| `Web/` | React / TypeScript 设备工作台：账号接入、设备选择、官方直播、Agent 观察与证据 |
+| `Web/` | React / TypeScript App：助手、摄像头 Skill、任务、记忆、设置；实时取流与官方 SDK 工作区 |
 | `Cloud/server/` | Agent harness、工具、录像检索、草案试跑与设备占用 |
 | `Cloud/fixture-lab/` | 双路模拟摄像头与离线回归 |
 | `Cloud/vision-resource-lab/` | 深度与光流资源测试、实测报告和 Git LFS 模型 |
@@ -91,11 +94,13 @@ npm run dev
 
 打开 `http://127.0.0.1:5173`；Vite 将 `/api` 转发到本机 8790 的 Cloud。生产构建用 `npm run build`。Windows 的后端启动命令、HTTPS/手机访问和官方参数说明见 [接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。
 
+默认进入助手，桌面侧栏 / 手机底栏提供五个功能区。无硬件也可以先联调会话、记忆、设置、任务草案及导入录像；现场观察需要官方 SDK、真实账号与保持前台的直播。Web 当前使用应用内提醒，不包含浏览器关闭后的 Web Push。个人记录按安装标识保存，跨 iPhone / 浏览器不会自动合并；设备任务在同一团队服务内共享。详见 [Web README](Web/README.md)。
+
 ### 本轮联调顺序
 
 1. **先配网与官方绑定。** 点击 iOS 顶部“切换官方 SDK”，在原版 Demo 的对应型号添加流程中完成配网/绑定，再返回本项目查询并同步。App 原有“扫码保存 SN”仍不是完整配网；原版流程现已接入，真实设备绑定结果仍需验收。Web 的原版 Demo 不包含手机端的完整配网导航。
 2. **iOS：** 选择 `EvidenceGuardSDK` 真机方案 → 我的 → 官方 SDK → 连接账号并发现设备 → 同步设备到本项目 → 打开“实时画面与 Agent”。修改桥接后必须重新执行 `SDK/prepare.py`，不能复用旧 SampleCore 产物。
-3. **Web：** 进入工作台 → 接入设备 → 输入主办方 Web 鉴权参数 → 导入账号下的 SN → 开始直播。当前固定官方 PR / US 路线；不是给普通用户输入开发密钥的正式登录产品。
+3. **Web：** 连接团队服务 → 接入设备 → 输入主办方 Web 鉴权参数 → 导入账号下的 SN → 摄像头 Skill → 开始直播。当前固定官方 PR / US 路线；不是给普通用户输入开发密钥的正式登录产品。
 4. 在直播页点击“获取一张新画面”，再问“现在画面里有什么”。后端发放请求 ID，客户端取样后回传，Agent 使用对应图片或视觉核验结果回答。iOS 与 Web 使用同一 SN 时得到同一个设备 ID。
 5. 停止直播、切换设备、锁屏、断网后再次提问，应返回没有有效输入，不能继续使用旧图。一个设备同一时刻只允许一个本项目采集端；其他客户端可以向同一后端请求它的当前画面。
 
@@ -108,6 +113,8 @@ python -m pytest Cloud/server/tests -q
 cd Web
 npm test
 npm run build
+npx playwright install chromium firefox webkit
+npm run test:browser
 ```
 
 GitHub Checks 已加入 Web 检查，并保留 Cloud 与普通 iOS Simulator 构建。官方 SDK 不上传仓库，带 SDK 的 arm64 构建由持有资料包的 Mac 完成。详细检查范围和失败处理见 [实时接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。

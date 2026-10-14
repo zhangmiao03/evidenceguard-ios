@@ -1,4 +1,5 @@
 import { installationID, requireSecureConnection } from "./browser-support";
+import type { Conflict } from "./product-types";
 
 export type Device = {
   id: string;
@@ -37,14 +38,18 @@ export class APIError extends Error {
   constructor(
     message: string,
     public status: number,
+    public conflicts: Conflict[] = [],
   ) {
     super(message);
   }
 }
-const installation = installationID();
+export const installation = installationID();
 
 export const api = {
   token: "",
+  scoped() {
+    return { ...this };
+  },
   async request<T>(
     path: string,
     body?: unknown,
@@ -73,8 +78,13 @@ export const api = {
         throw new APIError(
           typeof data.detail === "string"
             ? data.detail
-            : `请求未完成（${response.status}）`,
+            : Array.isArray(data.detail)
+              ? data.detail
+                  .map((item: { msg?: string }) => item.msg || "输入无效")
+                  .join("；")
+              : `请求未完成（${response.status}）`,
           response.status,
+          data.conflicts || [],
         );
       }
       return await response.json();
@@ -82,14 +92,62 @@ export const api = {
       clearTimeout(timeout);
     }
   },
-  async media(path: string): Promise<string> {
+  async uploadRecording(
+    file: File,
+    cameraId: string,
+    recordedAt?: number,
+  ): Promise<unknown> {
+    if (!file.size || file.size > 150_000_000)
+      throw new Error("请选择不超过 150 MB 的录像");
     if (this.token) requireSecureConnection();
-    if (!/^\/api\/media\/[a-f0-9]{64}$/.test(path))
-      throw new Error("无效的证据地址");
-    const r = await fetch(path, {
-      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+    const query = new URLSearchParams({
+      cameraId,
+      title: file.name.replace(/\.[^.]+$/, ""),
     });
-    if (!r.ok) throw new Error("证据图片读取失败");
-    return URL.createObjectURL(await r.blob());
+    if (recordedAt !== undefined) query.set("recordedAt", String(recordedAt));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+    try {
+      const response = await fetch(`/api/recordings?${query}`, {
+        method: "POST",
+        body: file,
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-EG-Installation-ID": installation,
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        },
+      });
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(
+          typeof body.detail === "string" ? body.detail : "录像上传未完成",
+        );
+      return body;
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+  async media(path: string, timeoutMs = 12000): Promise<string> {
+    if (this.token) requireSecureConnection();
+    if (
+      !/^\/api\/(?:media\/[a-f0-9]{64}|recordings\/[A-Za-z0-9_-]+\/(?:video|preview)|replay-evidence\/[A-Za-z0-9_-]+\/video|skill-trials\/[A-Za-z0-9_-]+\/video|camera\/frames\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+)$/.test(
+        path,
+      ) ||
+      path.includes("..")
+    )
+      throw new Error("无效的证据地址");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const r = await fetch(path, {
+        signal: controller.signal,
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+      });
+      if (!r.ok) throw new Error("证据读取失败，请检查连接后重试");
+      return URL.createObjectURL(await r.blob());
+    } finally {
+      clearTimeout(timeout);
+    }
   },
 };

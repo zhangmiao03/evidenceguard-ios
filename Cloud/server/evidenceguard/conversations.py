@@ -71,6 +71,18 @@ class Conversations:
                                   (key, client, 'topic', None, now, now))
         return self.item(key, client)
 
+    def ensure_main(self, client):
+        """Atomically restore/create the inbox without rebinding a native client.
+
+        Web reloads and concurrent tabs must resolve to one durable main stream.
+        Existing iOS bindings keep their IDs and their proactive message history.
+        """
+        with self.store.transaction():
+            prior = self.store.db.execute('SELECT conversation FROM personal_conversations WHERE client=?', (client,)).fetchone()
+            key = prior[0] if prior else 'main-' + hashlib.sha256(client.encode()).hexdigest()[:32]
+            self.bind_main(client, key)
+            return self.item(key, client)
+
     def item(self, key, client):
         with self.store.lock:
             row = self.store.db.execute('SELECT id,kind,title,created_at,updated_at FROM conversations WHERE id=? AND client=?', (key,client)).fetchone()
