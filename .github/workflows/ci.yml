@@ -19,6 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: xcodebuild -project EvidenceGuard.xcodeproj -scheme EvidenceGuard -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - run: gem install xcodeproj -v 1.27.0 --no-document
+      - run: bash scripts/test_ios_compatibility.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-compatibility-results
+          path: CompatibilityResults.xcresult
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -34,5 +41,34 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-compatibility-results
+          path: Web/playwright-report
   # The organizer's proprietary SDK is not distributed to GitHub runners.
   # EvidenceGuardSDK needs local vendor restore and separate device/archive checks.
+  webkit-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - run: npm ci
+      - run: command -v ffmpeg || brew install ffmpeg
+      - run: npx playwright install webkit
+      - run: npm run test:browser -- --project=webkit --project=mobile-webkit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-webkit-compatibility-results
+          path: Web/playwright-report

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Auth } from "./sdk";
 import { acceptsOfficialMessage } from "./official-protocol.mjs";
+import { newID, requireSecureConnection } from "./browser-support";
 
 type Manifest = {
   protocol: number;
@@ -68,7 +69,8 @@ export function OfficialWorkspace({
   const [results, setResults] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState("");
   const frame = useRef<HTMLIFrameElement>(null);
-  const channel = useRef(crypto.randomUUID());
+  const channel = useRef(newID());
+  const stopping = useRef<Promise<void> | null>(null);
   const stopReply = useRef<(() => void) | null>(null);
   const tokenRef = useRef(token);
   tokenRef.current = token;
@@ -128,27 +130,33 @@ export function OfficialWorkspace({
       location.origin,
     );
   }, [token]);
-  const stop = async () => {
-    if (!running) return;
-    setBusy(true);
-    await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, 2500);
-      stopReply.current = () => {
-        clearTimeout(timer);
-        resolve();
-      };
-      frame.current?.contentWindow?.postMessage(
-        { type: "eg:official:stop", channel: channel.current },
-        location.origin,
-      );
-    });
-    // Removing the browsing context also terminates WebRTC if the child failed
-    // before it could answer. Always remove it before the product can remount.
-    stopReply.current = null;
-    setRunning(false);
-    setVersion("");
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    setBusy(false);
+  const stop = (): Promise<void> => {
+    if (stopping.current) return stopping.current;
+    if (!running) return Promise.resolve();
+    const operation = (async () => {
+      setBusy(true);
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 2500);
+        stopReply.current = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        frame.current?.contentWindow?.postMessage(
+          { type: "eg:official:stop", channel: channel.current },
+          location.origin,
+        );
+      });
+      // Removing the browsing context also terminates WebRTC if the child failed
+      // before it could answer. Always remove it before the product can remount.
+      stopReply.current = null;
+      setRunning(false);
+      setVersion("");
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setBusy(false);
+      stopping.current = null;
+    })();
+    stopping.current = operation;
+    return operation;
   };
   useEffect(() => {
     const hidden = () => {
@@ -265,7 +273,13 @@ export function OfficialWorkspace({
                 className="primary"
                 disabled={!manifest || busy}
                 onClick={() => {
-                  channel.current = crypto.randomUUID();
+                  try {
+                    requireSecureConnection();
+                  } catch (e) {
+                    setError((e as Error).message);
+                    return;
+                  }
+                  channel.current = newID();
                   setError("");
                   setRunning(true);
                 }}

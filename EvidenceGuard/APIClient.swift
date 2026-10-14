@@ -35,6 +35,7 @@ private struct ConflictBody: Decodable { var conflicts: [CameraOccupancy] }
 struct APIProblem: LocalizedError {
     let message: String
     var conflicts: [CameraOccupancy] = []
+    var statusCode: Int? = nil
     var errorDescription: String? { message }
 }
 private struct TrialRequestBody: Encodable { var revision: Int; var expectedOutcome: String }
@@ -194,7 +195,7 @@ struct APIClient {
             }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let conflicts = (try? JSONDecoder().decode(ConflictBody.self, from: data))?.conflicts ?? []
-            throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts)
+            throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts, statusCode: (response as? HTTPURLResponse)?.statusCode)
         }
         do { return try JSONDecoder().decode(T.self, from: data) }
         catch { throw APIProblem(message: "当前版本无法读取服务返回的数据，请更新测试版本。") }

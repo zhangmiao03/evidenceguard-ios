@@ -1,3 +1,5 @@
+import { installationID, requireSecureConnection } from "./browser-support";
+
 export type Device = {
   id: string;
   sn: string;
@@ -39,12 +41,7 @@ export class APIError extends Error {
     super(message);
   }
 }
-const key = "evidenceguard.web.installation";
-let installation = localStorage.getItem(key);
-if (!installation) {
-  installation = crypto.randomUUID();
-  localStorage.setItem(key, installation);
-}
+const installation = installationID();
 
 export const api = {
   token: "",
@@ -55,30 +52,38 @@ export const api = {
     method?: string,
   ): Promise<T> {
     if (!path.startsWith("/api/")) throw new Error("请求不属于当前服务");
+    if (this.token) requireSecureConnection();
     const headers: Record<string, string> = {
       "X-EG-Installation-ID": installation!,
     };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (session) headers["X-EG-Media-Session"] = session.token;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    const response = await fetch(path, {
-      method: method || (body === undefined ? "GET" : "POST"),
-      headers,
-      signal: AbortSignal.timeout(12000),
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
-      throw new APIError(
-        typeof data.detail === "string"
-          ? data.detail
-          : `请求未完成（${response.status}）`,
-        response.status,
-      );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(path, {
+        method: method || (body === undefined ? "GET" : "POST"),
+        headers,
+        signal: controller.signal,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new APIError(
+          typeof data.detail === "string"
+            ? data.detail
+            : `请求未完成（${response.status}）`,
+          response.status,
+        );
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
     }
-    return response.json();
   },
   async media(path: string): Promise<string> {
+    if (this.token) requireSecureConnection();
     if (!/^\/api\/media\/[a-f0-9]{64}$/.test(path))
       throw new Error("无效的证据地址");
     const r = await fetch(path, {

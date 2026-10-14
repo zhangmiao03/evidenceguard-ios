@@ -1,0 +1,100 @@
+# Web / iOS 新增源码复审与兼容性验收
+
+日期：2026-10-14。分支：`dongrunze`。审核基线：`b75f9b1630fe05bc9a0f07984d831c0312e298de`。
+
+## 结论与范围
+
+本轮重新阅读 Web 工作台、官方 Demo 外壳、SwiftUI 直播页、Kotlin 桥接、采集 API 和 Agent 图片输入代码，修复生命周期及浏览器兼容问题，并加入可重复运行的浏览器和原生 UI 测试。
+
+本地通过的是软件协议、界面和对合成视频的读取。**尚不能宣布 T8171 / T8214 实机直播、绑定、对讲或本轮官方 iOS arm64 桥接通过。** 赛事账号、硬件和持有官方库的 Mac 仍需单独验收。本轮没有更新线上服务或 TestFlight。
+
+## 已发现并修复
+
+| 优先级 | 原问题与影响 | 修复及验证 |
+| --- | --- | --- |
+| P1 | Web 退出先清团队令牌，稍后的停止请求缺少鉴权；快速重连先于旧租约释放 | 关闭、换设备、退出、切工作区共用异步结束流程；等停止回执和 SDK 释放，再清凭证或开新会话。浏览器复现后回归通过 |
+| P1 | iOS 重连与未完成的 start/原生释放交叠；页面取消可能丢失晚到的开流回执 | 开流互斥、重连等待释放；晚到的开流回执主动停止；清理任务不随页面取消，保留原生释放余量 |
+| P1 | iOS 离页只取消本地轮询，云端 Agent 继续运行；Web 晚到的 run 也可能继续运行 | 问题代次、服务端取消和晚到回执处理。Web 延迟 start 回归通过；iOS 真实 SDK 路径待真机 |
+| P2 | 等待新帧时心跳新鲜度过期；iOS 将取消取图的 409 当直播故障 | 上传前刷新新样本心跳；iOS 识别 409，下一次心跳检查会话有效性 |
+| P2 | 浏览器拒绝 localStorage 时白屏；缺少 UUID/timeout 便捷 API 时阻断 | 存储失败改为本页身份，UUID 用安全随机数兼容路径，请求超时用 AbortController |
+| P2 | 普通局域网 HTTP 下直接报错或缺少凭证传输限制 | 页面可打开并提示 HTTPS；发送凭证前检查来源。测试确认没有发出 API 凭证请求 |
+| P2 | SDK 异步报告裸帧不支持时没有降级；无逐帧 API 只能长时间等待 | 尝试实际 video 帧回调；两条路径均不可用时明确停止，不使用 UI 截屏或历史封面 |
+| P2 | 手机布局隐藏退出入口；WebKit 关闭设置后焦点丢失 | 增加手机退出按钮，显式恢复触发控件焦点；跨浏览器回归通过 |
+
+主要修改：`Web/src/App.tsx`、`LiveView.tsx`、`browser-support.ts`、`api.ts`、`OfficialWorkspace.tsx`、`EvidenceGuard/LiveCameraView.swift`、`APIClient.swift`。
+
+## Windows 本地实测
+
+环境：Node 24.13.1、Python 3.12.14、Playwright 1.58.2；CI 使用 Node 22 / Python 3.12。
+
+| 浏览器 | 版本 | 结果 | 实际覆盖 |
+| --- | --- | --- | --- |
+| Chromium | 145.0.7632.6 | 13 通过 | 界面/会话、合成 H.264 视频与 JPEG、两种裸帧失败降级 |
+| Google Chrome | 155.0.8059.79 | 13 通过 | 同上；本机 Chrome 程序 |
+| Microsoft Edge | 155.0.4283.45 | 13 通过 | 同上；本机 Edge 程序 |
+| Firefox（Playwright 版） | 146.0.1 | 13 通过 | 同上 |
+| WebKit（Windows） | 26.0 | 11 通过、2 跳过 | 缺少 requestVideoFrameCallback，跳过降级取样；拒绝旧图并提示不支持通过 |
+| 手机尺寸 WebKit（iPhone 13 配置） | 26.0 | 11 通过、2 跳过 | 手机布局/操作模拟，不是 iPhone 真机；逐帧边界同上一行 |
+
+合计 **74 通过、4 跳过、0 失败**。完整报告 `Web/playwright-report/index.html`、截图和 trace 均在被 Git 忽略的输出目录。
+
+13 类用例：禁用存储、弹窗布局/焦点、带原凭证退出、迟到开流后的工作区切换、立即重连、缺少便利 API、HTTP 限制、两种 video 降级、无取帧 API 的明确失败、离开前台、迟到 Agent 取消、原版 Demo 加载/返回。
+
+业务流程测试明确替换厂商 SDK 和 API 响应；视频由 FFmpeg 合成。最后一项使用本机恢复的**真实官方 UMD 和原始表单**，只检查加载与返回，没有登录账号。官方文件不进入 Git，该项在 CI 明确跳过。
+
+不同系统上的 WebKit 功能/媒体支持有差异，Windows 结果不能代替 Safari；见 [Playwright 官方说明](https://playwright.dev/docs/browsers#webkit)。因此另加 macOS WebKit 测试。
+
+## 后端及构建
+
+- 后端 **163 项通过**：设备身份、账号冲突、会话归属、旧帧/错误设备拒绝、停止与过期、HTTP 取图全流程、Agent 两条视觉输入、代理访问边界。
+- Web **4 项协议单测通过**；TypeScript、自有生产构建、恢复后的官方 Demo 构建通过。
+- npm 审计：0 高危/中危，1 项 low，来自官方对照页的 `elliptic 6.6.1`，暂无直接修复版本。自有握手使用 WebCrypto。外部官方 UMD 不属于 npm 审计范围。
+- 测试脚本模型的回答不等同真实模型理解；没有将 `physicalDevicesValidated` 改为 true。
+
+## Apple 平台自动化
+
+本轮 CI 新增以下检查，最终执行结果见提交的 GitHub Checks：
+
+1. 普通 `EvidenceGuard` iOS Simulator 编译。
+2. Swift 服务地址、聊天迁移、二维码、聊天持久化契约测试。
+3. 启动 iOS Simulator，XCUITest 操作五个原生标签页，打开 SDK 检查指引并返回；截图存入 xcresult。
+4. macOS WebKit / 手机尺寸 WebKit 执行同套 Web 测试。
+
+Simulator 不编译 `#if canImport(SampleCore) && !targetEnvironment(simulator)` 内的官方路径，不能替代 `EvidenceGuardSDK` arm64 构建和设备测试。
+
+## 复现
+
+```powershell
+# Windows，仓库根目录
+.\.venv\Scripts\python.exe -m pytest -q
+cd Web
+npm ci
+npx playwright install chromium firefox webkit
+npm test
+npm run build
+# ffmpeg 须在 PATH；安装了 Chrome/Edge 时也加入它们
+$env:EG_BRANDED_BROWSERS = '1'
+npm run test:browser
+```
+
+```bash
+# Mac，仓库根目录；普通原生 UI 无需赛事库
+gem install xcodeproj -v 1.27.0 --no-document
+bash scripts/test_ios_compatibility.sh
+```
+
+原生脚本在本地工程生成 EvidenceGuardReview 测试方案，使用已安装的 iOS Runtime 创建专用 iPhone 16 模拟器，测试后删除该专用模拟器。生成的测试工程变更无需提交到业务分支。结果用 `open CompatibilityResults.xcresult` 查看；Web 用 `npx playwright show-report`。
+
+## 仍需硬件验收的发布门槛
+
+| 环节 | 通过标准 |
+| --- | --- |
+| 本轮原生桥接 | Mac 恢复资料、重新执行 SDK/prepare.py；EvidenceGuardSDK 完成 arm64 Debug/Archive，不复用旧 SampleCore |
+| 双型号 | T8171/T8214 各自登录、枚举、同步、首帧、停止、重连；现场物体改变后 Agent 得到对应新图 |
+| 跨端 | 同 SN 同设备 ID；停旧采集端后另一端接管；另一客户端可向前台采集端请求新图 |
+| 生命周期 | 开流未返回时切官方；立即重连；取图/Agent 中离页、锁屏、断网；恢复后不能返回旧图成功回执 |
+| 官方工作区 | iOS 原版绑定、配网、对讲、PTZ、录像、回放/下载后返回；资源释放，账号/PR/QA 不混用 |
+| Safari 真机 | HTTPS 下官方 SDK 解码、实际画面读取、麦克风、前后台与旋转 |
+| 视觉模型 | 使用真实模型核对来源、描述和遮挡不确定性，不用脚本回答代替 |
+
+当前仍为单团队、单后端进程、前台取样。成员权限、独立归属核验、后台采集、完整 Web 配网/设置产品流程不属于本轮。官方页面存在与设备实际支持分别记录。

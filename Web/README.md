@@ -18,6 +18,8 @@ npm test
 npm run build
 ```
 
+兼容性回归需安装 FFmpeg，并执行 `npx playwright install chromium firefox webkit`、`npm run test:browser`。Windows 若需同时验证本机 Chrome/Edge，先设置 `$env:EG_BRANDED_BROWSERS='1'`。测试使用 SDK/API 替身和合成视频，不代表硬件取流通过；恢复官方 Demo 后额外测试真实表单加载与返回。结果见 [兼容性复审](../Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。
+
 构建后将 Cloud 的 `EG_WEB_ROOT` 设置为本目录 `dist` 的绝对路径，即可同源托管。恢复的 SDK 不进入 Git，CI 因而只检查自有代码，不能验证真实媒体连接。官方握手、iOS 联调、模型配置、数据边界和硬件验收见 [接入指南](../Docs/LIVE-DEVICE-INTEGRATION.md)。
 
 ## 官方 SDK 工作区

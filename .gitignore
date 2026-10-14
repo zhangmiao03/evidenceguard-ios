@@ -43,3 +43,6 @@ Docs/*.json
 Cloud/fixture-lab/docs/smoke-results.json
 Web/.official-demo/
 Web/public/official-demo/
+Web/test-results/
+Web/playwright-report/
+CompatibilityResults.xcresult/

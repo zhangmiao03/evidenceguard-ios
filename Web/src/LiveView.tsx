@@ -79,7 +79,18 @@ export function LiveView({
     // Safari and browsers without MediaStreamTrackProcessor can sample an
     // actual presented video frame. No screenshot of the UI or cached image.
     const fallback = (): boolean => {
+      if (fallbackVideo) return true;
       const video = container.current?.querySelector("video");
+      if (
+        video &&
+        !video.requestVideoFrameCallback &&
+        !("MediaStreamTrackProcessor" in window)
+      ) {
+        fail(
+          "此浏览器缺少逐帧读取能力，不能向 Agent 提供可靠的新画面。请使用更新的 Chrome/Edge 或 iOS App。",
+        );
+        return true;
+      }
       if (!video || !video.requestVideoFrameCallback) return false;
       fallbackVideo = video;
       const canvas = document.createElement("canvas");
@@ -138,7 +149,13 @@ export function LiveView({
                   intervalMs: 350,
                   mimeType: "image/jpeg",
                   quality: 0.8,
-                  onError: () => fail("直播帧订阅已中断，请停止并重新连接"),
+                  onError: () => {
+                    unsubscribe?.();
+                    unsubscribe = undefined;
+                    // Some SDK/browser combinations report an unavailable
+                    // raw-frame path asynchronously. Try the actual video.
+                    if (!fallback()) fail("直播帧订阅已中断，请停止并重新连接");
+                  },
                 },
               );
             } catch {
@@ -201,6 +218,15 @@ export function LiveView({
             const imageBase64 = await base64(next.blob);
             if (disposed || stop.current) break;
             try {
+              await api.request(
+                `/api/media-sessions/${session.id}/heartbeat`,
+                {
+                  state: "streaming",
+                  sequence: next.sequence,
+                  frameAgeMs: Math.max(0, Date.now() - next.sampledAt * 1000),
+                },
+                session,
+              );
               await api.request(
                 `/api/media-sessions/${session.id}/frames`,
                 {

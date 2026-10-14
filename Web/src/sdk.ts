@@ -2,6 +2,7 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 import axios from "axios";
 import { api } from "./api";
+import { requireSecureConnection } from "./browser-support";
 import { getDomain, exchangeKey, requestToken } from "./vendor";
 import { HeaderBuilder } from "./vendor/header";
 import { Request as VendorRequest } from "./vendor/request";
@@ -121,6 +122,8 @@ function installProxy() {
 }
 
 export async function authenticate(auth: Auth): Promise<unknown> {
+  requireSecureConnection();
+  if (!crypto.subtle) throw new Error("当前浏览器不支持安全的设备鉴权，请使用 HTTPS 和较新的浏览器。");
   await loadSDK();
   installProxy();
   VendorRequest.AccessToken = "";

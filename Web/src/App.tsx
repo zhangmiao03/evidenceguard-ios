@@ -3,6 +3,7 @@ import { api, type Capture, type Device, type Run } from "./api";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
 import { LiveView } from "./LiveView";
 import { OfficialWorkspace } from "./OfficialWorkspace";
+import { newID } from "./browser-support";
 
 function ImageEvidence({ path, alt }: { path: string; alt: string }) {
   const [url, setURL] = useState("");
@@ -34,7 +35,10 @@ export default function App() {
   const [token, setToken] = useState("");
   const [officialMode, setOfficialMode] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [stoppingLive, setStoppingLive] = useState(false);
   const stopLive = useRef<(() => Promise<void>) | null>(null);
+  const releaseLive = useRef<Promise<void> | null>(null);
+  const connectionEpoch = useRef(0);
   const [connected, setConnected] = useState(false);
   const [cloudOnline, setCloudOnline] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -60,16 +64,25 @@ export default function App() {
   const generation = useRef(0);
   const activeRun = useRef("");
   const modal = useRef<HTMLElement>(null);
+  const settingsTrigger = useRef<HTMLElement | null>(null);
+  const openSettings = (trigger: HTMLElement) => {
+    settingsTrigger.current = trigger;
+    setSettings(true);
+  };
   const device = devices.find((d) => d.id === selected);
   const refresh = async () => {
+    const epoch = connectionEpoch.current;
     const all = await api.request<Device[]>("/api/devices");
-    setDevices(all);
-    setSelected((old) => old || all[0]?.id || "");
     const bootstrap = await api.request<{ evidence: typeof evidence }>(
       "/api/bootstrap",
     );
     const captures =
       await api.request<(Capture & { deviceName: string })[]>("/api/captures");
+    if (epoch !== connectionEpoch.current) return;
+    setDevices(all);
+    setSelected((old) =>
+      all.some((d) => d.id === old) ? old : all[0]?.id || "",
+    );
     setEvidence([...captures, ...bootstrap.evidence]);
     setCloudOnline(true);
   };
@@ -83,7 +96,8 @@ export default function App() {
   }, [connected, officialMode]);
   useEffect(() => {
     if (!settings) return;
-    const previous = document.activeElement as HTMLElement | null;
+    const previous =
+      settingsTrigger.current || (document.activeElement as HTMLElement | null);
     const root = modal.current;
     const controls = () =>
       Array.from(
@@ -137,8 +151,10 @@ export default function App() {
     action(async () => {
       if (Object.values(auth).some((v) => !v.trim()))
         throw new Error("请填写完整的官方 Web 账号参数");
-      setLive(null);
-      setIntegration(await authenticate(auth));
+      await endLive();
+      const epoch = connectionEpoch.current;
+      const result = await authenticate(auth);
+      if (epoch === connectionEpoch.current) setIntegration(result);
     });
   const add = () =>
     action(async () => {
@@ -159,7 +175,7 @@ export default function App() {
         ],
       });
       await refresh();
-      chooseDevice(all[0].id);
+      await chooseDevice(all[0].id);
       setSN("");
       setName("");
       setSettings(false);
@@ -178,7 +194,7 @@ export default function App() {
       if (!conversation.current) {
         const c = await api.request<{ id: string }>(
           "/api/agent/conversations",
-          { requestId: crypto.randomUUID() },
+          { requestId: newID() },
         );
         if (current !== generation.current) return;
         conversation.current = c.id;
@@ -186,7 +202,7 @@ export default function App() {
       let run = await api.request<Run>("/api/agent/runs", {
         message: text,
         conversationId: conversation.current,
-        requestId: crypto.randomUUID(),
+        requestId: newID(),
         cameraId: device.id,
         executionMode: "live",
       });
@@ -217,7 +233,34 @@ export default function App() {
       }
     }
   };
-  const chooseDevice = (id: string) => {
+  const endLive = (): Promise<void> => {
+    if (releaseLive.current) return releaseLive.current;
+    setStoppingLive(true);
+    const stop = stopLive.current;
+    if (stop) {
+      const id = activeRun.current;
+      generation.current++;
+      activeRun.current = "";
+      setSending(false);
+      if (id) void api.request(`/api/runs/${id}/cancel`, {}).catch(() => {});
+    }
+    const release = (async () => {
+      try {
+        await stop?.();
+      } finally {
+        if (stopLive.current === stop) stopLive.current = null;
+        setLive(null);
+        setReady(false);
+        setStoppingLive(false);
+        releaseLive.current = null;
+      }
+    })();
+    // When there is no mounted player, return without storing a synchronously
+    // completed cleanup promise that would hide a later player's stop handler.
+    if (stop) releaseLive.current = release;
+    return release;
+  };
+  const chooseDevice = async (id: string) => {
     if (id !== selected) {
       if (activeRun.current)
         void api
@@ -228,21 +271,24 @@ export default function App() {
       conversation.current = "";
       setRuns([]);
       setSending(false);
-      setLive(null);
+      await endLive();
       setReady(false);
       setCapture(null);
       setMessage("");
     }
     setSelected(id);
   };
-  const logout = () => {
+  const logout = async () => {
+    if (switching) return;
+    setSwitching(true);
+    connectionEpoch.current++;
     if (activeRun.current)
       void api
         .request(`/api/runs/${activeRun.current}/cancel`, {})
         .catch(() => {});
     generation.current++;
     activeRun.current = "";
-    setLive(null);
+    await endLive();
     setReady(false);
     setIntegration(null);
     setAuth(emptyAuth);
@@ -257,6 +303,7 @@ export default function App() {
     conversation.current = "";
     setSending(false);
     api.token = "";
+    setSwitching(false);
   };
 
   const openOfficial = async () => {
@@ -264,6 +311,7 @@ export default function App() {
     setSwitching(true);
     setError("");
     try {
+      connectionEpoch.current++;
       generation.current++;
       if (activeRun.current)
         await api
@@ -271,9 +319,7 @@ export default function App() {
           .catch(() => {});
       activeRun.current = "";
       setSending(false);
-      await stopLive.current?.();
-      stopLive.current = null;
-      setLive(null);
+      await endLive();
       setReady(false);
       setCapture(null);
       setIntegration(null);
@@ -325,10 +371,10 @@ export default function App() {
             <button
               key={id}
               className={tab === id ? "nav-item active" : "nav-item"}
-              onClick={() => {
+              disabled={switching || stoppingLive}
+              onClick={async () => {
                 if (id === "evidence") {
-                  setLive(null);
-                  setReady(false);
+                  await endLive();
                 }
                 setTab(id);
               }}
@@ -342,7 +388,10 @@ export default function App() {
           <div className="privacy-icon">◇</div>
           <strong>你的画面，由你决定</strong>
           <p>开启直播后，Agent 仅在请求时获取一张新画面。</p>
-          <button className="text-button" onClick={() => setSettings(true)}>
+          <button
+            className="text-button"
+            onClick={(e) => openSettings(e.currentTarget)}
+          >
             连接与账号设置 ↗
           </button>
         </div>
@@ -352,7 +401,11 @@ export default function App() {
             团队工作台<small>iOS / Web 共用后端</small>
           </div>
           {connected && (
-            <button className="text-button" onClick={logout}>
+            <button
+              className="text-button"
+              disabled={busy || switching || stoppingLive}
+              onClick={() => void logout()}
+            >
               退出
             </button>
           )}
@@ -363,7 +416,19 @@ export default function App() {
           <span>
             <i className="dot" /> EvidenceGuard 工作区
           </span>
-          <button disabled={switching} onClick={() => void openOfficial()}>
+          {connected && (
+            <button
+              className="mobile-logout"
+              disabled={busy || switching || stoppingLive}
+              onClick={() => void logout()}
+            >
+              退出
+            </button>
+          )}
+          <button
+            disabled={switching || busy || stoppingLive}
+            onClick={() => void openOfficial()}
+          >
             {switching ? "正在停止直播与采集…" : "切换至官方 SDK ↗"}
           </button>
         </div>
@@ -379,7 +444,10 @@ export default function App() {
             </h1>
             <p>连接摄像头，查看现场，把有依据的观察交给你的 Agent。</p>
           </div>
-          <button className="primary" onClick={() => setSettings(true)}>
+          <button
+            className="primary"
+            onClick={(e) => openSettings(e.currentTarget)}
+          >
             ＋ 接入设备
           </button>
         </header>
@@ -480,7 +548,8 @@ export default function App() {
                     {devices.map((d) => (
                       <button
                         key={d.id}
-                        onClick={() => chooseDevice(d.id)}
+                        disabled={switching || stoppingLive}
+                        onClick={() => void chooseDevice(d.id)}
                         className={
                           d.id === selected
                             ? "device-chip selected"
@@ -520,8 +589,7 @@ export default function App() {
                         device={live}
                         integration={integration}
                         onClose={() => {
-                          setLive(null);
-                          setReady(false);
+                          void endLive();
                         }}
                         onStatus={setReady}
                         registerStop={(stop) => {
@@ -543,12 +611,13 @@ export default function App() {
                         </p>
                         <button
                           className="primary"
-                          disabled={busy}
-                          onClick={() => {
+                          disabled={busy || switching || stoppingLive}
+                          onClick={async (e) => {
                             if (!device || !integration) {
-                              setSettings(true);
+                              openSettings(e.currentTarget);
                               return;
                             }
+                            await endLive();
                             setCapture(null);
                             setLive(device);
                           }}
@@ -567,10 +636,12 @@ export default function App() {
                         disabled={!ready || busy}
                         onClick={() =>
                           void action(async () => {
+                            const current = generation.current;
                             const c = await api.request<Capture>(
                               `/api/devices/${selected}/capture`,
                               {},
                             );
+                            if (current !== generation.current) return;
                             setCapture(c);
                             if (c.status !== "completed")
                               throw new Error(c.reason);
@@ -821,8 +892,10 @@ export default function App() {
                 {integration && (
                   <button
                     className="text-button"
-                    onClick={() => {
-                      setLive(null);
+                    disabled={busy || switching || stoppingLive}
+                    onClick={async () => {
+                      connectionEpoch.current++;
+                      await endLive();
                       setIntegration(null);
                       setAuth(emptyAuth);
                       clearSDKCredentials();

@@ -1014,6 +1014,14 @@ footer {
   border-radius: 12px;
   font-size: 12px;
 }
+.workspace-switch .mobile-logout {
+  display: none;
+}
+@media (max-width: 650px) {
+  .workspace-switch .mobile-logout {
+    display: inline-flex;
+  }
+}
 .workspace-switch button {
   color: #185ce1;
   background: white;

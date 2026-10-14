@@ -25,14 +25,15 @@ struct LiveFrameUpload: Encodable {
     private var session: LiveSession?
     private var client: APIClient?
     private var generation = UUID()
-    private var opening = false
+    @Published private(set) var opening = false
+    @Published private(set) var closing = false
     private var releaseTask: Task<Void, Never>?
     #if canImport(SampleCore) && !targetEnvironment(simulator)
     private var media: EvidenceGuardLiveBridge?
     #endif
 
     func start(camera: SDKDiscoveredCamera, connection: OfficialSDKConnection, client: APIClient) async {
-        guard !running, !connection.switchingWorkspace, connection.officialDemoController == nil else { return }
+        guard !running, !opening, !connection.switchingWorkspace, connection.officialDemoController == nil else { return }
         connection.liveController = self
         opening = true
         defer { opening = false }
@@ -40,6 +41,11 @@ struct LiveFrameUpload: Encodable {
         generation = UUID(); let current = generation
         status = "正在登记官方设备…"
         do {
+            // A quick stop/reconnect must not reuse a player that is still
+            // releasing its native transport or owns the previous cloud lease.
+            await releaseTask?.value
+            try Task.checkCancellation()
+            guard current == generation else { return }
             let devices = try await connection.importDevices(client: client)
             try Task.checkCancellation()
             guard current == generation else { return }
@@ -49,7 +55,7 @@ struct LiveFrameUpload: Encodable {
             guard let player = connection.makeLive(camera: camera) else { throw APIProblem(message: "设备不在当前官方会话内，请重新查询设备") }
             media = player
             renderView = player.renderView()
-            let opened = try await client.startMedia(registered.id)
+            let opened = try await Task { try await client.startMedia(registered.id) }.value
             guard current == generation, !Task.isCancelled else {
                 player.stop()
                 await releaseSession(opened, client: client)
@@ -103,8 +109,16 @@ struct LiveFrameUpload: Encodable {
                     // Read the SDK player after receiving the server challenge.
                     sequence = max(sequence, command.afterSequence) + 1
                     let sampledAt = Date().timeIntervalSince1970
-                    try await client.uploadLiveFrame(session, body: LiveFrameUpload(requestId: command.requestId, sequence: sequence,
-                        imageBase64: bytes.base64EncodedString(), width: pixels.width, height: pixels.height, sampledAt: sampledAt))
+                    // Waiting for the next media callback may exceed the last
+                    // heartbeat's freshness window. Advertise this new sample.
+                    try await client.liveHeartbeat(session, state: "streaming", sequence: sequence, age: 0)
+                    do {
+                        try await client.uploadLiveFrame(session, body: LiveFrameUpload(requestId: command.requestId, sequence: sequence,
+                            imageBase64: bytes.base64EncodedString(), width: pixels.width, height: pixels.height, sampledAt: sampledAt))
+                    } catch let problem as APIProblem where problem.statusCode == 409 {
+                        // The requester may have cancelled while we sampled.
+                        // The next heartbeat still detects a stale session.
+                    }
                     activity = Int(player.activitySequence()); latestImage = image; lastSample = Date()
                 }
                 if !ready && Date().timeIntervalSince(startedAt) > 45 { throw APIProblem(message: "没有取得有效新帧，请检查设备与网络后重新开流") }
@@ -121,22 +135,32 @@ struct LiveFrameUpload: Encodable {
         #if canImport(SampleCore) && !targetEnvironment(simulator)
         media?.stop(); media = nil
         #endif
-        if let session, let client {
-            let previous = releaseTask
-            releaseTask = Task {
-                await previous?.value
-                await self.releaseSession(session, client: client)
+        let stoppedSession = session, stoppedClient = client
+        let previous = releaseTask
+        closing = true
+        releaseTask = Task {
+            await previous?.value
+            if let stoppedSession, let stoppedClient {
+                await self.releaseSession(stoppedSession, client: stoppedClient)
             }
+            // The official iOS renderer defers release by 500 ms.
+            try? await Task.sleep(for: .milliseconds(650))
+            self.closing = false
         }
         session = nil; renderView = nil; latestImage = nil; ready = false; running = false; status = message
     }
 
     private func releaseSession(_ session: LiveSession, client: APIClient) async {
-        do { try await client.stopMedia(session) }
-        catch {
-            status = "本地画面已停止，等待云端采集会话到期…"
-            try? await Task.sleep(for: .seconds(13))
-        }
+        // Cleanup must finish even when the view's .task has been cancelled.
+        await Task {
+            do { try await client.stopMedia(session) }
+            catch let problem as APIProblem where problem.statusCode == 409 {
+                // An already expired/stopped lease cannot block a new session.
+            } catch {
+                status = "本地画面已停止，等待云端采集会话到期…"
+                try? await Task.sleep(for: .seconds(13))
+            }
+        }.value
     }
 
     func stopForWorkspaceSwitch() async {
@@ -172,6 +196,8 @@ struct OfficialLiveCameraView: View {
     @State private var feedback: String?
     @State private var conversationID: String?
     @State private var questionTask: Task<Void, Never>?
+    @State private var questionGeneration = UUID()
+    @State private var activeRunID: String?
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -183,10 +209,10 @@ struct OfficialLiveCameraView: View {
                 }.frame(height: 250).clipShape(RoundedRectangle(cornerRadius: 16))
                 Label(controller.status, systemImage: controller.ready ? "dot.radiowaves.left.and.right" : "video.slash").font(.subheadline)
                 HStack {
-                    Button(controller.running ? "停止直播" : "重新连接") {
+                    Button(controller.running ? "停止直播" : (controller.closing || controller.opening ? "正在释放会话…" : "重新连接")) {
                         if controller.running { controller.stop() }
                         else { Task { await controller.start(camera: camera, connection: store.officialSDK, client: store.client) } }
-                    }.buttonStyle(.bordered)
+                    }.buttonStyle(.bordered).disabled(!controller.running && (controller.closing || controller.opening))
                     Button("获取一张新画面") {
                         guard let id = controller.deviceID else { return }
                         Task { do { let value = try await store.client.captureLive(id); feedback = value.reason } catch { feedback = error.localizedDescription } }
@@ -202,25 +228,50 @@ struct OfficialLiveCameraView: View {
             }.padding(16)
         }.pageStyle("实时查看与 Agent")
             .task { await controller.start(camera: camera, connection: store.officialSDK, client: store.client); await store.refresh() }
-            .onChange(of: scenePhase) { _, phase in if phase != .active { controller.stop(message: "App 已离开前台，直播已停止") } }
-            .onDisappear { controller.stop(); questionTask?.cancel() }
+            .onChange(of: scenePhase) { _, phase in if phase != .active { controller.stop(message: "App 已离开前台，直播已停止"); cancelQuestion() } }
+            .onChange(of: controller.running) { _, running in if !running { cancelQuestion() } }
+            .onDisappear { controller.stop(); cancelQuestion() }
+    }
+    private func cancelQuestion() {
+        questionGeneration = UUID()
+        questionTask?.cancel(); questionTask = nil
+        let client = store.client
+        if let id = activeRunID { Task { _ = try? await client.cancel(id) } }
+        activeRunID = nil; asking = false
     }
     private func ask() {
         guard let device = controller.deviceID else { return }
         asking = true; feedback = nil
         let text = question
+        let current = UUID(); questionGeneration = current
+        let client = store.client
         questionTask = Task {
-            defer { asking = false }
+            defer { if questionGeneration == current { asking = false; activeRunID = nil } }
             do {
-                if conversationID == nil { conversationID = try await store.client.newConversation(requestID: UUID().uuidString).id }
+                if conversationID == nil { conversationID = try await client.newConversation(requestID: UUID().uuidString).id }
+                try Task.checkCancellation()
+                guard questionGeneration == current else { return }
                 guard let conversationID else { return }
-                var value = try await store.client.start(message: text, conversation: conversationID, skill: nil, camera: device, requestID: UUID().uuidString)
+                // Keep the start receipt observable even if this view closes
+                // during the request, so the late server run can be cancelled.
+                var value = try await Task {
+                    try await client.start(message: text, conversation: conversationID, skill: nil, camera: device, requestID: UUID().uuidString)
+                }.value
+                guard !Task.isCancelled, questionGeneration == current else {
+                    let id = value.id
+                    Task { _ = try? await client.cancel(id) }
+                    return
+                }
+                activeRunID = value.id
                 run = value
                 while value.isRunning {
                     try await Task.sleep(for: .seconds(1))
-                    value = try await store.client.agentRun(value.id); run = value
+                    value = try await client.agentRun(value.id)
+                    try Task.checkCancellation()
+                    guard questionGeneration == current else { return }
+                    run = value
                 }
-            } catch { if !(error is CancellationError) { feedback = error.localizedDescription } }
+            } catch { if questionGeneration == current, !(error is CancellationError) { feedback = error.localizedDescription } }
         }
     }
 }
