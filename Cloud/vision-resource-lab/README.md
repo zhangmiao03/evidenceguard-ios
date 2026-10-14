@@ -8,6 +8,17 @@
 
 三份实测 ONNX 权重已通过本私有仓库的 Git LFS 保存。队友先按 [模型下载与校验](models/README.md) 取回权重；来源、固定版本、SHA256 与上游许可证说明一起保留。报告、逐帧 CSV/JSON 和预览图随代码保存；原视频、抽帧输入、`.npy` 及运行日志未提交。
 
+| 内容 | 位置 |
+|---|---|
+| 实验批次与默认黑白图册 | [results/](results/README.md) |
+| 首轮性能报告 | [results/local-20261014/REPORT.md](results/local-20261014/REPORT.md) |
+| 模型、版本和许可 | [models/](models/README.md) |
+| 一键运行 | `Run-Lab.ps1`；Linux 使用 `run_bench.sh` 与 `run_sustained.sh` |
+| 模型与数据准备 | `prepare_models.py`、`verify_models.py`、`prepare_input.py` |
+| 测试与展示代码 | `benchmark.py`、`sustained.py`、`render_depth_previews.py`、`report.py` |
+
+实验工具独立维护在本目录。App、Web、Cloud 业务代码继续使用仓库现有目录；模型和已选实验结果单独提交。新增测试批次默认被忽略，准备分享时先选择需要保留的报告与图片，再明确更新本目录的忽略规则和结果索引。
+
 ## 1. 光流到底需不需要模型
 
 | 处理任务 | 必要输入 | 是否需要神经网络模型 | 本次实现 |

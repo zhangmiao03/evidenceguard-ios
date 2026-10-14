@@ -11,8 +11,11 @@
 | `SDK/Bridge/` | Kotlin 桥接的自有改动 | 修改这里，通过 `SDK/prepare.py` 同步到本地 vendor |
 | `Web/` | 官方 Web 直播、设备与 Agent 工作台 | 共用 Cloud API；模型密钥不进入浏览器 |
 | `Cloud/fixture-lab/` | 合成画面与离线回归 | 测试标记不代表真实视觉能力 |
+| `Cloud/vision-resource-lab/` | 深度、光流实验和已选结果 | 黑白图默认展示；模型用 Git LFS；输入视频及新运行输出仅本机保存 |
 
 先改服务端 schema 与验证，再同步 Swift Codable 和 `Web/src/api.ts`。不要把一端的 UI 成功提示当成另一端已经完成操作。摄像头按 SN 生成稳定 ID，不按页面位置猜测；登记与厂商所有权验证是不同环节。
+
+深度与光流材料从 [统一入口](Docs/VISION-RESOURCE-BENCHMARK.md) 查看。实验材料与 App / Web / Cloud 功能改动分别提交；按本次实际修改的路径暂存，提交前用 `git diff --cached --name-only` 检查范围。新实验输出默认被忽略；共享选定批次时再更新实验目录的忽略规则与结果索引。
 
 ## 拉取后运行
 
