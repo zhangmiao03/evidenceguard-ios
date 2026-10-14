@@ -81,8 +81,10 @@ def main():
         '儿童庭院活动、割草机器人、室内宠物/物品、门前包裹分别补拍固定机位、云台移动、遮挡、夜间片段，再验证业务判断。人物/宠物/机器人身份及告警含义需要检测、跟踪或 VLM；光流本身只描述像素变化。', '',
         'VLM 后续做同一批片段的 A/B 对照：RGB；RGB+深度；RGB+光流摘要；RGB+两者。记录误报、漏报、UNKNOWN、时延和费用，不能因增加两张辅助图就假定识别更准确。', '',
         '## 5. 查看效果和原始数据', '',
-        '[DepthART 448 深度预览](server-budget/depthart448-448/preview-09.jpg) · [Depth Anything V2 对照](server-budget/dav2small-518/preview-09.jpg) · [DIS 光流预览](server-budget/dis/preview-056.jpg)', '',
-        '各方法目录中的 `result.json` 是汇总和环境证据，`samples.csv` 是逐帧数据，`preview-*.jpg` 是示意图。`.npy` 原始浮点输出仅本地生成，未随本报告提交；原视频与抽帧输入由运行者自行提供。', '',
+        '[DepthART 448 黑白深度预览](server-budget/depthart448-448/gray-preview-09.jpg) · [Depth Anything V2 黑白对照](server-budget/dav2small-518/gray-preview-09.jpg) · [DIS 光流预览](server-budget/dis/preview-056.jpg)', '',
+        '![黑白深度：原图与三个模型](depth-grayscale-comparison.jpg)' if (folder / 'depth-grayscale-comparison.jpg').exists() else '', '',
+        '**黑白与伪彩色来自同一份深度数值。** 黑白用亮暗表达相对远近，伪彩色使用颜色映射；换成黑白不需要另一套模型，也不会改变本次推理耗时或深度准确度。这里采用近亮远暗、每帧 2%–98% 分位归一化，不能从灰度直接换算米数。', '',
+        '各方法目录中的 `result.json` 是汇总和环境证据，`samples.csv` 是逐帧数据，`depth-gray-*.png` 是单通道黑白图，`gray-preview-*.jpg` 是 RGB 与黑白深度对照，原 `preview-*.jpg` 保留伪彩色。`.npy` 原始浮点输出仅本地生成，未随本报告提交；原视频与抽帧输入由运行者自行提供。', '',
         '模型与算法来源、运行命令和接入建议见 [README](../../README.md)。', '',
     ])
     (folder / 'REPORT.md').write_text('\n'.join(lines), encoding='utf-8')

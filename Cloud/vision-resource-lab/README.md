@@ -4,6 +4,8 @@
 
 **已完成结果：[2026-10-14 首轮实测](results/local-20261014/REPORT.md)。**
 
+**深度默认提供黑白预览**：[三个模型对照](results/local-20261014/depth-grayscale-comparison.jpg)。`depth-gray-*.png` 是单通道灰度图，近亮远暗；伪彩色只是同一份数据的另一种配色，原始浮点深度另存 `.npy`。显示配色不改变模型大小、推理开销或深度精度。
+
 三份实测 ONNX 权重已通过本私有仓库的 Git LFS 保存。队友先按 [模型下载与校验](models/README.md) 取回权重；来源、固定版本、SHA256 与上游许可证说明一起保留。报告、逐帧 CSV/JSON 和预览图随代码保存；原视频、抽帧输入、`.npy` 及运行日志未提交。
 
 ## 1. 光流到底需不需要模型
@@ -114,5 +116,6 @@ flowchart LR
 - `benchmark.py` / `run_bench.sh`：独立进程的资源限额基准与合成平移光流验证。
 - `sustained.py` / `run_sustained.sh`：定频组合回放，有界延迟。
 - `report.py`：从 JSON 生成实测报告，不填充缺失结果。
+- `render_depth_previews.py`：从已有 `.npy` 和原始 RGB 抽帧补导黑白图，不重新推理，也不改变历史耗时数据。
 - `models/`：Git LFS 模型、固定版本清单与来源/许可；`inputs/`：仅本机的视频样本。
 - `results/<批次>/`：本地生成报告、JSON、逐帧 CSV、预览与 `.npy`。随库的 `local-20261014` 批次保留报告、JSON、CSV 和预览，未上传 `.npy`。

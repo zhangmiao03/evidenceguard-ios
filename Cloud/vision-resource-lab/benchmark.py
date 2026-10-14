@@ -65,11 +65,19 @@ def normalized_tensor(bgr, model, resolution):
     return np.ascontiguousarray(tensor.transpose(2, 0, 1)[None])
 
 
-def color_depth(raw, size):
+def depth_gray_values(raw):
     # Visualization only: percentiles are per-frame, not calibrated metres.
     low, high = np.percentile(raw, [2, 98])
     scaled = np.clip((raw - low) / max(high - low, 1e-6), 0, 1)
-    gray = np.uint8(scaled * 255)
+    return np.uint8(scaled * 255)
+
+
+def gray_depth(raw, size):
+    return cv2.resize(depth_gray_values(raw), size, interpolation=cv2.INTER_LINEAR)
+
+
+def color_depth(raw, size):
+    gray = depth_gray_values(raw)
     return cv2.resize(cv2.applyColorMap(gray, cv2.COLORMAP_INFERNO), size,
                       interpolation=cv2.INTER_LINEAR)
 
@@ -85,6 +93,18 @@ def labeled_panels(panels, labels):
                     (240, 240, 240), 1, cv2.LINE_AA)
         output.append(np.vstack([header, panel]))
     return np.hstack(output)
+
+
+def write_depth_previews(output, index, bgr, raw, model, time_s):
+    size = (bgr.shape[1], bgr.shape[0])
+    grayscale = gray_depth(raw, size)
+    cv2.imwrite(str(output / f'depth-gray-{index:02d}.png'), grayscale)
+    gray_preview = labeled_panels([bgr, cv2.cvtColor(grayscale, cv2.COLOR_GRAY2BGR)],
+        [f'RGB | t={time_s:.2f}s', f'{model} | near bright, far dark'])
+    cv2.imwrite(str(output / f'gray-preview-{index:02d}.jpg'), gray_preview)
+    color_preview = labeled_panels([bgr, color_depth(raw, size)],
+        [f'RGB | t={time_s:.2f}s', f'{model} | relative, NOT metres'])
+    cv2.imwrite(str(output / f'preview-{index:02d}.jpg'), color_preview)
 
 
 def run_depth(args, fixture, output):
@@ -138,10 +158,7 @@ def run_depth(args, fixture, output):
                         "pipeline_ms": (finish - start) * 1000})
         if i in preview_indices:
             np.save(output / f'depth-{i:02d}.npy', raw)
-            display = color_depth(raw, (bgr.shape[1], bgr.shape[0]))
-            preview = labeled_panels([bgr, display],
-                [f'RGB | t={frame["time_s"]:.2f}s', f'{args.model} | relative, NOT metres'])
-            cv2.imwrite(str(output / f'preview-{i:02d}.jpg'), preview)
+            write_depth_previews(output, i, bgr, raw, args.model, frame['time_s'])
         if i % 5 == 0 or i == count - 1:
             print(f'{args.model} {i+1}/{count}: {records[-1]["pipeline_ms"]:.1f} ms', flush=True)
     return records, {

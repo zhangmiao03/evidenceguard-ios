@@ -65,8 +65,12 @@ VLM 后续做同一批片段的 A/B 对照：RGB；RGB+深度；RGB+光流摘要
 
 ## 5. 查看效果和原始数据
 
-[DepthART 448 深度预览](server-budget/depthart448-448/preview-09.jpg) · [Depth Anything V2 对照](server-budget/dav2small-518/preview-09.jpg) · [DIS 光流预览](server-budget/dis/preview-056.jpg)
+[DepthART 448 黑白深度预览](server-budget/depthart448-448/gray-preview-09.jpg) · [Depth Anything V2 黑白对照](server-budget/dav2small-518/gray-preview-09.jpg) · [DIS 光流预览](server-budget/dis/preview-056.jpg)
 
-各方法目录中的 `result.json` 是汇总和环境证据，`samples.csv` 是逐帧数据，`preview-*.jpg` 是示意图。`.npy` 原始浮点输出仅本地生成，未随本报告提交；原视频与抽帧输入由运行者自行提供。
+![黑白深度：原图与三个模型](depth-grayscale-comparison.jpg)
+
+**黑白与伪彩色来自同一份深度数值。** 黑白用亮暗表达相对远近，伪彩色使用颜色映射；换成黑白不需要另一套模型，也不会改变本次推理耗时或深度准确度。这里采用近亮远暗、每帧 2%–98% 分位归一化，不能从灰度直接换算米数。
+
+各方法目录中的 `result.json` 是汇总和环境证据，`samples.csv` 是逐帧数据，`depth-gray-*.png` 是单通道黑白图，`gray-preview-*.jpg` 是 RGB 与黑白深度对照，原 `preview-*.jpg` 保留伪彩色。`.npy` 原始浮点输出仅本地生成，未随本报告提交；原视频与抽帧输入由运行者自行提供。
 
 模型与算法来源、运行命令和接入建议见 [README](../../README.md)。
