@@ -13,6 +13,8 @@
 
 ## 当前进度
 
+Web 0.2 的功能提交为 `fc0243b`。[本轮 GitHub Checks 四项全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38552925223)：Cloud 182 项、Linux 浏览器 100 项、macOS WebKit 50 项、iOS 界面 3 项，以及生产构建与 Swift 契约检查。CI 的 6 项跳过均为未恢复专有 Demo 文件的检查，和本机 WebKit 的逐帧 API 跳过原因不同。下方保留此前同步与发布记录。
+
 2026-10-14 · **Web 0.2 五栏功能对齐**：助手支持主会话、独立话题、草稿恢复、只读历史查询与主动提醒；摄像头 Skill 保留设备接入、实时取流、新图回传和官方 SDK 切换，并加入圈选编辑与录像库；任务支持状态筛选、暂停 / 恢复 / 停止、回放试跑、人工验收和设备占用确认；记忆支持长期 / 24 小时记录；设置支持提醒时间、免打扰、时区与连接管理。后端新增幂等主会话初始化接口，兼容既有 iOS 绑定。Cloud 与 Web 必须一起更新。后端 182 项、Web 协议 4 项、本机跨浏览器 152 项通过，另有 4 项因 Windows WebKit 缺少逐帧 API 跳过；类型检查与生产构建通过。测试范围和平台限制见 [Web 0.2 验收](Docs/WEB-PRODUCT-PARITY.md)。本次提交源码，未部署或上传 TestFlight。
 
 2026-10-14 · 同步主分支：`dongrunze` 合入 `main` 的 `0959463`，合并提交 `60ca514`。保留新的“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏、APNs 和自动保存提醒设置，并整合实时设备接入、Agent 新画面采集、Web 与官方 SDK 工作区。AppDelegate 同时处理推送与播放器旋转；官方工作区内点开的通知会保留，返回并释放完成后再进入助手。合并后后端 179 项、Web 协议 4 项、Linux 浏览器 48 项、macOS WebKit 24 项、原生 UI 3 项及 Swift 契约检查通过，iOS 编译与 Web 构建通过。跳过项和实机边界见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次是源码同步，未部署或上传 TestFlight。

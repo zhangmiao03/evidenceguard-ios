@@ -78,8 +78,22 @@ npm run test:browser
 
 后端增加真实 HTTP 合同测试：主会话初始化鉴权、幂等、重启恢复、保留原生绑定；普通助手无需设备；消息去重；偏好/记忆隔离；共享设备草案；旧版本编辑拒绝；官方设备未验收时禁止启用。
 
-2026-10-14 本机结果：Cloud **182 项通过**；Web 协议 **4 项通过**；TypeScript 与 Vite 生产构建通过；Playwright **152 项通过、4 项跳过**。浏览器覆盖 Chromium、Firefox、Windows WebKit、iPhone 尺寸 WebKit、已安装的 Chrome 与 Edge。跳过的是 Windows WebKit 缺少 `requestVideoFrameCallback` 的两种降级取帧场景（桌面和手机尺寸各两项），不计作通过；不支持取帧时明确报错的检查仍执行。macOS WebKit 与普通 iOS Simulator 由仓库 CI 继续检查。
+2026-10-14 本机结果：Cloud **182 项通过**；Web 协议 **4 项通过**；TypeScript 与 Vite 生产构建通过；Playwright **152 项通过、4 项跳过**。浏览器覆盖 Chromium、Firefox、Windows WebKit、iPhone 尺寸 WebKit、已安装的 Chrome 与 Edge。跳过的是 Windows WebKit 缺少 `requestVideoFrameCallback` 的两种降级取帧场景（桌面和手机尺寸各两项），不计作通过；不支持取帧时明确报错的检查仍执行。
 
 录像上传用例通过临时本机 HTTP 接收端验证实际收到的文件字节，避免把 WebKit 测试拦截器未暴露 File 请求体误判为上传失败。桌面与手机页面截图已检查，五栏没有横向溢出。
 
 浏览器自动化使用 API/SDK 替身；官方原版 Demo 本机加载检查不代表真实账号或设备连接通过。测试没有调用生产模型、发布真实守护、部署线上服务或上传 TestFlight。
+
+### GitHub CI 最终结果
+
+受测功能提交：`fc0243bdb8886eedc80615945c286bdb9f9f1b42`。[Checks 四项全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38552925223)，完成于 2026-10-14 19:03（UTC+8）。后续提交仅补充文档结果并统一 Markdown 换行，不改变受测源码。
+
+| 检查 | 结果 |
+| --- | --- |
+| Cloud / 仓库扫描 | **182 通过**；368 个受版本管理的文件检查通过 |
+| Web 协议 / 构建 | **4 通过**；TypeScript 与 Vite 生产构建通过 |
+| Linux Chromium / Firefox / WebKit / 手机尺寸 WebKit | **100 通过、4 跳过** |
+| macOS 桌面 / 手机尺寸 WebKit | **50 通过、2 跳过** |
+| 原生 iOS Simulator | 普通目标编译通过；**3 项 XCUITest 通过**；Swift 契约检查通过 |
+
+CI 的 6 项跳过都是缺少主办方专有 Demo 文件；这些文件按仓库约定不上传。Windows 本机恢复 Demo 后，六种浏览器项目的原版表单加载与返回测试均已运行通过。普通 iOS Simulator 检查不包含官方 arm64 SDK 真机归档或 T8171 / T8214 硬件验收。
