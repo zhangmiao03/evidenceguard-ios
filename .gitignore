@@ -41,3 +41,5 @@ Docs/*.json
 /*.png
 /*-v*.json
 Cloud/fixture-lab/docs/smoke-results.json
+Web/.official-demo/
+Web/public/official-demo/

@@ -23,11 +23,13 @@ export function LiveView({
   integration,
   onClose,
   onStatus,
+  registerStop,
 }: {
   device: Device;
   integration: unknown;
   onClose: () => void;
   onStatus: (ready: boolean) => void;
+  registerStop?: (stop: () => Promise<void>) => void;
 }) {
   const { Provider, DeviceLiveLayout } = window.WebSDK;
   const [state, setState] = useState("正在连接官方媒体服务");
@@ -46,11 +48,23 @@ export function LiveView({
       fallbackID: number | undefined;
     let fallbackBusy = false;
     const gate = new FrameGate();
+    let finish!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const requests = new Map<
       string,
       { command: CaptureCommand; received: number }
     >();
     stop.current = false;
+    registerStop?.(async () => {
+      stop.current = true;
+      setLeased(false);
+      unsubscribe?.();
+      statusRef.current(false);
+      await finished;
+      await wait(350); // official Provider defers transport cleanup
+    });
     const fail = (message: string) => {
       if (!disposed) {
         stop.current = true;
@@ -109,7 +123,7 @@ export function LiveView({
           deviceId: device.id,
           platform: "web",
         });
-        if (disposed) return;
+        if (disposed || stop.current) return;
         // Do not mount the auto-starting vendor player before obtaining the
         // shared iOS/Web capture lease.
         setLeased(true);
@@ -216,11 +230,21 @@ export function LiveView({
         unsubscribe?.();
         if (fallbackVideo && fallbackID !== undefined)
           fallbackVideo.cancelVideoFrameCallback(fallbackID);
-        if (session)
-          await api
-            .request(`/api/media-sessions/${session.id}/stop`, {}, session)
-            .catch(() => {});
+        if (session) {
+          try {
+            await api.request(
+              `/api/media-sessions/${session.id}/stop`,
+              {},
+              session,
+            );
+          } catch {
+            // Heartbeats have stopped. Do not start the official workspace
+            // until the server's 12-second capture lease has expired.
+            await wait(13000);
+          }
+        }
         statusRef.current(false);
+        finish();
       }
     };
     void start();

@@ -41,6 +41,13 @@ import com.anker.esiotkit.support.platform.currentTimeMillis
 import com.anker.esiotkit.security_device.p2p.P2PPingManager
 import platform.UIKit.UIImage
 import platform.UIKit.UIView
+import platform.UIKit.UIViewController
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.window.ComposeUIViewController
+import com.anker.esiotkit.sample.main.SampleApp
+import com.anker.esiotkit.sample.main.iosMainViewController
+import com.anker.esiotkit.sample.support.cache.InfoCache
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.serialization.json.JsonArray
@@ -58,6 +65,36 @@ class EvidenceGuardSDKBridge {
     private var discoveredSn = emptySet<String>()
     private val eventCache = mutableMapOf<String, MegaEvent>()
     private var activeLive: EvidenceGuardLiveBridge? = null
+    private var officialHost: EvidenceGuardOfficialHost? = null
+
+    /** Host the same SampleApp() used by the official MainViewController.
+     * Keep its entire navigator, binding flows and capability-driven settings.
+     * The disposable wrapper lets Swift await Compose cleanup before reconnecting.
+     */
+    fun openOfficialDemo(): UIViewController {
+        check(officialHost == null) { "official_demo_already_open" }
+        disconnect()
+        InfoCache.tokenValid = false
+        InfoCache.userConfig = ""
+        startupEnvironment = null
+        return EvidenceGuardOfficialHost().also { officialHost = it }.controller
+    }
+
+    fun closeOfficialDemo(completion: () -> Unit) {
+        val host = officialHost
+        if (host == null) { completion(); return }
+        host.close {
+            officialHost = null
+            InfoCache.tokenValid = false
+            InfoCache.userConfig = ""
+            runCatching { ESIotKit.logout() }
+            // The official business form can change account and environment.
+            // Product mode must initialize its own config again, not reuse it.
+            startupEnvironment = null
+            discoveredSn = emptySet()
+            completion()
+        }
+    }
 
     fun createLive(sn: String): EvidenceGuardLiveBridge? {
         if (sn !in discoveredSn) return null
@@ -72,6 +109,7 @@ class EvidenceGuardSDKBridge {
     }
 
     fun connect(userId: String, token: String, environment: String, completion: (String) -> Unit) {
+        if (officialHost != null) { completion(failure("official_demo_active")); return }
         stopLive()
         generation += 1
         val current = generation
@@ -275,6 +313,45 @@ class EvidenceGuardSDKBridge {
     private companion object {
         // SDK startup is process-wide. Credentials may be refreshed; an environment switch requires restart.
         var startupEnvironment: String? = null
+    }
+}
+
+/** Same official root as Main.kt; no recreation of the vendor's UI/actions. */
+private class EvidenceGuardOfficialHost {
+    private val visible = mutableStateOf(true)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var closeStarted = false
+    private var contentMounted = false
+    private var callback: (() -> Unit)? = null
+    val controller: UIViewController = ComposeUIViewController {
+        if (visible.value) {
+            DisposableEffect(Unit) {
+                contentMounted = true
+                onDispose { finishClose() }
+            }
+            SampleApp()
+        }
+    }.apply { iosMainViewController = this }
+
+    fun close(completion: () -> Unit) {
+        if (closeStarted) return
+        closeStarted = true
+        callback = completion
+        visible.value = false
+        if (!contentMounted) finishClose()
+    }
+
+    private fun finishClose() {
+        if (!closeStarted) return
+        val done = callback ?: return
+        callback = null
+        scope.launch {
+            // Official live/event/preset/download composables dispose their
+            // players and jobs; give their deferred native release time to run.
+            delay(700)
+            if (iosMainViewController == controller) iosMainViewController = null
+            done()
+        }
     }
 }
 

@@ -25,12 +25,17 @@ struct LiveFrameUpload: Encodable {
     private var session: LiveSession?
     private var client: APIClient?
     private var generation = UUID()
+    private var opening = false
+    private var releaseTask: Task<Void, Never>?
     #if canImport(SampleCore) && !targetEnvironment(simulator)
     private var media: EvidenceGuardLiveBridge?
     #endif
 
     func start(camera: SDKDiscoveredCamera, connection: OfficialSDKConnection, client: APIClient) async {
-        guard !running else { return }
+        guard !running, !connection.switchingWorkspace, connection.officialDemoController == nil else { return }
+        connection.liveController = self
+        opening = true
+        defer { opening = false }
         running = true; self.client = client
         generation = UUID(); let current = generation
         status = "正在登记官方设备…"
@@ -45,7 +50,11 @@ struct LiveFrameUpload: Encodable {
             media = player
             renderView = player.renderView()
             let opened = try await client.startMedia(registered.id)
-            guard current == generation, !Task.isCancelled else { try? await client.stopMedia(opened); player.stop(); return }
+            guard current == generation, !Task.isCancelled else {
+                player.stop()
+                await releaseSession(opened, client: client)
+                return
+            }
             session = opened
             player.start { [weak self] state in
                 Task { @MainActor in
@@ -112,8 +121,30 @@ struct LiveFrameUpload: Encodable {
         #if canImport(SampleCore) && !targetEnvironment(simulator)
         media?.stop(); media = nil
         #endif
-        if let session, let client { Task { try? await client.stopMedia(session) } }
+        if let session, let client {
+            let previous = releaseTask
+            releaseTask = Task {
+                await previous?.value
+                await self.releaseSession(session, client: client)
+            }
+        }
         session = nil; renderView = nil; latestImage = nil; ready = false; running = false; status = message
+    }
+
+    private func releaseSession(_ session: LiveSession, client: APIClient) async {
+        do { try await client.stopMedia(session) }
+        catch {
+            status = "本地画面已停止，等待云端采集会话到期…"
+            try? await Task.sleep(for: .seconds(13))
+        }
+    }
+
+    func stopForWorkspaceSwitch() async {
+        stop(message: "正在切换到官方 SDK")
+        // Also cover a switch while startMedia is still in flight. Its late
+        // response is explicitly stopped before the official player can mount.
+        while opening { try? await Task.sleep(for: .milliseconds(50)) }
+        await releaseTask?.value
     }
 }
 

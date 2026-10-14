@@ -19,3 +19,20 @@ npm run build
 ```
 
 构建后将 Cloud 的 `EG_WEB_ROOT` 设置为本目录 `dist` 的绝对路径，即可同源托管。恢复的 SDK 不进入 Git，CI 因而只检查自有代码，不能验证真实媒体连接。官方握手、iOS 联调、模型配置、数据边界和硬件验收见 [接入指南](../Docs/LIVE-DEVICE-INTEGRATION.md)。
+
+## 官方 SDK 工作区
+
+页面顶部“切换至官方 SDK”可在设备工作台和原版 Demo 之间切换。首次使用需额外恢复完整 Web Demo：
+
+```bash
+# 在仓库根目录
+python3 scripts/import_official_web_demo.py "/资料包/demo工程/WebSDKDemo"
+cd Web
+npm ci
+npm run build:official
+npm run dev
+```
+
+仍需按上文恢复 `/sdk/index.js`。官方原始 UI 与 UMD 不入 Git，缺失时工作区会显示恢复步骤。`build:official` 之后再 `npm run build` 才会把官方界面加入可部署 dist。可按 T8171 / T8214 导出手动硬件检查记录；返回前导出，刷新不保留记录。
+
+原版 AI 面板点击开始会采集 10 帧并自动提交官方模型；在 Cloud 配置 `EG_OFFICIAL_AI_KEY`，不要放入 Web 环境。两端差异与完整操作见 [工作区指南](../Docs/OFFICIAL-SDK-WORKSPACES.md)。

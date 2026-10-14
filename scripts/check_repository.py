@@ -16,7 +16,7 @@ secret_patterns = [
 errors = []
 for name in filter(None, names):
     path = Path(name)
-    if name.startswith(('SDK/Vendor/', 'Web/public/sdk/', 'Cloud/data/')) or path.name.startswith('.env') and path.name != '.env.example' or any(p in {'.venv','node_modules','Pods','DerivedData','xcuserdata'} for p in path.parts) or path.suffix in {'.sqlite3','.sqlite','.db','.ipa','.mp4','.mov'}:
+    if name.startswith(('SDK/Vendor/', 'Web/public/sdk/', 'Web/public/official-demo/', 'Web/.official-demo/', 'Cloud/data/')) or path.name.startswith('.env') and path.name != '.env.example' or any(p in {'.venv','node_modules','Pods','DerivedData','xcuserdata'} for p in path.parts) or path.suffix in {'.sqlite3','.sqlite','.db','.ipa','.mp4','.mov'}:
         errors.append(f'Local/private artifact tracked: {name}')
     result = subprocess.run(['git', 'show', ':'+name], cwd=root, capture_output=True)
     if result.returncode:

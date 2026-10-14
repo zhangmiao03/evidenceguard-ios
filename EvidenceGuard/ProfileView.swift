@@ -15,7 +15,7 @@ struct ProfileView: View {
             }
             Section {
                 NavigationLink(value: AppRoute.cameras) { Label("我的设备",systemImage: "video") }
-                if !MobileServiceConfiguration.current.isInternalDemo { NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入",systemImage: "link") } }
+                NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入",systemImage: "link") }
                 NavigationLink(value: AppRoute.personalAgent) { Label("助手记忆与提醒",systemImage: "sparkles") }
                 NavigationLink(value: AppRoute.personalInbox) { Label("助手提醒",systemImage: "tray") }
                 if MobileServiceConfiguration.current.isInternalDemo {

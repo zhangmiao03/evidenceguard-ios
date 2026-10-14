@@ -24,6 +24,8 @@ async def limited_json(request, model, limit=8_000_000):
 
 
 def install_live_routes(app, camera, captures):
+    from .official_demo import install_official_demo_routes
+    install_official_demo_routes(app)
     hub = camera.live
 
     def session(sid, request):

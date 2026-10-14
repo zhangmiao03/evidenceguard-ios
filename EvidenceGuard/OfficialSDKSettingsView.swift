@@ -8,6 +8,12 @@ struct OfficialSDKSettingsView: View {
 
     var body: some View {
         Form {
+            Section("完整官方功能") {
+                Button("切换到官方原版：配网、绑定与设备设置") { Task { await connection.enterOfficialWorkspace() } }
+                    .disabled(!connection.canDiscover || connection.switchingWorkspace)
+                Text("顶部工作区按钮可随时返回。官方页面中的更改实际作用于设备，返回后请重新查询并同步。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
             Section("接入状态") {
                 Text(connection.buildStatus).font(.subheadline)
                 Text(connection.message).font(.caption).foregroundStyle(Brand.muted)

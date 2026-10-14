@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Capture, type Device, type Run } from "./api";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
 import { LiveView } from "./LiveView";
+import { OfficialWorkspace } from "./OfficialWorkspace";
 
 function ImageEvidence({ path, alt }: { path: string; alt: string }) {
   const [url, setURL] = useState("");
@@ -31,6 +32,9 @@ function ImageEvidence({ path, alt }: { path: string; alt: string }) {
 
 export default function App() {
   const [token, setToken] = useState("");
+  const [officialMode, setOfficialMode] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const stopLive = useRef<(() => Promise<void>) | null>(null);
   const [connected, setConnected] = useState(false);
   const [cloudOnline, setCloudOnline] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -70,13 +74,13 @@ export default function App() {
     setCloudOnline(true);
   };
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || officialMode) return;
     const timer = setInterval(
       () => void refresh().catch(() => setCloudOnline(false)),
       5000,
     );
     return () => clearInterval(timer);
-  }, [connected]);
+  }, [connected, officialMode]);
   useEffect(() => {
     if (!settings) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -255,6 +259,51 @@ export default function App() {
     api.token = "";
   };
 
+  const openOfficial = async () => {
+    if (switching) return;
+    setSwitching(true);
+    setError("");
+    try {
+      generation.current++;
+      if (activeRun.current)
+        await api
+          .request(`/api/runs/${activeRun.current}/cancel`, {})
+          .catch(() => {});
+      activeRun.current = "";
+      setSending(false);
+      await stopLive.current?.();
+      stopLive.current = null;
+      setLive(null);
+      setReady(false);
+      setCapture(null);
+      setIntegration(null);
+      clearSDKCredentials();
+      setSettings(false);
+      setOfficialMode(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "切换未完成，请重试");
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  if (officialMode)
+    return (
+      <OfficialWorkspace
+        token={api.token || token}
+        defaults={{ ...auth, stationSn: device?.sn }}
+        onReturn={() => {
+          setOfficialMode(false);
+          setLive(null);
+          setReady(false);
+          setIntegration(null);
+          conversation.current = "";
+          setRuns([]);
+          if (connected) void refresh().catch(() => setCloudOnline(false));
+        }}
+      />
+    );
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -310,6 +359,14 @@ export default function App() {
         </div>
       </aside>
       <main>
+        <div className="workspace-switch" aria-label="版本与工作区切换">
+          <span>
+            <i className="dot" /> EvidenceGuard 工作区
+          </span>
+          <button disabled={switching} onClick={() => void openOfficial()}>
+            {switching ? "正在停止直播与采集…" : "切换至官方 SDK ↗"}
+          </button>
+        </div>
         <header className="page-header">
           <div>
             <span className="eyebrow">EVIDENCE, BEFORE ANSWERS</span>
@@ -467,6 +524,9 @@ export default function App() {
                           setReady(false);
                         }}
                         onStatus={setReady}
+                        registerStop={(stop) => {
+                          stopLive.current = stop;
+                        }}
                       />
                     ) : (
                       <div className="video-empty">
