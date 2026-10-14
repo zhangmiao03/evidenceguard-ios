@@ -1,5 +1,5 @@
 anker：自动记忆、只读连接器与摄像头主动观察
-2026-10-15 · 本地代码与草稿 PR #4；未部署、未上传或分发
+2026-10-15 · 代码与草稿 PR #4；用户已授权本轮内部测试分发，手机云服务已部署，build10归档进行中。最新分发状态见 TESTFLIGHT.md。
 
 产品入口
 助手 / 摄像头 Skill / 任务 / 记忆 / 我的五个入口保留。anker 使用用户本轮选定的海报蓝白机器人头像；用户昵称仍独立保存。主对话和旧话题不合并、不删除。
@@ -58,7 +58,7 @@ Gmail scopes：https://www.googleapis.com/auth/gmail.readonly
 飞书 scopes：im:chat:readonly im:message:readonly im:message.group_msg:get_as_user offline_access
 需要在飞书应用管理中开通对应权限、机器人能力及适用用户/可见范围；在 OAuth 请求中授予 scope 不会绕过平台权限审批。Gmail readonly 属于 restricted scope，测试用户/同意屏幕和正式验证应按 Google 应用类型完成。
 使用 HTTPS、原有团队鉴权及无查询参数日志；现有云服务启动参数 --no-access-log 保持。授权码不得进入访问日志、Dashboard 或 PR。
-本轮这些配置未写入三套线上服务；Gmail/飞书尚未真实授权联调。不能拿 Codex 自身连接器的账号当作 App 连接凭证。手机/团队/Apple review 三套配置、令牌与数据库继续隔离。
+本次分发已在手机服务配置 HTTPS origin 与独立加密密钥；Gmail/飞书 client 尚未配置，也未真实授权联调。团队/审核服务未改。不能拿 Codex 自身连接器的账号当作 App 连接凭证。手机/团队/Apple review 三套配置、令牌与数据库继续隔离。
 
 四、iPhone 能读取什么
 已实现：EventKit 日历（未来7天）或未完成提醒事项 → 本地预览最多20条 → 可左滑移除 → 用户点击共享 → 云端加密快照，24小时内可供 read_phone_context 读取。只取标题/日期，不取备注、参与人或附件。共享会覆盖上一次快照，不是后台实时同步。
@@ -71,7 +71,7 @@ iOS 17+ 为这两类读取要求完整访问系统权限；App 代码仅做读�
 本地后端测试包含：来源/到期/纠正/删除/重试记忆、安装证明隔离、OAuth scope/PKCE/一次性 state、只读分页/HTML文本化/令牌刷新、手机快照隔离、两台独立取样、暂停/旧图/测试源拦截、元数据事件提醒、模拟 APNs 一次入队和接受回执。
 真实 Doubao 独立合成样例：保存简洁偏好；用户纠正后更新为详细回复；转发他人的养猫情况不存为用户事实。样例在 verification/personal-agent-2026-10-15/doubao-memory-samples.json。未使用真实邮件、飞书内容或摄像头图像。
 iOS Simulator 与官方 SDK arm64 本地编译通过，Swift 契约7组、iOS界面4项通过。界面截图在同目录 profile.png / phone-preview.png；进入手机信息不会弹权限，未预览不显示共享按钮。Web 类型/生产构建、协议9项通过。Cloud 全量236项通过，之后补充的飞书刷新并发用例也通过（当前共237项）；Edge浏览器28项通过、1项专有Demo恢复条件跳过。本机缺少 Playwright 自带 Chromium/WebKit 二进制，未把启动失败记为产品失败或通过；跨浏览器最终检查交给 GitHub CI。GitHub状态见 PR #4。
-保持用户要求：未部署本轮功能到 AWS；未上传新 TestFlight；未加入任何测试组。build9既有状态不变。
+后续用户明确说“分发吧”：已部署手机服务，build10正式归档进行中；尚未确认上传或内部组状态，build9仍未分发。未来版本仍需明确分发指令。
 
 官方依据（核查于2026-10-15）
 Google Gmail 用户 OAuth：https://developers.google.com/workspace/gmail/api/auth/web-server
