@@ -13,7 +13,11 @@
 
 ## 当前进度
 
-Web 0.2 的功能提交为 `fc0243b`。[本轮 GitHub Checks 四项全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38552925223)：Cloud 182 项、Linux 浏览器 100 项、macOS WebKit 50 项、iOS 界面 3 项，以及生产构建与 Swift 契约检查。CI 的 6 项跳过均为未恢复专有 Demo 文件的检查，和本机 WebKit 的逐帧 API 跳过原因不同。下方保留此前同步与发布记录。
+2026-10-14 · **提示词与接口说明同步**：普通助手与主动评估共用新版 iOS/Web 产品入口说明，修复 Web 编辑能力、草案回复入口、提醒保存方式、APNs/Web Push 差异和固定设备 ID 的过期描述。图片核验同时适用于事件图、前台直播取样与合成样本；更新缓存版本，保留原有调用额度。补齐 OpenAPI 的草案、设备登记、帧时间、预留规则与发布门禁说明，并修复多方法路由重复的 operationId。现有 HTTP 路径、请求字段及设备/任务权限保持兼容；真机发布仍未开放。检查范围见 [提示词与接口同步](Docs/WEB-PRODUCT-PARITY.md#提示词与接口说明同步)。
+
+本次本地验证：Python 3.12 与仓库固定依赖下 Cloud **189 项通过**（新增 7 个提示词/回执/缓存回归用例）；Web 协议 **4 项通过**，TypeScript 与生产构建通过。测试核对模型请求与业务约束，未调用外部模型评估回答质量，也不代表真实设备或新 TestFlight 已验收。
+
+此前 Web 0.2 功能提交为 `fc0243b`。[该提交 GitHub Checks 四项全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38552925223)：Cloud 182 项、Linux 浏览器 100 项、macOS WebKit 50 项、iOS 界面 3 项，以及生产构建与 Swift 契约检查。CI 的 6 项跳过均为未恢复专有 Demo 文件的检查，和本机 WebKit 的逐帧 API 跳过原因不同。下方保留此前同步与发布记录。
 
 2026-10-14 · **Web 0.2 五栏功能对齐**：助手支持主会话、独立话题、草稿恢复、只读历史查询与主动提醒；摄像头 Skill 保留设备接入、实时取流、新图回传和官方 SDK 切换，并加入圈选编辑与录像库；任务支持状态筛选、暂停 / 恢复 / 停止、回放试跑、人工验收和设备占用确认；记忆支持长期 / 24 小时记录；设置支持提醒时间、免打扰、时区与连接管理。后端新增幂等主会话初始化接口，兼容既有 iOS 绑定。Cloud 与 Web 必须一起更新。后端 182 项、Web 协议 4 项、本机跨浏览器 152 项通过，另有 4 项因 Windows WebKit 缺少逐帧 API 跳过；类型检查与生产构建通过。测试范围和平台限制见 [Web 0.2 验收](Docs/WEB-PRODUCT-PARITY.md)。本次提交源码，未部署或上传 TestFlight。
 
@@ -30,7 +34,7 @@ Web 0.2 的功能提交为 `fc0243b`。[本轮 GitHub Checks 四项全部成功]
 
 主分支合并前记录（本轮未重复发布）：采用“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏。摄像头 Skill 负责选择设备、查看画面、圈选守护和访问录像；任务独立管理状态、证据与定时概况；记忆独立管理已确认的长期 / 24 小时上下文；助手保留对话、新建话题和精简主动提醒。守护编辑分为“对象 / 条件 / 确认”，保留能力检查、试跑和占用冲突处理。“我的 → 通知与提醒”统一配置手机推送、摄像头事件、每日概况和免打扰，偏好自动保存，失败可重试。161 项 Cloud 测试、6 项移动端契约检查、模拟器编译及真实 SDK 签名归档通过。`1.0 (8)` 已完成 Apple 处理并在现有内部组显示“正在测试”；新加坡 APNs 生产发送已启用，真实手机测试已有 Apple 接受和点开回执。锁屏具体展示、build 8 真机交互与实际摄像头验收仍需分别验证。
 
-模型统一使用豆包：聊天 / 视觉 / 工具调用为 `doubao-seed-2-1-lite-260915`，Embedding 为 `doubao-embedding-vision-251215`、1024 维。仓库包括 App、Cloud、测试和 SDK 自有桥接；模型 Key、APNs 私钥、私有发布配置、运行数据和官方 SDK 二进制按现有权限单独恢复。
+仓库示例配置的聊天模型为 `doubao-seed-2-1-lite-260915`，Embedding 为 `doubao-embedding-vision-251215`、1024 维。图片/视频理解可独立配置，官方 Demo 另用固定 `hackathon/v_model/nova-pro` 网关；示例名称不能代替部署配置。实际标识查看 `/api/bootstrap` 的 `agent.provider` 与 `videoModels`。仓库包括 App、Cloud、测试和 SDK 自有桥接；模型 Key、APNs 私钥、私有发布配置、运行数据和官方 SDK 二进制按现有权限单独恢复。
 
 
 2026-10-14：手机、团队与 Apple 审核服务已迁至新加坡，三个环境的数据与凭证保持隔离。build 5 已通过签名归档、Apple 校验与处理，内部组显示“正在测试”；新版会自动连接新加坡并保留本地会话与草稿。美国旧实例已删除；手机需在 TestFlight 直接更新到 `1.0 (5)`，无需卸载或填写服务器配置。见 [服务器状态](Docs/SERVER-ACCESS.md) 和 [TestFlight](Docs/TESTFLIGHT.md)。
@@ -201,7 +205,9 @@ EG_MODEL_VISION=1
 EG_EMBED_MODEL_ID=doubao-embedding-vision-251215
 ```
 
-`EG_MODEL_VISION=1` 表示助手调用摄像头工具成功后，可将新画面交给模型；不发送录音。密钥只供服务端使用。真机访问需配置同一网络内可访问的服务地址及签名；当前默认服务仅监听本机。
+`EG_MODEL_VISION=1` 时，摄像头新图和已保存图片可直接交给主助手模型。主助手为纯文本时设为 `0`，并配置独立的 `EG_VIDEO_BASE_URL / EG_VIDEO_MODEL_ID / EG_VIDEO_API_KEY`；当前自动视觉回退用于实时截图，历史 `read_stored_image` 尚无同样的回退。省略某个 `EG_VIDEO_*` 变量才会继承对应 `EG_MODEL_*`，显式空值不会继承。Embedding 可用 `EG_EMBED_BASE_URL / EG_EMBED_API_KEY` 独立配置；更换模型、instructions 或采样策略后须重建索引，不能仅凭相同的 1024 维数混用旧向量。
+
+系统提示词和视觉输出 Schema 在服务端源码中维护，目前没有独立提示词管理或图片生成 API。语音输入转为用户确认后的文字，不向本项目 Agent 上传录音。密钥只供服务端使用。真机访问需配置手机可达的受信任 HTTPS 地址及签名，不要求手机与云端在同一局域网；本地开发默认服务仅监听本机。
 
 ## 已检查与边界
 

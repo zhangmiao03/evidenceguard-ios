@@ -49,6 +49,7 @@ def install_live_routes(app, camera, captures):
 
     @app.post('/api/devices/import')
     async def import_devices(body: DeviceImport, request: Request):
+        """登记客户端报告的已绑定设备，按 SN 去重；不执行官方配网、绑定或所有权核验。"""
         return hub.import_devices(body, installation(request.headers.get('X-EG-Installation-ID')))
 
     @app.post('/api/media-sessions', status_code=201)
@@ -65,6 +66,10 @@ def install_live_routes(app, camera, captures):
 
     @app.post('/api/media-sessions/{sid}/frames')
     async def frame(sid: str, request: Request):
+        """回传本会话领取请求后的新帧；sampledAt 为客户端取样时间，channelId 当前仅 main。
+
+        需 X-EG-Installation-ID 与 X-EG-Media-Session。不能以历史事件缩略图回应新画面请求。
+        """
         s = session(sid, request)
         body = await limited_json(request, FrameUpload)
         return hub.upload(s, body)
@@ -82,7 +87,8 @@ def install_live_routes(app, camera, captures):
 
     # The official browser SDK needs OpenAPI CORS support. Only this fixed
     # vendor host is reachable; this is not a user-selectable URL proxy.
-    @app.api_route('/api/sdk/openapi/{path:path}', methods=['GET', 'POST'])
+    @app.get('/api/sdk/openapi/{path:path}')
+    @app.post('/api/sdk/openapi/{path:path}')
     async def vendor_proxy(path: str, request: Request):
         if (not path.startswith('v1/') or any(x in path for x in ('..', '//', '\\', ':', '%'))
                 or len(path) > 240):

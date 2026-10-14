@@ -1,6 +1,6 @@
 # Web / iOS 共用 Agent 与设备媒体接入
 
-更新：2026-10-14，`dongrunze`。本轮按用户要求将新的 Web 工作台与 iOS、Cloud 一起维护在本仓库，旧独立 Web 仓库作为历史原型参考。
+更新：2026-10-14，`dongrunze`。Web 0.2 五栏应用与 iOS、Cloud 一起维护在本仓库，旧独立 Web 仓库作为历史原型参考。
 
 ## 当前结构
 
@@ -20,7 +20,7 @@ Web 官方播放器 ↔ 官方媒体连接 ↔ T8171 / T8214 ↔ iOS LiveMediaPl
 | --- | --- |
 | `EvidenceGuard/` | iOS 业务界面、APIClient、官方发现与直播页 |
 | `SDK/Bridge/` | 官方 Kotlin SDK 的自有桥接；由 Mac 重新构建 SampleCore |
-| `Web/` | React 工作台、官方 Web 鉴权、直播与取帧、观察对话及证据 |
+| `Web/` | 助手、摄像头 Skill、任务、记忆、设置；官方 Web 鉴权、直播与取帧、SDK 切换 |
 | `Cloud/server/evidenceguard/camera/live.py` | 设备注册、媒体会话、取样挑战和接收适配器 |
 | `Cloud/server/evidenceguard/camera/live_routes.py` | 两端共用 HTTP 协议及固定官方 OpenAPI 代理 |
 | `Cloud/server/evidenceguard/camera/service.py` | 共用设备锁、执行代次、超时与持久回执 |
@@ -33,11 +33,12 @@ Web 官方播放器 ↔ 官方媒体连接 ↔ T8171 / T8214 ↔ iOS LiveMediaPl
 - 接入已经完成官方配网、绑定的设备；Web 手输 SN 是登记，不能代替首次绑定。
 - iOS 通过发现列表同步，Web 在官方鉴权后登记已知 SN；记录归属来自受信任客户端，后端没有独立厂商所有权核验。
 - 同 SN 共用一个设备 ID；每台设备同一时刻只允许一个本项目采集会话。多个客户端可共用后端结果，不等于多个 App 自动共享官方登录态或视频轨道。
-- Web 当前提供设备、直播、实时提问与证据工作台，未迁入旧原型的完整 Skill 编辑器、录像上传和试跑 UI。
+- Web 已有三步 Skill 编辑、区域圈选、录像上传与回放试跑、任务管理和个人设置，复用 Cloud 的版本、来源、设备占用与人工确认校验。具体入口及接口见 [Web 功能对齐](WEB-PRODUCT-PARITY.md)。
 - iOS 直播页切走/锁屏、Web 标签隐藏会停止采集，后台持续守护仍需专用执行端。
 - `capturedAt=null`，`sampledAt` 是客户端取样时间，`receivedAt` 是后端接收时间；不伪造传感器时间或持续观察覆盖。
 - T8214 暂按官方返回的 main/合成画面处理，不把两路镜头推定为两个独立设备。PTZ/对讲、换网、存储与历史录像另外实现和验收。
 - 保留 `physicalDevicesValidated=false` 和真实 Skill 发布检查，不因收到一张图片绕过验收。
+- iOS 已有可配置的 APNs；Web 仅有应用内提醒。两端个人会话和记忆按安装标识隔离，不能把共享摄像头任务误写成个人记录自动跨端同步。
 
 ## 启动与交接
 

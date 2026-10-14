@@ -1,6 +1,6 @@
 # 团队开发
 
-本仓库包含原生 iOS、Cloud harness、Web 设备工作台和模拟摄像头。本轮真实设备接入在 `dongrunze` 分支开发，Web 也放在本仓库 `Web/`；独立 Web 仓库只作为历史原型参考。`main` 为集成分支，通过团队 Review 合并。
+本仓库包含原生 iOS、Cloud harness、Web 五栏应用和模拟摄像头。本轮真实设备接入在 `dongrunze` 分支开发，Web 也放在本仓库 `Web/`；独立 Web 仓库只作为历史原型参考。`main` 为集成分支，通过团队 Review 合并。
 
 ## 分工边界
 
@@ -9,7 +9,7 @@
 | `EvidenceGuard/`、Xcode 工程 | SwiftUI、App SDK 桥接、TestFlight | 保留首页设计；其他页使用紧凑标题和返回 |
 | `Cloud/server/evidenceguard/` | harness、工具、录像检索、试跑、设备占用 | 能力和发布检查由服务端执行 |
 | `SDK/Bridge/` | Kotlin 桥接的自有改动 | 修改这里，通过 `SDK/prepare.py` 同步到本地 vendor |
-| `Web/` | 官方 Web 直播、设备与 Agent 工作台 | 共用 Cloud API；模型密钥不进入浏览器 |
+| `Web/` | 助手、摄像头 Skill、任务、记忆、设置；官方直播与 SDK 切换 | 共用 Cloud API；模型密钥不进入浏览器 |
 | `Cloud/fixture-lab/` | 合成画面与离线回归 | 测试标记不代表真实视觉能力 |
 | `Cloud/vision-resource-lab/` | 深度、光流实验和已选结果 | 黑白图默认展示；模型用 Git LFS；输入视频及新运行输出仅本机保存 |
 
@@ -57,7 +57,9 @@ python3 SDK/prepare.py --archive-downloads
 
 SDK 构建用 workspace / `EvidenceGuardSDK`，Simulator 用 project / `EvidenceGuard`。本次默认通过 TestFlight 安装手机测试包，现场拿到摄像头与凭证后再验证 SDK。签名、HTTPS 服务和 App Store Connect 准备见 [TestFlight](Docs/TESTFLIGHT.md)。
 
-聊天、视觉和工具调用统一使用 `doubao-seed-2-1-lite-260915`；Embedding 使用 `doubao-embedding-vision-251215`、1024 维。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
+`.env.example` 的聊天模型示例为 `doubao-seed-2-1-lite-260915`，Embedding 示例为 `doubao-embedding-vision-251215`、1024 维；图片/视频可用 `EG_VIDEO_*` 单独配置，官方 Demo 另走固定 Nova Pro 网关。实际模型标识查看 `/api/bootstrap`。修改模型、提示词和采样策略后，按版本更新视觉缓存或重建录像向量索引；不能仅保留相同维数就混用旧向量。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
+
+界面或接口变化时，同步核对 `harness/runtime.py` 的 `PRODUCT_GUIDANCE`、工具描述、返回给客户端的草案摘要、OpenAPI 字段说明和当前接入文档。提示词只描述已实现入口，不能扩大工具权限；新增界面不等于设备执行器已就绪。回归检查见 `test_prompt_contracts.py` 和 `test_web_product.py`。
 
 ## 提交前检查
 

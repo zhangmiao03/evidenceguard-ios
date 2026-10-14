@@ -13,7 +13,7 @@
 | 证据 | 当前观察回执、既有对话/证据界面 | 当次图片、Agent 图片回执、最近观察与证据库 | 图片与来源、运行记录持久化在 SQLite |
 | 停止与失败 | 离页/离开前台停止播放器、keepalive 与采集会话 | 停止/切换设备/隐藏标签页结束采集 | 12 秒心跳过期；等待中的请求失败，不回退历史缩略图 |
 
-前置条件：设备已经通过主办方 Demo 或有权限的官方流程完成 Wi-Fi 配网与账号绑定，已取得对应环境的凭证。**本轮尚未实现首次 QR 配网/绑定流程**；原 App 扫码保存序列号仍只是待连接记录。Web 不需要为了看设备画面调用电脑摄像头扫码；设备 SN 可以手输或来自 iOS 同步。
+前置条件：设备已经通过主办方 Demo 或有权限的官方流程完成 Wi-Fi 配网与账号绑定，已取得对应环境的凭证。iOS 可切换到已嵌入的官方工作区执行其配网/绑定流程；本项目自己的扫码保存序列号与设备导入仍只是登记，真实绑定结果须实机验收。交付的官方 Web Demo 没有完整配网导航；Web 不需要为了看设备画面调用电脑摄像头扫码，设备 SN 可以手输或来自 iOS 同步。见 [官方工作区](OFFICIAL-SDK-WORKSPACES.md)。
 
 仅接受比赛的 T8171 / T8214。每个物理 SN 对应一个设备记录，当前媒体通道为 `main`。T8214 返回的主画面可能包含双摄合成，不拆成两个未经验证的独立摄像头。
 
@@ -90,7 +90,7 @@ npm ci
 npm run dev
 ```
 
-浏览器访问 `http://127.0.0.1:5173`。官方 Web SDK 未恢复时，应用可以展示工作台，但连接设备会提示缺少 SDK，不能播放。
+浏览器访问 `http://127.0.0.1:5173`。官方 Web SDK 未恢复时，仍可联调助手、任务草案、录像上传、记忆与设置；官方设备播放会提示缺少 SDK。
 
 ### macOS / Linux
 
@@ -152,7 +152,9 @@ EG_ENV_FILE="$PWD/.env" .venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/
 | `POST /api/devices/{deviceId}/capture` | 用户手动请求新图，与 Agent 共用 CameraService |
 | `GET /api/captures` | 最近最多 100 条持久摄像头成功回执中，来自官方直播的取样记录 |
 | `GET /api/media/{id}` | 受鉴权保护的图片内容 |
-| `POST /api/agent/conversations`、`POST /api/agent/runs` | 沿用现有对话 API；run 指定 `cameraId` |
+| `POST /api/agent/conversations/main` | 无请求体；按安装标识幂等恢复主助手会话，保留原 iOS 绑定 |
+| `POST /api/agent/conversations` | 传 UUID `requestId`，创建独立话题 |
+| `POST /api/agent/runs` | `message, conversationId, requestId`；`cameraId` 可选，查看现场时选择设备；`executionMode=history` 限定已保存资料 |
 
 设备记录持久化，session token 只以内存哈希保存。服务重启后全部设备需要重新建立采集会话；旧 token 不可恢复使用。服务端会检查导入账号指纹冲突，但 `ownershipVerified=false`：官方设备归属仍由当前受信任 SDK 客户端报告，并非本后端独立核验。
 
@@ -184,7 +186,7 @@ EG_ENV_FILE="$PWD/.env" .venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/
 | 重启与历史 | 重启服务：设备记录和已存观察仍在，会话为未连接；需重新开流 | Cloud |
 | 断网录像 | 本轮不判断设备 SD 卡录像与同步；另按官方测试方案验证 | 硬件负责人 |
 
-本轮没有实现：首次配网与绑定、更换 Wi-Fi、BLE 产品流程、家庭角色/成员分享、跨设备完整聊天同步、原生持续后台网关、设备控制/PTZ/双向对讲的业务封装、SD 卡/官方云录像拉取、R2 媒体迁移、Web 全量 Skill 编辑器。接口后续可扩展，不应因一个 liveSnapshot 成功就宣称这些能力已具备。
+自有业务接口尚未实现：首次配网与绑定、更换 Wi-Fi、BLE 产品流程、家庭角色/成员分享、跨设备完整聊天同步、原生持续后台网关、设备控制/PTZ/双向对讲的业务封装、SD 卡/官方云录像拉取、R2 媒体迁移。首次绑定与完整设置可在 iOS 官方工作区核验。Web 已补齐 Skill 编辑、录像上传、试跑、任务、记忆与设置，见 [Web 0.2](WEB-PRODUCT-PARITY.md)；这些界面不会解除真机发布限制。
 
 ## 10. 常见失败
 

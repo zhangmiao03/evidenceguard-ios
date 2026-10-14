@@ -22,7 +22,7 @@ class RecordingQuery(Arguments):
     query: str = Field(min_length=2,max_length=1000)
     period: Literal['today','yesterday','last_24_hours'] | None = Field(default=None, description='仅本轮用户明确限定日期时填写。只问什么时候不代表今天，默认 null 查询所有已存录像。')
 class CaptureArguments(Arguments):
-    device_id: str | None = None
+    device_id: str | None = Field(default=None, description='使用设备能力或任务回执中的实际 ID；省略时使用当前选定摄像头，不按型号或角色猜测 ID。')
     purpose: str = Field(default='查看当前画面', max_length=120)
 class DraftArguments(Arguments):
     prompt: str = Field(min_length=2,max_length=2000)
@@ -149,14 +149,14 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
     registry.register('list_skill_capabilities',list_skill_capabilities,Empty,'创建任务前查看经过实现验证的执行能力；不支持的行为必须追问或保留需求，不能冒充包裹规则。')
     registry.register('list_camera_capabilities',list_camera_capabilities,Empty,'查询当前上下文内的设备能力及在线状态；型号不是能力证明。')
     registry.register('request_camera_snapshot',request_camera_snapshot,CaptureArguments,'实际请求指定摄像头在此刻之后采集新画面，返回设备回执和图片。用户要求看画面或视觉判断时使用。截图成功不代表任务安全，不支持时不要伪造。')
-    registry.register('draft_visual_skill',draft_visual_skill,DraftArguments,'创建待用户编辑和确认的草案。当前任务对话自动关联修改源并保留圈选；不会自动启用。')
+    registry.register('draft_visual_skill',draft_visual_skill,DraftArguments,'创建待用户在 iOS 或 Web 编辑和确认的草案；两端任务详情均有“继续设置守护”。当前任务对话自动关联修改源并保留圈选；保存不会自动启用，执行能力以返回的 capability 为准。')
     registry.register('get_task_state',get_task_state,SkillID,'读取任务当前结果、原因和规则；任务对话可省略 ID。')
     registry.register('list_tasks',list_tasks,Empty,'查询已有任务；任务对话只返回当前任务，临时查询不要创建草案。')
     registry.register('search_evidence',search_evidence,EvidenceQuery,'查询已保存证据。今天/昨天/过去24小时必须用 period=today/yesterday/last_24_hours，由服务器计算范围，不要自行换算时间戳。任务对话限定当前任务；返回数量、位置分类、带时区日期及资料缺口。inside/outside 是位置，不代表进入/离开动作。')
     registry.register('request_recheck',request_recheck,SkillID,'请求任务重新观察，先进入 unknown，不声称已安全。')
     registry.register('read_stored_image',read_stored_image,StoredImage,'读取 search_evidence 返回的某张已保存图片；图片属于过去，不代表当前现场。')
     if video_service:
-        registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后 Lite 观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
+        registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后配置的视觉模型观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
     if execution_mode=='history':
         allowed={'search_evidence','read_stored_image','search_recordings'}
         registry._tools={k:v for k,v in registry._tools.items() if k in allowed}

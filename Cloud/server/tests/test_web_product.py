@@ -36,11 +36,22 @@ def test_web_product_preserves_scopes_and_real_device_activation_gate(tmp_path):
         saved = result.json()
         assert not saved['capability']['canActivate']
         assert c.post('/api/skills/'+draft['id']+'/confirm',json=dict(revision=saved['revision'],fixtureAcknowledged=True)).status_code == 409
+        assert c.post('/api/skills/'+draft['id']+'/publish',json={}).status_code == 409
         # An old editor cannot overwrite the saved revision.
         assert c.patch('/api/skills/'+draft['id'],json=edit).status_code == 409
         own = c.get('/api/bootstrap').json()
         assert own['personal']['memories'][0]['content'] == '只关注客厅'
         assert own['skills'][0]['status'] == 'draft'
+        assert 'foreground relay implemented' in own['integration']['officialSdk']
+        assert own['integration']['physicalDevicesValidated'] is False
+        specification = c.get('/openapi.json').json()
+        operations = [operation['operationId'] for path in specification['paths'].values() for operation in path.values()]
+        assert len(operations) == len(set(operations))
+        assert set(specification['paths']['/api/sdk/openapi/{path}']) == {'get', 'post'}
+        assert set(specification['paths']['/api/recordings/{recording_id}/video']) == {'get', 'head'}
+        assert '当前始终返回未就绪' in specification['paths']['/api/skills/{skill_id}/publish']['post']['description']
+        confidence = specification['components']['schemas']['SkillRules']['properties']['minConfidence']
+        assert '当前执行器未使用' in confidence['description']
         c.headers['X-EG-Installation-ID'] = str(uuid4())
         other = c.get('/api/bootstrap').json()
         assert other['personal']['memories'] == []
