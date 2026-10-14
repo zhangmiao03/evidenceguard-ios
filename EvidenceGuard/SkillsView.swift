@@ -41,6 +41,9 @@ private struct OfficialCameraHomeView: View {
                                     Spacer(); Image(systemName: "chevron.right").font(.caption)
                                 }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
                             }.buttonStyle(.plain)
+                            NavigationLink { OfficialLiveCameraView(camera: device) } label: {
+                                Label("查看直播", systemImage: "play.circle")
+                            }.accessibilityIdentifier("cameraSkills.live." + device.sn)
                         }
                     }
                     Toggle("App 打开时同步新事件", isOn: Binding(

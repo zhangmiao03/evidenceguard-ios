@@ -1,0 +1,32 @@
+{
+  "depthart224": {
+    "repo": "Fengxue93/DepthART",
+    "revision": "9e154201cd8fb3453c9def581997aaf1b4da3c22",
+    "file": "onnx/relative_mnv4m_slim_spf_224_default.onnx",
+    "origin": "author ONNX export; MobileNetV4-M-slim-SPF",
+    "url": "https://huggingface.co/Fengxue93/DepthART/resolve/9e154201cd8fb3453c9def581997aaf1b4da3c22/onnx/relative_mnv4m_slim_spf_224_default.onnx",
+    "sha256": "7b38623362745ef9d60405f68c679fcf05a5cfbec160c9b031fbf6983507aef2",
+    "verified_upstream_sha256": true,
+    "bytes": 24155097
+  },
+  "depthart448": {
+    "repo": "Fengxue93/DepthART",
+    "revision": "9e154201cd8fb3453c9def581997aaf1b4da3c22",
+    "file": "onnx/relative_mnv4m_slim_spf_448_default.onnx",
+    "origin": "author ONNX export; MobileNetV4-M-slim-SPF",
+    "url": "https://huggingface.co/Fengxue93/DepthART/resolve/9e154201cd8fb3453c9def581997aaf1b4da3c22/onnx/relative_mnv4m_slim_spf_448_default.onnx",
+    "sha256": "825114de5341612386de409f82f5dfb0496bb9afa559565ac633466bf172fb71",
+    "verified_upstream_sha256": true,
+    "bytes": 24155097
+  },
+  "dav2small": {
+    "repo": "onnx-community/depth-anything-v2-small",
+    "revision": "4472b7362082ad9968fee890ca0f1e5aca36b93d",
+    "file": "onnx/model.onnx",
+    "origin": "community ONNX conversion, not official Depth Anything ONNX",
+    "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/4472b7362082ad9968fee890ca0f1e5aca36b93d/onnx/model.onnx",
+    "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
+    "verified_upstream_sha256": true,
+    "bytes": 99060839
+  }
+}

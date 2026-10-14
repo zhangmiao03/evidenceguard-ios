@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field
+from .camera.sources import official_mode, registered_device_ids
 
 
 class Decision(BaseModel):
@@ -129,7 +130,7 @@ class ProactiveEngine:
         if now >= job['expiresAt']: return 'expired',None,'触发已过期，未发送旧提醒'
         if job['kind']=='schedule' and not p['dailySummary']: return 'cancelled',None,'每日概况已关闭'
         kind=job.get('sourceKind',job['kind'])
-        if os.getenv('EG_CAMERA_SOURCE')=='official_sdk' and kind=='demo_event':
+        if official_mode(getattr(self.runtime,'cameras',None)) and kind=='demo_event':
             return 'cancelled',None,'当前已切换官方事件来源，测试证据保留但不再发送测试提醒'
         if kind=='demo_event':
             scene=self.demo.scene(job['dedupe']) if self.demo else None
@@ -143,8 +144,8 @@ class ProactiveEngine:
             if not events or now-max(e['metadata']['startMs']/1000 for e in events)>3600:
                 return 'expired',None,'事件已超过即时提醒时效，证据仍保留'
         skill = self.store.skill(job['skillId']) if job['skillId'] else None
-        if skill and os.getenv('EG_CAMERA_SOURCE')=='official_sdk':
-            ids={d['id'] for d in self.ingest.devices()} if self.ingest else set()
+        if skill and official_mode(getattr(self.runtime,'cameras',None)):
+            ids=registered_device_ids(self.store)
             if not set(skill['devices'])<=ids or skill.get('replay'):
                 return 'cancelled',None,'测试任务已退出当前事件来源，历史记录保留'
         if job['skillId'] and not skill: return 'cancelled',None,'任务已移除'
@@ -196,8 +197,8 @@ class ProactiveEngine:
         if job.get('sourceKind',job['kind'])=='camera_event' and self.ingest:
             return self.ingest.sources(job.get('cameraEpisodeId') or job['dedupe'])
         skills = [s for s in self.store.skills() if not job['skillId'] or s['id']==job['skillId']][:20]
-        if os.getenv('EG_CAMERA_SOURCE')=='official_sdk':
-            ids={d['id'] for d in self.ingest.devices()} if self.ingest else set()
+        if official_mode(getattr(self.runtime,'cameras',None)):
+            ids=registered_device_ids(self.store)
             skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
         result = [dict(id='trigger:'+job['dedupe'],type='camera_observation_trigger',title=job['title'],
                        observedAt=job['createdAt'],description=job['body'])]

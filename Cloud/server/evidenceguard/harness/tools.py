@@ -8,6 +8,7 @@ from typing import Literal
 from ..schemas import SkillRules
 from ..skill_capabilities import assess, CATALOG
 from ..deployment import SitePreparation
+from ..camera.sources import official_mode, REAL_SOURCES
 
 class Arguments(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -24,7 +25,7 @@ class RecordingQuery(Arguments):
     query: str = Field(min_length=2,max_length=1000)
     period: Literal['today','yesterday','last_24_hours'] | None = Field(default=None, description='仅本轮用户明确限定日期时填写。只问什么时候不代表今天，默认 null 查询所有已存录像。')
 class CaptureArguments(Arguments):
-    device_id: str | None = None
+    device_id: str | None = Field(default=None, description='使用设备能力或任务回执中的实际 ID；省略时使用当前选定摄像头，不按型号或角色猜测 ID。')
     purpose: str = Field(default='查看当前画面', max_length=120)
 class DraftArguments(Arguments):
     prompt: str = Field(min_length=2,max_length=2000)
@@ -85,7 +86,7 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
         return s | {'capability':assess(s,video_service,await cameras.manifests())}
     async def list_tasks():
         items=[resolve()] if skill_id else store.skills()
-        if os.getenv('EG_CAMERA_SOURCE')=='official_sdk':
+        if official_mode(cameras):
             ids={m.id for m in await cameras.manifests()}
             items=[s for s in items if set(s['devices'])<=ids and not s.get('replay')]
         return items
@@ -102,7 +103,7 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
             ids=set(resolve()['devices']); result['events']=[e for e in result['events'] if e['cameraId'] in ids]
         if start is not None: result['events']=[e for e in result['events'] if start<=e['startMs']/1000<end]
         result['count']=len(result['events']); result['serverNow']=now.isoformat()
-        result['registeredDeviceCount']=len(ingest.devices()) if ingest else 0
+        result['registeredDeviceCount']=len(await list_camera_capabilities())
         if result['registeredDeviceCount']==0:
             result['nextStep']='还没连接摄像头。点「摄像头 Skill → 连接摄像头」，接好后再看事件。'
         result['timeMeaning']='时间来自设备事件记录；事件标签尚不等于视觉确认，缩略图不是实时截图'
@@ -121,7 +122,7 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
         if start_at is not None and end_at is not None and start_at>end_at: raise ValueError('开始时间不能晚于结束时间')
         sid=resolve(skill_id)['id'] if skill_id or registry.bound_skill else None
         items,truncated=store.historical_evidence(sid,camera_id if execution_mode=='history' else None,start_at,end_at)
-        if os.getenv('EG_CAMERA_SOURCE')=='official_sdk': items=[e for e in items if e['sourceType']=='official_sdk']
+        if official_mode(cameras): items=[e for e in items if e['sourceType'] in REAL_SOURCES]
         for item in items:
             item.pop('videoPath',None)
             item['capturedAtText']=datetime.fromtimestamp(item['capturedAt'],zone).isoformat()
@@ -139,7 +140,7 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
             row=store.db.execute('SELECT payload FROM evidence WHERE id=?',(evidence_id,)).fetchone()
         import json
         e=json.loads(row[0]) if row else None
-        if e and os.getenv('EG_CAMERA_SOURCE')=='official_sdk' and e['sourceType']!='official_sdk':
+        if e and official_mode(cameras) and e['sourceType'] not in REAL_SOURCES:
             raise ValueError('这条是历史测试资料，请从测试环境查看')
         if not e or (sid and e['skillId']!=sid) or (camera_id and e['cameraId']!=camera_id):
             raise ValueError('此证据不属于当前查询范围')
@@ -178,14 +179,14 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
     registry.register('list_camera_capabilities',list_camera_capabilities,Empty,'查询当前上下文内的设备能力及在线状态；型号不是能力证明。')
     registry.register('list_camera_events',list_camera_events,CameraEvents,'读取手机官方 SDK 已同步的摄像头事件，包含设备事件时间、SDK检测标签及图片核验状态。询问摄像头最近发生什么时使用；没有记录不等于没有活动，不能把类型标签当成已确认动作。')
     registry.register('request_camera_snapshot',request_camera_snapshot,CaptureArguments,'实际请求指定摄像头在此刻之后采集新画面，返回设备回执和图片。用户要求看画面或视觉判断时使用。截图成功不代表任务安全，不支持时不要伪造。')
-    registry.register('draft_visual_skill',draft_visual_skill,DraftArguments,'创建待用户编辑和确认的草案。当前任务对话自动关联修改源并保留圈选；不会自动启用。')
+    registry.register('draft_visual_skill',draft_visual_skill,DraftArguments,'创建待用户在 iOS 或 Web 编辑和确认的草案；两端任务详情均有“继续设置守护”。当前任务对话自动关联修改源并保留圈选；保存不会自动启用，执行能力以返回的 capability 为准。')
     registry.register('get_task_state',get_task_state,SkillID,'读取任务当前结果、原因和规则；任务对话可省略 ID。')
     registry.register('list_tasks',list_tasks,Empty,'查询已有任务；任务对话只返回当前任务，临时查询不要创建草案。')
     registry.register('search_evidence',search_evidence,EvidenceQuery,'查询已保存证据。今天/昨天/过去24小时必须用 period=today/yesterday/last_24_hours，由服务器计算范围，不要自行换算时间戳。任务对话限定当前任务；返回数量、位置分类、带时区日期及资料缺口。inside/outside 是位置，不代表进入/离开动作。')
     registry.register('request_recheck',request_recheck,SkillID,'请求任务重新观察，先进入 unknown，不声称已安全。')
     registry.register('read_stored_image',read_stored_image,StoredImage,'读取 search_evidence 返回的某张已保存图片；图片属于过去，不代表当前现场。')
     if video_service:
-        registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后 Lite 观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
+        registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后配置的视觉模型观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
     if execution_mode=='history':
         allowed={'search_evidence','read_stored_image','search_recordings','list_camera_events'}
         registry._tools={k:v for k,v in registry._tools.items() if k in allowed}

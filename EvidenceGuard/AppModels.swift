@@ -146,6 +146,26 @@ enum AppRoute: Hashable {
     case recordings, video(String, Double), replayVideo(String, Double)
     case evidenceConversation(String)
 }
+
+struct PushTap: Identifiable, Codable, Equatable {
+    var id: String
+    var scope: String
+}
+
+enum PushNavigation {
+    // Retain a tap while the vendor workspace releases or a sheet owns the UI.
+    // Consume only after product navigation is ready, preserving other tab paths.
+    @discardableResult static func consume(_ pending: inout PushTap?, selection: inout AppTab,
+                                           paths: inout [[AppRoute]], productVisible: Bool,
+                                           presentationBlocked: Bool) -> Bool {
+        guard productVisible, !presentationBlocked, let tap = pending,
+              paths.indices.contains(AppTab.assistant.rawValue) else { return false }
+        selection = .assistant
+        paths[AppTab.assistant.rawValue].append(.pushDelivery(tap.id, tap.scope))
+        pending = nil
+        return true
+    }
+}
 struct DemoSceneSnapshot: Decodable { var enabled: Bool; var scenes: [DemoScene] }
 struct DemoScene: Decodable, Identifiable {
     var id: String; var title: String; var status: String; var reason: String

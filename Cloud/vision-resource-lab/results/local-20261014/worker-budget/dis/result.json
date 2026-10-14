@@ -1,0 +1,164 @@
+{
+  "name": "dis",
+  "kind": "flow",
+  "profile": "worker-budget",
+  "args": {
+    "kind": "flow",
+    "model": "depthart224",
+    "resolution": 224,
+    "algorithm": "dis",
+    "threads": 1,
+    "cpu_budget": 1.0,
+    "memory_gib": 2.0,
+    "profile": "worker-budget",
+    "run": "local-20261014",
+    "samples": 19,
+    "flow_pairs": 113,
+    "warmup": 2
+  },
+  "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "packages": {
+    "numpy": "2.2.6",
+    "opencv-python-headless": "4.12.0.88",
+    "onnxruntime": "1.23.2",
+    "psutil": "7.0.0",
+    "Pillow": "11.3.0"
+  },
+  "cpu_model": "Intel(R) Core(TM) i9-14900HX",
+  "logical_cpus_visible": 32,
+  "cpu_affinity_visible": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31
+  ],
+  "note": "WSL host resource quota, not AWS EC2 performance simulation",
+  "cgroup_before": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-worker-budget-dis.service",
+    "cpu.max": "100000 100000",
+    "cpu.stat": "usage_usec 140240\nuser_usec 109075\nsystem_usec 31164\nnice_usec 0\nnr_periods 3\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "2147483648",
+    "memory.current": "31997952",
+    "memory.peak": "31997952",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "cgroup_after": {
+    "path": "/sys/fs/cgroup/system.slice/eg-vision-local-20261014-worker-budget-dis.service",
+    "cpu.max": "100000 100000",
+    "cpu.stat": "usage_usec 1632663\nuser_usec 1552630\nsystem_usec 80032\nnice_usec 0\nnr_periods 23\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+    "memory.max": "2147483648",
+    "memory.current": "37605376",
+    "memory.peak": "54194176",
+    "memory.swap.max": "0",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "peak_process_rss_mib": 96.07421875,
+  "final_process_rss_mib": 80.80078125,
+  "sample_count": 113,
+  "timings_ms": {
+    "decode_resize_gray_ms": {
+      "mean": 7.256565106194861,
+      "p50": 6.78174499998363,
+      "p95": 9.530395399985984,
+      "min": 5.295494000023382,
+      "max": 31.83081800000309
+    },
+    "flow_ms": {
+      "mean": 4.191580955752159,
+      "p50": 4.0898579999861795,
+      "p95": 4.764780999988716,
+      "min": 3.60476199998061,
+      "max": 7.877452999991874
+    },
+    "postprocess_ms": {
+      "mean": 4.459856787610107,
+      "p50": 4.3881990000045334,
+      "p95": 5.130413799986399,
+      "min": 3.8520960000028026,
+      "max": 6.012280999982522
+    },
+    "pipeline_ms": {
+      "mean": 15.908002849557127,
+      "p50": 15.406971999993857,
+      "p95": 19.22290219999921,
+      "min": 13.35793300000887,
+      "max": 44.90846100000567
+    }
+  },
+  "continuous_pipeline_throughput_per_s": 62.86144209660106,
+  "mean_cpu_cores_during_timed_pipeline": 0.7835597610451419,
+  "average_cpu_budget_utilization_pct": 78.35597610451418,
+  "process_wall_s_including_load_warmup_preview": 2.07932502700001,
+  "fixture": {
+    "source_name": "compare-input-output.mp4",
+    "source_sha256": "00542e127767bd7f579186c62dc62ca9410f03fbc721c4d56cf50024cc86882c",
+    "source_width": 1708,
+    "source_height": 480,
+    "source_fps": 24.0,
+    "decoded_frames": 456,
+    "crop": "right-half",
+    "crop_xywh": [
+      854,
+      0,
+      854,
+      480
+    ],
+    "sample_fps_requested": 6.0,
+    "jpeg_quality": 95,
+    "timestamps": "source frame index / FPS, not a wall-clock camera timestamp"
+  },
+  "algorithm": "dis",
+  "uses_learned_model": false,
+  "flow_shape": [
+    360,
+    640,
+    2
+  ],
+  "flow_units": "pixels per sampled frame pair",
+  "nominal_pair_interval_s": 0.16666666666666666,
+  "timed_cpu_seconds": 1.4085304129999994,
+  "validation": {
+    "known_translation_dx_dy": [
+      3.0,
+      -2.0
+    ],
+    "median_endpoint_error_px": 0.07735025882720947,
+    "static_p95_magnitude_px": 0.0,
+    "scope": "synthetic sanity check only, not real-video ground truth"
+  },
+  "parameters": {
+    "preset": "FAST"
+  },
+  "timing_scope": "one JPEG decode + resize/gray + flow + magnitude stats, reuses previous grayscale; excludes first frame, H264 decode, network, preview/save and queue wait",
+  "warning": "camera movement/rotation/zoom contributes to flow; this is not object speed or identity"
+}

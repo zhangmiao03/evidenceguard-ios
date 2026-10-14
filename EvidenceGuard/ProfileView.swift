@@ -20,6 +20,7 @@ struct ProfileView: View {
             }
             Section("摄像头与记录") {
                 NavigationLink(value: AppRoute.officialSDK) { Label("摄像头账号", systemImage: "video") }
+                    .accessibilityIdentifier("profile.officialSDK")
                 NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }
             }
         }.contentMargins(.top, 12, for: .scrollContent).scrollContentBackground(.hidden).agentPageStyle("我的", largeTitle: true)
@@ -208,6 +209,9 @@ struct CameraDetailView: View {
     var body: some View { ScrollView { VStack(alignment: .leading,spacing: 16) {
         ConnectionBanner()
         if let camera = store.camera(id) {
+            if camera.adapter.hasPrefix("official-relay/") {
+                NavigationLink("打开实时视频与 Agent", destination: RegisteredLiveCameraView(deviceID: id)).buttonStyle(.borderedProminent)
+            }
             CameraFrame(camera: camera)
             Text(camera.name).font(.title2.bold()); Text("\(camera.model) · \(camera.connectionLabel)").foregroundStyle(Brand.muted)
             Text("采集时间：\(displayTime(camera.lastCapturedAt))").font(.caption)

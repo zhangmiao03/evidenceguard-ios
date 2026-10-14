@@ -6,7 +6,7 @@ from .deployment import plan
 
 CONTRACT_VERSION='visual-contract/v2-seconds'
 CATALOG=[
-    dict(kind='parcel_removal',name='包裹区域状态变化',scope='仅已存录像回放',conditions=['先建立包裹在场基线','按秒抽样检查区域内是否可见','观察跨度满足确认时长'],missing=['正式摄像头实时输入']),
+    dict(kind='parcel_removal',name='包裹区域状态变化',scope='仅已存录像回放',conditions=['先建立包裹在场基线','按秒抽样检查区域内是否可见','观察跨度满足确认时长'],missing=['真机持续视觉执行器与验收']),
     dict(kind='marker_region',name='测试标记区域进出',scope='仅合成测试摄像头',conditions=['标记编号17','先确认触发前的位置','新鲜且连续的观察'],missing=['通用物体识别']),
     dict(kind='pet_activity',name='宠物行为',scope='暂不支持',conditions=[],missing=['行为定义及对应视觉执行器']),
     dict(kind='vehicle_activity',name='车辆行为',scope='暂不支持',conditions=[],missing=['车辆执行器']),

@@ -1,20 +1,45 @@
-# EvidenceGuard · iOS / Cloud
+# EvidenceGuard · iOS / Web / Cloud
 
-当前主要开发原生 iOS App；Cloud Agent、miimiao 参考的 harness、Skill 校验和录像索引由此仓库维护。Web 原型已拆到独立仓库，暂缓开发，不影响 iOS 编译。
+本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
-- [Web 原型仓库](https://github.com/zhangmiao03/evidenceguard-web)
+- [此前独立 Web 原型](https://github.com/zhangmiao03/evidenceguard-web)：历史参考；本轮 Web 实现在本仓库 `Web/`。
 - [此前合并仓库](https://github.com/zhangmiao03/evidenceguard-hackathon)：保留原来的历史参考。
 - [服务器访问与团队协作](Docs/SERVER-ACCESS.md)：已验证的 SSM 会话入口、团队授权、SSH 备用连接、新加坡三个后端环境与迁移状态。
+- [深度与光流实测、复现工具和模型](Docs/VISION-RESOURCE-BENCHMARK.md)：本机 CPU/内存限额实验，三份 ONNX 权重通过 Git LFS 获取。
 - [团队拉取与开发](CONTRIBUTING.md)：开发环境、分支流程、模型配置和提交前检查。
 - [手机通知与提醒](Docs/APNS.md)：APNs、自动保存、投递策略和已验证范围。
-- [官方摄像头事件接入](Docs/OFFICIAL-CAMERA-EVENTS.md)：设备登记、事件同步、图片分析与实际能力边界。
+- [Web 五栏功能与验收](Docs/WEB-PRODUCT-PARITY.md)：新版 iOS 功能对齐、前后端接口、浏览器差异与团队联调。
 
 ## 当前进度
 
-2026-10-14 当前集成版：保留“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏。助手精简回复、重复标签和处理过程，来源仍可展开查看；摄像头页提供官方账号连接、设备事件与图片分析状态。新加坡手机服务已改用 `official_sdk` 来源并关闭合成场景；没有设备时为空列表，旧测试记录保留在数据库，正常查询不再混入。App 前台可选择每 30 秒同步官方事件，锁屏暂停；已收到的事件可继续在云端评估并按偏好进入 APNs。165 项 Cloud 测试、6 项移动端契约检查、模拟器编译和 build 9 真实 SDK 签名归档通过。build 9 正在重试上传，目前可更新的仍为 `1.0 (8)`。尚无实体摄像头和赛事凭证，不能把代码接入当作真实事件或持续后台守护验收。具体见 [官方事件接入](Docs/OFFICIAL-CAMERA-EVENTS.md)。
+2026-10-14 · **联合整合**：整合官方事件同步、iOS/Web 前台直播、新画面工具与五栏框架；同一 SDK 设备统一身份，事件缩略图不能代替新画面回执。正常来源为空设备起步，历史合成资料保留但不混入。助手保留自然简短表达，模型继续统一豆包系列。195 项 Cloud 测试、7 项 Swift 契约、Web 协议/类型/生产构建，以及 Simulator 和重新编译 Kotlin 桥接后的真实 SDK arm64 本地构建通过；界面和浏览器验证单独记录。真实设备验证仍待赛事硬件和凭证。
 
-模型统一使用豆包：聊天 / 视觉 / 工具调用为 `doubao-seed-2-1-lite-260915`，Embedding 为 `doubao-embedding-vision-251215`、1024 维。仓库包括 App、Cloud、测试和 SDK 自有桥接；模型 Key、APNs 私钥、私有发布配置、运行数据和官方 SDK 二进制按现有权限单独恢复。
+**分发节奏**：先完成框架与联调，用户明确要求分发后再上传并加入测试组。build 9 已于 21:32 上传，但未加入内部或外部组；当前内部可更新的是 `1.0 (8)`。本轮后续只做代码整合与本地验证。
+
+2026-10-14 · **提示词与接口说明同步**：普通助手与主动评估共用新版 iOS/Web 产品入口说明，修复 Web 编辑能力、草案回复入口、提醒保存方式、APNs/Web Push 差异和固定设备 ID 的过期描述。图片核验同时适用于事件图、前台直播取样与合成样本；更新缓存版本，保留原有调用额度。补齐 OpenAPI 的草案、设备登记、帧时间、预留规则与发布门禁说明，并修复多方法路由重复的 operationId。现有 HTTP 路径、请求字段及设备/任务权限保持兼容；真机发布仍未开放。检查范围见 [提示词与接口同步](Docs/WEB-PRODUCT-PARITY.md#提示词与接口说明同步)。
+
+本次本地验证：Python 3.12 与仓库固定依赖下 Cloud **189 项通过**（新增 7 个提示词/回执/缓存回归用例）；Web 协议 **4 项通过**，TypeScript 与生产构建通过。测试核对模型请求与业务约束，未调用外部模型评估回答质量，也不代表真实设备或新 TestFlight 已验收。
+
+此前 Web 0.2 功能提交为 `fc0243b`。[该提交 GitHub Checks 四项全部成功](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38552925223)：Cloud 182 项、Linux 浏览器 100 项、macOS WebKit 50 项、iOS 界面 3 项，以及生产构建与 Swift 契约检查。CI 的 6 项跳过均为未恢复专有 Demo 文件的检查，和本机 WebKit 的逐帧 API 跳过原因不同。下方保留此前同步与发布记录。
+
+2026-10-14 · **Web 0.2 五栏功能对齐**：助手支持主会话、独立话题、草稿恢复、只读历史查询与主动提醒；摄像头 Skill 保留设备接入、实时取流、新图回传和官方 SDK 切换，并加入圈选编辑与录像库；任务支持状态筛选、暂停 / 恢复 / 停止、回放试跑、人工验收和设备占用确认；记忆支持长期 / 24 小时记录；设置支持提醒时间、免打扰、时区与连接管理。后端新增幂等主会话初始化接口，兼容既有 iOS 绑定。Cloud 与 Web 必须一起更新。后端 182 项、Web 协议 4 项、本机跨浏览器 152 项通过，另有 4 项因 Windows WebKit 缺少逐帧 API 跳过；类型检查与生产构建通过。测试范围和平台限制见 [Web 0.2 验收](Docs/WEB-PRODUCT-PARITY.md)。本次提交源码，未部署或上传 TestFlight。
+
+2026-10-14 · 同步主分支：`dongrunze` 合入 `main` 的 `0959463`，合并提交 `60ca514`。保留新的“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏、APNs 和自动保存提醒设置，并整合实时设备接入、Agent 新画面采集、Web 与官方 SDK 工作区。AppDelegate 同时处理推送与播放器旋转；官方工作区内点开的通知会保留，返回并释放完成后再进入助手。合并后后端 179 项、Web 协议 4 项、Linux 浏览器 48 项、macOS WebKit 24 项、原生 UI 3 项及 Swift 契约检查通过，iOS 编译与 Web 构建通过。跳过项和实机边界见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次是源码同步，未部署或上传 TestFlight。
+
+2026-10-14 · 合并前源码复审与兼容性回归：修复快速重连/退出时的释放、iOS 离页取消 Agent、Web 存储受限白屏、HTTPS 凭证保护、逐帧降级与手机退出入口。后端 163 项、本地浏览器 74 项、Linux 浏览器 48 项、macOS WebKit 24 项和原生 Simulator UI 2 项通过，普通 iOS 编译通过。跳过原因、官方 arm64 待验收项，以及此次已处理的 8 个合并冲突见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次没有更新线上服务或 TestFlight。
+
+2026-10-14 · 增加 **EvidenceGuard / 官方 SDK 工作区切换**：iOS 顶部可进入官方 `SampleApp` 完整导航，Web 可进入资料包原版 Demo 的独立页面，保留返回按钮及分型号的检查指引。切换前停止本项目直播和取帧，返回后重新查询设备。Web 支持手动检查记录 JSON 导出。两端原版入口范围、恢复命令、原生构建要求和实机验收见 [官方 SDK 工作区](Docs/OFFICIAL-SDK-WORKSPACES.md)。切换的是界面与会话，不会替换 SDK 二进制或升级硬件固件。
+
+2026-10-14 · 设备接入增量：加入 SN 对应的持久设备记录、iOS 官方播放器桥接、Web 直播工作台、跨客户端采集会话、新画面请求/回传与 Agent 视觉输入。默认设备列表为空，测试摄像头需显式启用。已完成本地后端与 Web 自动化检查；本轮代码的官方 SDK arm64 构建、真实账号握手、T8171 / T8214 实机取流仍待验收。这是源码更新，尚未更新部署或 TestFlight。见 [实时设备接入与联合验收](Docs/LIVE-DEVICE-INTEGRATION.md)。
+
+下方为此前发布与验证记录，不能代替本轮变更的验收。
+
+
+主分支合并前记录（本轮未重复发布）：采用“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏。摄像头 Skill 负责选择设备、查看画面、圈选守护和访问录像；任务独立管理状态、证据与定时概况；记忆独立管理已确认的长期 / 24 小时上下文；助手保留对话、新建话题和精简主动提醒。守护编辑分为“对象 / 条件 / 确认”，保留能力检查、试跑和占用冲突处理。“我的 → 通知与提醒”统一配置手机推送、摄像头事件、每日概况和免打扰，偏好自动保存，失败可重试。161 项 Cloud 测试、6 项移动端契约检查、模拟器编译及真实 SDK 签名归档通过。`1.0 (8)` 已完成 Apple 处理并在现有内部组显示“正在测试”；新加坡 APNs 生产发送已启用，真实手机测试已有 Apple 接受和点开回执。锁屏具体展示、build 8 真机交互与实际摄像头验收仍需分别验证。
+
+仓库示例配置的聊天模型为 `doubao-seed-2-1-lite-260915`，Embedding 为 `doubao-embedding-vision-251215`、1024 维。图片/视频理解沿用豆包聊天模型；`EG_VIDEO_*` 仅用于同系列独立配置。官方原版 Demo 的可选 Nova Pro 代理默认关闭，不作为生产模型或回退。示例文件不含密钥，实际配置以部署为准。实际标识查看 `/api/bootstrap` 的 `agent.provider` 与 `videoModels`。仓库包括 App、Cloud、测试和 SDK 自有桥接；模型 Key、APNs 私钥、私有发布配置、运行数据和官方 SDK 二进制按现有权限单独恢复。
+
 
 2026-10-14：手机、团队与 Apple 审核服务已迁至新加坡，三个环境的数据与凭证保持隔离。build 5 已通过签名归档、Apple 校验与处理，内部组显示“正在测试”；新版会自动连接新加坡并保留本地会话与草稿。美国旧实例已删除；手机需在 TestFlight 直接更新到 `1.0 (5)`，无需卸载或填写服务器配置。见 [服务器状态](Docs/SERVER-ACCESS.md) 和 [TestFlight](Docs/TESTFLIGHT.md)。
 
@@ -35,8 +60,10 @@
 | 目录 | 用途 |
 | --- | --- |
 | `EvidenceGuard/`、`EvidenceGuard.xcodeproj` | 原生 SwiftUI App；助手、摄像头 Skill、任务、记忆、我的五栏导航 |
+| `Web/` | React / TypeScript App：助手、摄像头 Skill、任务、记忆、设置；实时取流与官方 SDK 工作区 |
 | `Cloud/server/` | Agent harness、工具、录像检索、草案试跑与设备占用 |
 | `Cloud/fixture-lab/` | 双路模拟摄像头与离线回归 |
+| `Cloud/vision-resource-lab/` | 深度与光流资源测试、实测报告和 Git LFS 模型 |
 | `SDK/Bridge/`、`SDK/prepare.py` | 官方 App SDK 的自有桥接与本机构建准备 |
 | `scripts/` | SDK 恢复、iOS 归档 / 校验 / 上传 |
 
@@ -62,7 +89,45 @@ cp .env.example .env
 EG_ENV_FILE="$PWD/.env" Cloud/.venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/server --host 127.0.0.1 --port 8790
 ```
 
-本地联调默认不启用鉴权；公网单团队测试必须使用 HTTPS、`EG_REQUIRE_AUTH=1` 和随机 `EG_ACCESS_TOKEN`，部署步骤见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。多租户账号尚未实现。默认不托管 Web；若日后需要同源部署独立 Web 构建，可显式设置 `EG_WEB_ROOT=/绝对路径/EvidenceGuard-Web/dist`。仓库分工见 [协作边界](Docs/WEB-APP-ARCHITECTURE.md)。
+本地联调默认不启用鉴权；公网单团队测试使用 HTTPS、`EG_REQUIRE_AUTH=1` 和随机 `EG_ACCESS_TOKEN`，部署步骤见 [Cloud 部署](Docs/CLOUD-DEPLOYMENT.md)。多租户账号尚未实现。默认不托管 Web；设置 `EG_WEB_ROOT=/绝对路径/evidenceguard-ios/Web/dist` 可由 Cloud 同源托管构建产物。登录页可公开加载，API 和证据仍受团队鉴权保护。
+
+### Web 启动
+
+需要 Node.js 22+。在仓库根目录恢复主办方 Web SDK（只复制到被 Git 忽略的目录）：
+
+```bash
+python3 scripts/import_web_sdk.py "/绝对路径/安防赛题材料/demo工程/WebSDKDemo/public/sdk"
+cd Web
+npm ci
+npm run dev
+```
+
+打开 `http://127.0.0.1:5173`；Vite 将 `/api` 转发到本机 8790 的 Cloud。生产构建用 `npm run build`。Windows 的后端启动命令、HTTPS/手机访问和官方参数说明见 [接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。
+
+默认进入助手，桌面侧栏 / 手机底栏提供五个功能区。无硬件也可以先联调会话、记忆、设置、任务草案及导入录像；现场观察需要官方 SDK、真实账号与保持前台的直播。Web 当前使用应用内提醒，不包含浏览器关闭后的 Web Push。个人记录按安装标识保存，跨 iPhone / 浏览器不会自动合并；设备任务在同一团队服务内共享。详见 [Web README](Web/README.md)。
+
+### 本轮联调顺序
+
+1. **先配网与官方绑定。** 点击 iOS 顶部“切换官方 SDK”，在原版 Demo 的对应型号添加流程中完成配网/绑定，再返回本项目查询并同步。App 原有“扫码保存 SN”仍不是完整配网；原版流程现已接入，真实设备绑定结果仍需验收。Web 的原版 Demo 不包含手机端的完整配网导航。
+2. **iOS：** 选择 `EvidenceGuardSDK` 真机方案 → 我的 → 官方 SDK → 连接账号并发现设备 → 同步设备到本项目 → 打开“实时画面与 Agent”。修改桥接后必须重新执行 `SDK/prepare.py`，不能复用旧 SampleCore 产物。
+3. **Web：** 连接团队服务 → 接入设备 → 输入主办方 Web 鉴权参数 → 导入账号下的 SN → 摄像头 Skill → 开始直播。当前固定官方 PR / US 路线；不是给普通用户输入开发密钥的正式登录产品。
+4. 在直播页点击“获取一张新画面”，再问“现在画面里有什么”。后端发放请求 ID，客户端取样后回传，Agent 使用对应图片或视觉核验结果回答。iOS 与 Web 使用同一 SN 时得到同一个设备 ID。
+5. 停止直播、切换设备、锁屏、断网后再次提问，应返回没有有效输入，不能继续使用旧图。一个设备同一时刻只允许一个本项目采集端；其他客户端可以向同一后端请求它的当前画面。
+
+视频通过官方链路在客户端播放，不经过本项目后端连续转码。仅请求的 JPEG/PNG 会上传给 Cloud，并按服务配置发送给视觉模型。当前依赖 iOS 页面或浏览器保持前台；后台持续守护、正式家庭成员权限、PTZ/对讲闭环和事件录像导入不属于本轮已完成功能。
+
+### 检查
+
+```bash
+python -m pytest Cloud/server/tests -q
+cd Web
+npm test
+npm run build
+npx playwright install chromium firefox webkit
+npm run test:browser
+```
+
+GitHub Checks 已加入 Web 检查，并保留 Cloud 与普通 iOS Simulator 构建。官方 SDK 不上传仓库，带 SDK 的 arm64 构建由持有资料包的 Mac 完成。详细检查范围和失败处理见 [实时接入指南](Docs/LIVE-DEVICE-INTEGRATION.md)。
 
 ## 既有功能与验证记录
 
@@ -144,10 +209,12 @@ EG_MODEL_VISION=1
 EG_EMBED_MODEL_ID=doubao-embedding-vision-251215
 ```
 
-`EG_MODEL_VISION=1` 表示助手调用摄像头工具成功后，可将新画面交给模型；不发送录音。密钥只供服务端使用。真机访问需配置同一网络内可访问的服务地址及签名；当前默认服务仅监听本机。
+`EG_MODEL_VISION=1` 时，摄像头新图和已保存图片可直接交给主助手模型。主助手为纯文本时设为 `0`，并配置独立的 `EG_VIDEO_BASE_URL / EG_VIDEO_MODEL_ID / EG_VIDEO_API_KEY`；当前自动视觉回退用于实时截图，历史 `read_stored_image` 尚无同样的回退。省略某个 `EG_VIDEO_*` 变量才会继承对应 `EG_MODEL_*`，显式空值不会继承。Embedding 可用 `EG_EMBED_BASE_URL / EG_EMBED_API_KEY` 独立配置；更换模型、instructions 或采样策略后须重建索引，不能仅凭相同的 1024 维数混用旧向量。
+
+系统提示词和视觉输出 Schema 在服务端源码中维护，目前没有独立提示词管理或图片生成 API。语音输入转为用户确认后的文字，不向本项目 Agent 上传录音。密钥只供服务端使用。真机访问需配置手机可达的受信任 HTTPS 地址及签名，不要求手机与云端在同一局域网；本地开发默认服务仅监听本机。
 
 ## 已检查与边界
 
-本次通过 Xcode iOS Simulator 编译，并在 iPhone 17 Pro 模拟器检查了五个标签、AI 输入与发送、输入草稿保留、键盘避让、语音弹层取消、摄像头详情及多级返回。当前已切换到方舟 Lite，并验证真实视频模型调用；Embeddings 的联调选型与验证范围见 v0.5 文档。麦克风完整转写仍需在真机实际说话验收。
+此前版本通过 Xcode iOS Simulator 编译，并在 iPhone 17 Pro 模拟器检查了五个标签、AI 输入与发送、输入草稿保留、键盘避让、语音弹层取消、摄像头详情及多级返回。此前已验证模型调用；Embeddings 的联调选型与验证范围见 v0.5 文档。新增实时设备链路以本文顶部的本轮状态为准，麦克风完整转写仍需真机验收。
 
-当前摄像头执行器使用双路 RTSP 合成场景与测试标记；T8171 / T8214 正式 SDK 入口保留，尚未做实机接入验收。新加坡三套服务已有独立 HTTPS 与团队令牌鉴权。APNs 接入状态见 `Docs/APNS.md`，通用视觉守护和持续后台采集仍需实际设备验收。接口边界见 `Cloud/CAMERA-SDK-CONTRACT.md`。
+双路 RTSP 合成场景仅在 `EG_CAMERA_MODE=fixture` 时启用；默认使用空设备清单及客户端导入的真实设备记录。T8171 / T8214 已有官方媒体接入代码，本轮实机验收仍待完成。已有单团队鉴权及 APNs 接入；正式多租户、通用视觉守护和持续后台采集仍需后续开发与验收。推送状态见 `Docs/APNS.md`，设备接口见 `Cloud/CAMERA-SDK-CONTRACT.md` 与本轮接入指南。

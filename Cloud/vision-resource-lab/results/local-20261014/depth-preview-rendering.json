@@ -1,0 +1,206 @@
+{
+  "operation": "display conversion only; no model inference or benchmark rerun",
+  "grayscale": "clip((raw-p2)/(p98-p2),0,1)*255, uint8; then bilinear resize",
+  "interpretation": "relative inverse-depth-like predictions: near bright, far dark; not metres",
+  "source_video_sha256": "00542e127767bd7f579186c62dc62ca9410f03fbc721c4d56cf50024cc86882c",
+  "rendered": [
+    {
+      "output": "results/local-20261014/server-budget/dav2small-518/depth-gray-04.png",
+      "model": "dav2small",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "75e4d6b9bae39886dbf00610e0b97fb5ef83aa0167736865ae2510d70fdf393c",
+      "normalization_percentiles_2_98": [
+        0.0,
+        8.286093978881835
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/dav2small-518/depth-gray-09.png",
+      "model": "dav2small",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "0fa9a146a9ce6af0c95f7861c4b292df069e77d05372876b09e5f5c45605c09a",
+      "normalization_percentiles_2_98": [
+        0.19481201052665711,
+        5.996867456436157
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/dav2small-518/depth-gray-14.png",
+      "model": "dav2small",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "a43287bd15524ccf5bfdc618e2da2b6828a57db627832341c8d1eb3216227b7c",
+      "normalization_percentiles_2_98": [
+        0.057865383774042135,
+        7.2814232540130615
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart224-224/depth-gray-04.png",
+      "model": "depthart224",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "01af4bea04ae7d9ea81069fefcd9fb9ca8dae9904eff8d9efade6eb7fd69330f",
+      "normalization_percentiles_2_98": [
+        1.2395657896995544,
+        5.306258678436279
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart224-224/depth-gray-09.png",
+      "model": "depthart224",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "5c648959f63d57d3d8c1c037abba5f29b1e7c8df010a2fbf7e90ec8f6779b04b",
+      "normalization_percentiles_2_98": [
+        0.3740666061639786,
+        4.970834970474243
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart224-224/depth-gray-14.png",
+      "model": "depthart224",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "7f07d963308d7f21331baec1cfa6b7619cc321f0b2bb53c08ab233a103b05cad",
+      "normalization_percentiles_2_98": [
+        0.6148165166378021,
+        6.594898462295532
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart448-448/depth-gray-04.png",
+      "model": "depthart448",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "df69051bdf224db8f80834ab0d3db61ce03a94de298d9606f4c9d699a4b49a1f",
+      "normalization_percentiles_2_98": [
+        0.8593795597553253,
+        6.320978698730469
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart448-448/depth-gray-09.png",
+      "model": "depthart448",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "9d1a551684b89968fc028462b8deebb123e95482e9fb293644702950d647b1f5",
+      "normalization_percentiles_2_98": [
+        0.8619190025329589,
+        5.674602222442627
+      ]
+    },
+    {
+      "output": "results/local-20261014/server-budget/depthart448-448/depth-gray-14.png",
+      "model": "depthart448",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "c93ea0fafe68d3635c5fdcff9f4c1d0c09d0a7e0e6be9e228c7fda3ba8a79e31",
+      "normalization_percentiles_2_98": [
+        0.968472992181778,
+        8.072398166656495
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/dav2small-518/depth-gray-04.png",
+      "model": "dav2small",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "75e4d6b9bae39886dbf00610e0b97fb5ef83aa0167736865ae2510d70fdf393c",
+      "normalization_percentiles_2_98": [
+        0.0,
+        8.286093978881835
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/dav2small-518/depth-gray-09.png",
+      "model": "dav2small",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "0fa9a146a9ce6af0c95f7861c4b292df069e77d05372876b09e5f5c45605c09a",
+      "normalization_percentiles_2_98": [
+        0.19481201052665711,
+        5.996867456436157
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/dav2small-518/depth-gray-14.png",
+      "model": "dav2small",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "a43287bd15524ccf5bfdc618e2da2b6828a57db627832341c8d1eb3216227b7c",
+      "normalization_percentiles_2_98": [
+        0.057865383774042135,
+        7.2814232540130615
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart224-224/depth-gray-04.png",
+      "model": "depthart224",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "01af4bea04ae7d9ea81069fefcd9fb9ca8dae9904eff8d9efade6eb7fd69330f",
+      "normalization_percentiles_2_98": [
+        1.2395657896995544,
+        5.306258678436279
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart224-224/depth-gray-09.png",
+      "model": "depthart224",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "5c648959f63d57d3d8c1c037abba5f29b1e7c8df010a2fbf7e90ec8f6779b04b",
+      "normalization_percentiles_2_98": [
+        0.3740666061639786,
+        4.970834970474243
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart224-224/depth-gray-14.png",
+      "model": "depthart224",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "7f07d963308d7f21331baec1cfa6b7619cc321f0b2bb53c08ab233a103b05cad",
+      "normalization_percentiles_2_98": [
+        0.6148165166378021,
+        6.594898462295532
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart448-448/depth-gray-04.png",
+      "model": "depthart448",
+      "sample_index": 4,
+      "source_time_s": 4.166666666666667,
+      "raw_float32_sha256": "df69051bdf224db8f80834ab0d3db61ce03a94de298d9606f4c9d699a4b49a1f",
+      "normalization_percentiles_2_98": [
+        0.8593795597553253,
+        6.320978698730469
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart448-448/depth-gray-09.png",
+      "model": "depthart448",
+      "sample_index": 9,
+      "source_time_s": 9.333333333333334,
+      "raw_float32_sha256": "9d1a551684b89968fc028462b8deebb123e95482e9fb293644702950d647b1f5",
+      "normalization_percentiles_2_98": [
+        0.8619190025329589,
+        5.674602222442627
+      ]
+    },
+    {
+      "output": "results/local-20261014/worker-budget/depthart448-448/depth-gray-14.png",
+      "model": "depthart448",
+      "sample_index": 14,
+      "source_time_s": 14.5,
+      "raw_float32_sha256": "c93ea0fafe68d3635c5fdcff9f4c1d0c09d0a7e0e6be9e228c7fda3ba8a79e31",
+      "normalization_percentiles_2_98": [
+        0.968472992181778,
+        8.072398166656495
+      ]
+    }
+  ]
+}

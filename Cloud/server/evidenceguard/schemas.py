@@ -16,10 +16,10 @@ class ROI(BaseModel):
 
 class SkillRules(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    taskKind: Literal['unspecified','parcel_removal','marker_region','pet_activity','vehicle_activity','custom'] = 'unspecified'
+    taskKind: Literal['unspecified','parcel_removal','marker_region','pet_activity','vehicle_activity','custom'] = Field(default='unspecified',description='保存需求类型；可编辑不代表可执行，启用必须通过 capability 与确认校验。')
     durationSeconds: float = Field(default=0,ge=0,le=86400,description='需求中的持续秒数；当前执行器尚不支持大于0，不能用观察次数替代')
     trigger: Literal["leaves_region", "enters_region", "record_activity"] = "leaves_region"
-    minConfidence: float = Field(default=.85, ge=.5, le=1)
+    minConfidence: float = Field(default=.85, ge=.5, le=1, description='未来视觉模型的置信度阈值预留；当前执行器未使用，不能作为此次判断的置信度。')
     sampleIntervalSeconds: int = Field(default=3, ge=3, le=300)
     confirmationSeconds: int = Field(default=6, ge=3, le=600)
 
@@ -40,7 +40,7 @@ class SkillRules(BaseModel):
     unknownPolicy: Literal["hold_and_recheck"] = "hold_and_recheck"
     completion: Literal["continuous", "once"] = "continuous"
     saveEvidence: bool = True
-    description: str = Field(default="按秒抽样确认关注区域状态，无法确认时保留判断", min_length=2, max_length=300)
+    description: str = Field(default="按秒抽样确认关注区域状态，无法确认时保留判断", min_length=2, max_length=300, description='用户需求与规则说明，不会自动编译成新执行器或扩大设备权限。')
 
 class Target(BaseModel):
     description: str = Field(min_length=1, max_length=200)

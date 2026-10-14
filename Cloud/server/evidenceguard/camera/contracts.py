@@ -49,7 +49,7 @@ class FrameRef:
     frame_id: str
     device_id: str
     channel_id: str
-    captured_at: float
+    captured_at: float | None
     received_at: float
     source_type: str
     freshness: str
@@ -57,6 +57,9 @@ class FrameRef:
     clock_offset_ms: int | None = None
     uncertainty_ms: int | None = None
     calibration_ref: str | None = None
+    sampled_at: float | None = None
+    request_id: str | None = None
+    session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +111,8 @@ class OfficialSDKBridge(Protocol):
 
     App SDK credentials live in the native client's Keychain; any future cloud
     relay must transport scoped commands/receipts, never expose credentials as
-    Agent tools. The native relay and Web cross-client ownership are not wired yet.
+    Agent tools. The first foreground iOS/Web relay is implemented separately
+    by LiveDevices; this protocol remains the direct hardware/control port.
 
     snapshot must finish (or acknowledge cancellation) before returning/raising;
     detached hardware commands must not outlive their ownership epoch.

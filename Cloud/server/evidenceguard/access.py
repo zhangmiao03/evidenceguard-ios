@@ -36,10 +36,16 @@ class TeamAccess(BaseHTTPMiddleware):
         if request.url.path == '/api/health' and request.method in {'GET', 'HEAD'}:
             return JSONResponse({'status': 'ok'})
         bearer = request.headers.get('authorization', '')
+        if request.url.path.startswith('/api/sdk/openapi/'):
+            bearer = 'Bearer ' + request.headers.get('X-EG-Access-Token', '')
         authorized = hmac.compare_digest(bearer.encode(), ('Bearer ' + self.token).encode())
+        # Serve the login shell without a secret; all API/media data remain
+        # protected. StaticFiles performs path containment and existence checks.
+        static_path = request.url.path == '/' or request.url.path.startswith(('/assets/', '/sdk/', '/official-demo/')) or request.url.path == '/favicon.ico'
+        shell = bool(os.getenv('EG_WEB_ROOT')) and request.method in {'GET', 'HEAD'} and static_path
         media_cookie = (request.method in {'GET', 'HEAD'} and MEDIA.fullmatch(request.url.path)
                         and self.valid_cookie(request.cookies.get(COOKIE, '')))
-        if not authorized and not media_cookie:
+        if not authorized and not media_cookie and not shell:
             return JSONResponse({'detail': '请输入有效的团队访问令牌'}, status_code=401,
                                 headers={'WWW-Authenticate': 'Bearer', 'Cache-Control': 'no-store'})
         response = await call_next(request)

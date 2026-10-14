@@ -104,6 +104,10 @@ enum SDKCredentialVault {
 
 @MainActor final class OfficialSDKConnection: ObservableObject {
     @Published private(set) var devices: [SDKDiscoveredCamera] = []
+    @Published private(set) var officialDemoController: UIViewController?
+    @Published private(set) var switchingWorkspace = false
+    @Published private(set) var workspaceMessage = ""
+    weak var liveController: LiveCameraController?
     @Published private(set) var checking = false
     @Published private(set) var message = "等待主办方发放账号与 Token"
     @Published private(set) var inspecting = false
@@ -119,8 +123,10 @@ enum SDKCredentialVault {
     private var relayRequestID = UUID()
     private var syncedImages = Set<String>()
     private var requestGeneration = 0
+    private var connectedCredentials: SDKCredentials?
     #if canImport(SampleCore) && !targetEnvironment(simulator)
     private let bridge = EvidenceGuardSDKBridge()
+    private var officialOrientation: FoundationCancellableJob?
     #endif
 
     var canDiscover: Bool {
@@ -145,12 +151,13 @@ enum SDKCredentialVault {
         message = "配置已保存到本机 Keychain，设备尚未验证"
     }
     func discover(_ credentials: SDKCredentials, client: APIClient? = nil) {
-        guard !checking && !inspecting && !syncing else { return }
+        guard officialDemoController == nil, !switchingWorkspace, !checking && !inspecting && !syncing else { return }
         do { try save(credentials) } catch { message = error.localizedDescription; return }
         guard canDiscover else { message = buildStatus; return }
         requestGeneration += 1
         let generation = requestGeneration
         devices = []
+        connectedCredentials = nil
         resetInspection()
         checking = true
         message = "正在从官方服务获取账号下的设备…"
@@ -171,6 +178,7 @@ enum SDKCredentialVault {
                     return
                 }
                 self.devices = devices
+                self.connectedCredentials = normalized
                 let count = devices.filter(\.isCompetitionCamera).count
                 self.message = count > 0 ? "发现 \(count) 台赛事摄像头；画面与任务执行尚待验收"
                                         : "查询完成，账号下暂未发现 T8171 / T8214"
@@ -265,6 +273,8 @@ enum SDKCredentialVault {
     func disconnect() {
         eventSyncOrigin = nil
         UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
+        liveController?.stop()
+        connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
         #if canImport(SampleCore) && !targetEnvironment(simulator)
@@ -288,12 +298,63 @@ enum SDKCredentialVault {
         discover(credentials, client: client)
     }
     func syncRecentEvents(client: APIClient) async {
-        guard syncEnabled(for: client) else { return }
+        guard syncEnabled(for: client), officialDemoController == nil, !switchingWorkspace else { return }
         for camera in devices.filter(\.isCompetitionCamera) {
             guard syncEnabled(for: client), !Task.isCancelled else { return }
             await syncEvents(camera: camera, date: Date(), client: client, recentOnly: true)
         }
     }
+    func enterOfficialWorkspace() async {
+        guard canDiscover, officialDemoController == nil, !switchingWorkspace else { return }
+        switchingWorkspace = true
+        workspaceMessage = "正在停止本项目直播与取帧…"
+        await liveController?.stopForWorkspaceSwitch()
+        disconnect()
+        // EvidenceGuardLiveBridge releases the native player after 500 ms.
+        try? await Task.sleep(for: .milliseconds(650))
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        officialDemoController = bridge.openOfficialDemo()
+        officialOrientation = ToggleScreenOrientationKt.fullScreen.collectData { [weak self] value in
+            Task { @MainActor in
+                guard self?.officialDemoController != nil else { return }
+                PushAppDelegate.setOrientation((value as? Bool) == true ? .landscape : .portrait)
+            }
+        }
+        #endif
+        workspaceMessage = "官方原版 Demo · 请在原版登录页核对账号和环境"
+        switchingWorkspace = false
+    }
+
+    func leaveOfficialWorkspace() async {
+        guard officialDemoController != nil, !switchingWorkspace else { return }
+        switchingWorkspace = true
+        workspaceMessage = "正在释放官方页面、播放器与订阅…"
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        officialOrientation?.cancel(); officialOrientation = nil
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            bridge.closeOfficialDemo { continuation.resume() }
+        }
+        #endif
+        officialDemoController = nil
+        PushAppDelegate.setOrientation(.portrait)
+        connectedCredentials = nil; devices = []
+        message = "已从官方工作区返回，请重新查询账号下的设备并同步。"
+        workspaceMessage = "已返回 EvidenceGuard；直播不会自动恢复"
+        switchingWorkspace = false
+    }
+
+    func importDevices(client: APIClient) async throws -> [RegisteredCamera] {
+        guard let credentials = connectedCredentials else { throw APIProblem(message: "请先用官方账号查询设备") }
+        let cameras = devices.filter(\.isCompetitionCamera)
+        guard !cameras.isEmpty else { throw APIProblem(message: "官方账号下没有可导入的赛事设备") }
+        return try await client.importDevices(account: credentials.userID, environment: credentials.environment, cameras: cameras)
+    }
+
+    #if canImport(SampleCore) && !targetEnvironment(simulator)
+    func makeLive(camera: SDKDiscoveredCamera) -> EvidenceGuardLiveBridge? {
+        bridge.createLive(sn: camera.sn)
+    }
+    #endif
     func clearCredentials() throws {
         disconnect()
         try SDKCredentialVault.clear()

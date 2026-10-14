@@ -35,6 +35,7 @@ private struct ConflictBody: Decodable { var conflicts: [CameraOccupancy] }
 struct APIProblem: LocalizedError {
     let message: String
     var conflicts: [CameraOccupancy] = []
+    var statusCode: Int? = nil
     var errorDescription: String? { message }
 }
 private struct TrialRequestBody: Encodable { var revision: Int; var expectedOutcome: String }
@@ -169,9 +170,36 @@ struct APIClient {
         guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, push: Bool = false) async throws -> T {
+    func registeredCameras() async throws -> [RegisteredCamera] { try await get("/api/devices") }
+    func importDevices(account: String, environment: String, cameras: [SDKDiscoveredCamera]) async throws -> [RegisteredCamera] {
+        struct Item: Encodable { var sn: String; var model: String; var name: String }
+        struct Body: Encodable { var accountId: String; var environment: String; var platform = "ios"; var devices: [Item] }
+        return try await send("/api/devices/import", body: Body(accountId: account, environment: environment, devices: cameras.map { Item(sn: $0.sn, model: $0.model, name: $0.name.isEmpty ? $0.model : $0.name) }))
+    }
+    func startMedia(_ deviceID: String) async throws -> LiveSession {
+        try await send("/api/media-sessions", body: ["deviceId":deviceID,"platform":"ios"])
+    }
+    func liveHeartbeat(_ session: LiveSession, state: String, sequence: Int, age: Int?) async throws {
+        struct Body: Encodable { var state: String; var sequence: Int; var frameAgeMs: Int? }
+        let _: LiveAcknowledgement = try await send("/api/media-sessions/\(session.id)/heartbeat", body: Body(state: state, sequence: sequence, frameAgeMs: age), mediaSession: session)
+    }
+    func liveCommands(_ session: LiveSession) async throws -> [LiveCaptureCommand] {
+        try await send("/api/media-sessions/\(session.id)/commands", method:"GET", body: Optional<String>.none, mediaSession:session)
+    }
+    func uploadLiveFrame(_ session: LiveSession, body: LiveFrameUpload) async throws {
+        let _: LiveAcknowledgement = try await send("/api/media-sessions/\(session.id)/frames", body:body, mediaSession:session)
+    }
+    func stopMedia(_ session: LiveSession) async throws {
+        let _: LiveAcknowledgement = try await send("/api/media-sessions/\(session.id)/stop", body:[String:String](), mediaSession:session)
+    }
+    func captureLive(_ deviceID: String) async throws -> CameraCapture {
+        try await send("/api/devices/\(deviceID)/capture", body:[String:String]())
+    }
+    func agentRun(_ id: String) async throws -> AgentRun { try await get("/api/runs/\(id)") }
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
+        if let mediaSession { req.setValue(mediaSession.token, forHTTPHeaderField: "X-EG-Media-Session") }
         if push {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
@@ -199,7 +227,7 @@ struct APIClient {
             }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let conflicts = (try? JSONDecoder().decode(ConflictBody.self, from: data))?.conflicts ?? []
-            throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts)
+            throw APIProblem(message: json?["detail"] as? String ?? "服务请求未完成，请检查连接后重试。", conflicts: conflicts, statusCode: (response as? HTTPURLResponse)?.statusCode)
         }
         do { return try JSONDecoder().decode(T.self, from: data) }
         catch { throw APIProblem(message: "当前版本无法读取服务返回的数据，请更新测试版本。") }

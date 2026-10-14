@@ -133,7 +133,7 @@ def test_draft_response_uses_capability_receipt_instead_of_model_promises(tmp_pa
         provider=ScriptedProvider([tool('draft_visual_skill',dict(prompt='宠物60秒不动提醒',devices=['cam-a'],name='宠物监控',target_description='宠物',rules=dict(taskKind='pet_activity',durationSeconds=60,trigger='record_activity'))),{'role':'assistant','content':'已经启用，可直接守护宠物。'}])
         store,runtime=environment(tmp_path,provider)
         run=await settle(runtime,runtime.start('宠物60秒不动提醒','pet'))
-        assert run['status']=='completed' and '还没开始运行' in run['text'] and '60 秒' in run['text']
+        assert run['status']=='completed' and '尚未启用' in run['text'] and '60 秒' in run['text']
         assert '可直接守护' not in run['text'] and not run['draft']['capability']['canActivate']
         assert store.skill(run['draft']['id'])['rules']['durationSeconds']==60
         store.close()

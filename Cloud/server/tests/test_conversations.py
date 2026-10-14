@@ -15,6 +15,38 @@ def create(client, request=None):
 def headers(): return {'X-EG-Installation-ID':str(uuid4())}
 
 
+def test_ensure_main_is_durable_idempotent_and_preserves_native_binding(tmp_path):
+    path = tmp_path/'web-main.sqlite'; web = headers(); native = headers()
+    with TestClient(create_app(path,start_worker=False,provider=ScriptedProvider([]))) as c:
+        c.headers.update(web)
+        first = c.post('/api/agent/conversations/main',json={})
+        assert first.status_code == 200, first.text
+        key = first.json()['id']
+        assert first.json()['kind'] == 'main'
+        for _ in range(3):
+            assert c.post('/api/agent/conversations/main',json={}).json()['id'] == key
+        create(c)
+        assert len(c.get('/api/agent/conversations').json()) == 2
+        c.headers.update(native)
+        assert c.put('/api/personal/conversation',json={'conversationId':'ios-existing-main'}).status_code == 200
+        assert c.post('/api/agent/conversations/main',json={}).json()['id'] == 'ios-existing-main'
+        assert c.get('/api/agent/conversations/'+key).status_code == 404
+    with TestClient(create_app(path,start_worker=False,provider=ScriptedProvider([]))) as c:
+        c.headers.update(web)
+        assert c.post('/api/agent/conversations/main',json={}).json()['id'] == key
+        assert len(c.get('/api/agent/conversations').json()) == 2
+
+
+def test_ensure_main_requires_team_auth_and_valid_installation(tmp_path, monkeypatch):
+    monkeypatch.setenv('EG_ACCESS_TOKEN', 'test-only-'+('z'*40))
+    with TestClient(create_app(tmp_path/'auth.sqlite',start_worker=False,provider=ScriptedProvider([]))) as c:
+        assert c.post('/api/agent/conversations/main',json={}).status_code == 401
+        c.headers['Authorization'] = 'Bearer test-only-'+('z'*40)
+        assert c.post('/api/agent/conversations/main',json={}).status_code == 409
+        c.headers.update(headers())
+        assert c.post('/api/agent/conversations/main',json={}).status_code == 200
+
+
 def test_topics_are_durable_idempotent_and_do_not_rebind_main(tmp_path):
     path = tmp_path/'chat.sqlite'; owner = headers(); request = uuid4()
     with TestClient(create_app(path,start_worker=False,provider=ScriptedProvider([]))) as c:

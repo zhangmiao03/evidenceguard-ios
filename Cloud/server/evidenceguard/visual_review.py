@@ -33,8 +33,8 @@ class VisualReview:
         with self.store.transaction():
             daily = self.store.db.execute('SELECT COUNT(*) FROM visual_usage WHERE camera=? AND day=?',(camera,day)).fetchone()[0]
             event = self.store.db.execute('SELECT COUNT(*) FROM visual_usage WHERE camera=? AND episode=?',(camera,episode)).fetchone()[0]
-            if daily >= self.DAILY_LIMIT: return '当日自动视觉核验额度已用完，事件已保存但尚未核验'
-            if event >= event_limit: return '该事件已达到核验次数上限，需人工查看证据'
+            if daily >= self.DAILY_LIMIT: return '当日自动视觉核验额度已用完，图片已保存但尚未核验'
+            if event >= event_limit: return '本次观察已达到核验次数上限，需人工查看证据'
             self.store.db.execute('INSERT INTO visual_usage(camera,episode,day,at,images) VALUES (?,?,?,?,?)',(camera,episode,day,now,images))
         return None
 
@@ -48,17 +48,17 @@ class VisualReview:
         # A source is (media key, observation time). Cache is also bound to model
         # and timestamps; duplicate ingest or follow-up does not pay to look again.
         sources = sources[:3]
-        key = hashlib.sha256(json.dumps([camera,episode,sources,getattr(self.provider,'model',''),getattr(self.provider,'base',''),'visual-review-v1'],sort_keys=True).encode()).hexdigest()
+        key = hashlib.sha256(json.dumps([camera,episode,sources,getattr(self.provider,'model',''),getattr(self.provider,'base',''),'visual-review-v2'],sort_keys=True).encode()).hexdigest()
         async with self.lock:
             with self.store.lock:
                 row = self.store.db.execute('SELECT payload FROM visual_cache WHERE id=?',(key,)).fetchone()
             if row: return json.loads(row[0]) | {'cached':True}
-            if not self.provider.ready: return dict(status='unavailable',reason='视觉模型尚未就绪，事件保留待核验')
+            if not self.provider.ready: return dict(status='unavailable',reason='视觉模型尚未就绪，图片保留待核验')
             frames=[]
             for media_key, at in sources:
                 raw,mime,_ = self.store.media(media_key)
                 frames.append((raw,mime,at))
-            if not frames: return dict(status='unavailable',reason='事件没有可用图片，未调用视觉模型')
+            if not frames: return dict(status='unavailable',reason='本次观察没有可用图片，未调用视觉模型')
             reason = self.reserve(camera,episode,len(frames))
             if reason: return dict(status='budget_exhausted',reason=reason)
             try:
@@ -67,7 +67,7 @@ class VisualReview:
             except Exception:
                 return dict(status='unavailable',reason='视觉核验未完成；没有把失败当作正常')
             result = dict(status='completed',review=review,cached=False,
-                          limitation='事件缩略图仅代表所给离散画面，不能证明持续状态或实时现场')
+                          limitation='核验仅针对所给离散图片；来源与时间以调用方回执为准，不能证明持续状态或完整现场')
             with self.store.transaction():
                 self.store.db.execute('INSERT OR REPLACE INTO visual_cache VALUES (?,?)',(key,json.dumps(result,ensure_ascii=False)))
             return result

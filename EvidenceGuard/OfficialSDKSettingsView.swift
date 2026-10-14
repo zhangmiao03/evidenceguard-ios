@@ -8,6 +8,12 @@ struct OfficialSDKSettingsView: View {
 
     var body: some View {
         Form {
+            Section("完整官方功能") {
+                Button("切换到官方原版：配网、绑定与设备设置") { Task { await connection.enterOfficialWorkspace() } }
+                    .disabled(!connection.canDiscover || connection.switchingWorkspace)
+                Text("顶部工作区按钮可随时返回。官方页面中的更改实际作用于设备，返回后请重新查询并同步。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
             Section("接入状态") {
                 Text(connection.buildStatus).font(.subheadline)
                 Text(connection.message).font(.caption).foregroundStyle(Brand.muted)
@@ -37,6 +43,9 @@ struct OfficialSDKSettingsView: View {
             }
             if !connection.devices.isEmpty {
                 Section("官方账号下的设备") {
+                    Button("同步到我的设备") {
+                        Task { do { let imported = try await connection.importDevices(client: store.client); await store.refresh(); feedback = "已同步 \(imported.count) 台设备" } catch { feedback = error.localizedDescription } }
+                    }
                     ForEach(connection.devices) { camera in
                         VStack(alignment: .leading, spacing: 5) {
                             Text(camera.name).font(.headline)
@@ -49,6 +58,7 @@ struct OfficialSDKSettingsView: View {
                                 .font(.caption).foregroundStyle(Brand.muted)
                             if !camera.isCompetitionCamera { Text("此设备不属于本次接入的两款型号").font(.caption) }
                             if camera.isCompetitionCamera {
+                                NavigationLink("实时查看与 Agent") { OfficialLiveCameraView(camera: camera) }
                                 NavigationLink("检查图片与历史事件") {
                                     OfficialSDKInspectionView(connection: connection, camera: camera)
                                 }

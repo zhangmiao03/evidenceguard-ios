@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from .camera.sources import official_mode, registered_device_ids
 
 
 class Preferences(BaseModel):
@@ -126,9 +127,9 @@ class PersonalAgent:
         with self.store.transaction():
             profiles = self.store.db.execute('SELECT id,payload FROM personal_profiles').fetchall()
             skills = self.store.skills()
-            if os.getenv('EG_CAMERA_SOURCE')=='official_sdk':
+            if official_mode(getattr(getattr(self.engine,'runtime',None),'cameras',None)):
                 ingest=getattr(self.engine,'ingest',None)
-                ids={d['id'] for d in ingest.devices()} if ingest else set()
+                ids=registered_device_ids(self.store)
                 skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
             for client, raw in profiles:
                 p = json.loads(raw)['preferences']
