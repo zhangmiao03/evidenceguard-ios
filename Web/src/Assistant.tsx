@@ -776,7 +776,7 @@ export const Assistant = forwardRef<
             </div>
           )}
           <label className="sr-only" htmlFor="question">
-            和 {assistantName} 聊聊
+            消息输入框
           </label>
           <textarea
             id="question"

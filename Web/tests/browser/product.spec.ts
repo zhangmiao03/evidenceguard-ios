@@ -425,7 +425,7 @@ test("assistant sends without a device and reuses the failed request identity", 
 }) => {
   const { state } = await setup(page, { lostSend: true });
   await page
-    .getByPlaceholder("告诉我，你想看什么…")
+    .getByRole("textbox", { name: "消息输入框" })
     .fill("我关心的任务现在怎么样？");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect(page.getByRole("alert")).toContainText("输入已保留");
@@ -453,7 +453,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
   await page
-    .getByPlaceholder("告诉我，你想看什么…")
+    .getByRole("textbox", { name: "消息输入框" })
     .fill("只属于独立话题的问题");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect
@@ -464,7 +464,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await expect(page.getByLabel("选择对话")).toHaveValue(main.id);
   const taskPrompt =
     "我想创建一项摄像头 Skill，请先帮我确认观察对象和提醒条件。";
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     taskPrompt,
   );
   release();
@@ -472,7 +472,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await expect(
     page.getByText("只属于独立话题的问题", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     taskPrompt,
   );
   await page.getByLabel("选择对话").selectOption("topic-test");
@@ -490,7 +490,7 @@ test("history queries use a separate read-only stream and validate the time rang
   const { state } = await setup(page);
   await page.getByLabel("对话范围", { exact: true }).selectOption("history");
   await page.getByLabel("查询日期").selectOption("custom");
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("查找包裹离区片段");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("查找包裹离区片段");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect(page.getByRole("alert")).toContainText("起止时间");
   expect(state.calls.some((c) => c.path === "/api/agent/runs")).toBe(false);
@@ -516,23 +516,23 @@ test("topics rename and browser drafts restore while main inbox stays fixed", as
 }) => {
   const { state } = await setup(page);
   await expect(page.getByLabel("选择对话")).toHaveValue(main.id);
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("主对话未发送内容");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("主对话未发送内容");
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue("");
   await page.getByRole("button", { name: "重命名" }).click();
   await page.getByLabel("对话名称").fill("客厅观察讨论");
   await page.getByRole("button", { name: "保存名称" }).click();
   await expect(page.getByRole("dialog", { name: "重命名对话" })).toHaveCount(0);
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("独立话题草稿");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("独立话题草稿");
   await page.reload();
   await enter(page);
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     "独立话题草稿",
   );
   await page.getByLabel("选择对话").selectOption(main.id);
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     "主对话未发送内容",
   );
   expect(state.conversations[0].kind).toBe("main");
