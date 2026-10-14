@@ -201,9 +201,9 @@ struct ConversationView: View {
     private var suggestions: some View {
         VStack(alignment: .leading, spacing: 14) {
             Image("DogAvatar").resizable().scaledToFill().frame(width: 52, height: 52).clipShape(Circle())
-            Text(isMainConversation ? "我是 \(AssistantIdentity.name)，有事和我说。" : "接着聊聊这件事。")
+            Text(isMainConversation ? "我是 \(AssistantIdentity.name)，你的安防小助手。" : "接着聊聊这件事。")
                 .font(.title2.weight(.semibold))
-            Text(executionMode == "history" ? "想找哪段记录？" : "你想关注什么，或者有什么想问的？")
+            Text(executionMode == "history" ? "想找哪段记录？" : "想看看家里的情况，或有件事需要留意，都可以和我说。")
                 .foregroundStyle(Brand.muted)
             HStack(spacing: 10) {
                 Button(executionMode == "history" ? "看看今天的事件" : "最近有什么事件") {

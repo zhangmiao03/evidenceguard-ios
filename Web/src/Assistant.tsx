@@ -564,11 +564,11 @@ export const Assistant = forwardRef<
             !timeline.length && (
               <div className="assistant-welcome">
                 <div className="agent-orbit">✧</div>
-                <h3>我是 {assistantName}，有事和我说。</h3>
+                <h3>我是 {assistantName}，你的安防小助手。</h3>
                 <p>
                   {mode === "history"
                     ? "想找哪段记录？"
-                    : "你想关注什么，或者有什么想问的？"}
+                    : "想看看家里的情况，或有件事需要留意，都可以和我说。"}
                 </p>
                 {(mode === "history"
                   ? ["查录像：包裹什么时候离开区域？", "回顾最近的观察记录。"]
