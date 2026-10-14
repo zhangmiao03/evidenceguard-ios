@@ -21,6 +21,7 @@ import {
 } from "./product-types";
 
 const storageKey = `evidenceguard.chat.${installation}`;
+const assistantName = "anker";
 type Pending = {
   message: string;
   conversationId: string;
@@ -408,10 +409,10 @@ export const Assistant = forwardRef<
       >
         <div className="section-heading">
           <div>
-            <h2>你的守护助手</h2>
-            <small>持续对话 · 结论有来源</small>
+            <h2>{assistantName}</h2>
+            <small>有事，和我说。</small>
           </div>
-          <span className="pill blue">Agent</span>
+          <span className="pill blue">助手</span>
         </div>
         <div className="chat-controls">
           <label>
@@ -428,7 +429,7 @@ export const Assistant = forwardRef<
             >
               {conversations.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.title}
+                  {c.kind === "main" ? `${assistantName} 主对话` : c.title}
                   {c.unreadCount ? ` (${c.unreadCount})` : ""}
                 </option>
               ))}
@@ -563,11 +564,11 @@ export const Assistant = forwardRef<
             !timeline.length && (
               <div className="assistant-welcome">
                 <div className="agent-orbit">✧</div>
-                <h3>今天，有什么想关注的？</h3>
+                <h3>我是 {assistantName}，有事和我说。</h3>
                 <p>
                   {mode === "history"
-                    ? "查找保存的录像与观察记录，资料缺口会明确说明。"
-                    : "聊聊任务，或让我查看一张新画面。持续守护需要先确认规则。"}
+                    ? "想找哪段记录？"
+                    : "你想关注什么，或者有什么想问的？"}
                 </p>
                 {(mode === "history"
                   ? ["查录像：包裹什么时候离开区域？", "回顾最近的观察记录。"]
@@ -602,7 +603,7 @@ export const Assistant = forwardRef<
                         (running(run.status) ? "正在处理…" : "本次回复已结束")}
                     </p>
                     <small>
-                      {timeLabel(run.createdAt)} ·{" "}
+                      {assistantName} · {timeLabel(run.createdAt)} ·{" "}
                       {run.executionMode === "history"
                         ? "历史资料"
                         : "现场与任务"}
@@ -689,7 +690,7 @@ export const Assistant = forwardRef<
               notice && (
                 <article className="proactive-message" key={notice.id}>
                   <span className="pill blue">
-                    助手主动提醒{notice.read ? " · 已读" : " · 未读"}
+                    {assistantName} 的提醒{notice.read ? " · 已读" : " · 未读"}
                   </span>
                   <h3>{notice.title}</h3>
                   <p>{notice.body}</p>
@@ -764,7 +765,7 @@ export const Assistant = forwardRef<
         >
           {reply && (
             <div className="context-strip">
-              正在回复助手提醒
+              正在回复 {assistantName} 的提醒
               <button
                 type="button"
                 className="text-button"
@@ -775,13 +776,13 @@ export const Assistant = forwardRef<
             </div>
           )}
           <label className="sr-only" htmlFor="question">
-            向 Agent 提问
+            和 {assistantName} 聊聊
           </label>
           <textarea
             id="question"
             value={input}
             onChange={(e) => saveInput(e.target.value)}
-            placeholder="告诉我，你想看什么…"
+            placeholder={`和 ${assistantName} 聊聊…`}
             rows={3}
             maxLength={2000}
           />

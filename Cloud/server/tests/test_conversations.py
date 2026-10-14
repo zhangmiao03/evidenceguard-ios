@@ -17,15 +17,23 @@ def headers(): return {'X-EG-Installation-ID':str(uuid4())}
 
 def test_ensure_main_is_durable_idempotent_and_preserves_native_binding(tmp_path):
     path = tmp_path/'web-main.sqlite'; web = headers(); native = headers()
-    with TestClient(create_app(path,start_worker=False,provider=ScriptedProvider([]))) as c:
+    app = create_app(path,start_worker=False,provider=ScriptedProvider([]))
+    with TestClient(app) as c:
         c.headers.update(web)
         first = c.post('/api/agent/conversations/main',json={})
         assert first.status_code == 200, first.text
         key = first.json()['id']
         assert first.json()['kind'] == 'main'
+        assert first.json()['title'] == 'anker 主对话'
+        # Simulate an existing installation's stored legacy name. Presentation
+        # changes must not rebind the inbox or rename independent topics.
+        with app.state.store.transaction():
+            app.state.store.db.execute('UPDATE conversations SET title=? WHERE id=?', ('助手主对话',key))
         for _ in range(3):
-            assert c.post('/api/agent/conversations/main',json={}).json()['id'] == key
-        create(c)
+            restored = c.post('/api/agent/conversations/main',json={}).json()
+            assert restored['id'] == key and restored['title'] == 'anker 主对话'
+        topic = create(c)
+        assert c.patch('/api/agent/conversations/'+topic['id'],json={'title':'门口包裹'}).status_code == 200
         assert len(c.get('/api/agent/conversations').json()) == 2
         c.headers.update(native)
         assert c.put('/api/personal/conversation',json={'conversationId':'ios-existing-main'}).status_code == 200
@@ -35,6 +43,7 @@ def test_ensure_main_is_durable_idempotent_and_preserves_native_binding(tmp_path
         c.headers.update(web)
         assert c.post('/api/agent/conversations/main',json={}).json()['id'] == key
         assert len(c.get('/api/agent/conversations').json()) == 2
+        assert next(item for item in c.get('/api/agent/conversations').json() if item['id'] == topic['id'])['title'] == '门口包裹'
 
 
 def test_ensure_main_requires_team_auth_and_valid_installation(tmp_path, monkeypatch):

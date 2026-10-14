@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from .assistant_identity import ASSISTANT_NAME
 
 
 class DeviceRegistration(BaseModel):
@@ -73,11 +74,11 @@ class APNsProvider:
         client = self.clients.get(environment)
         if client is None:
             client = self.clients[environment] = httpx.AsyncClient(http2=True, timeout=20, trust_env=False)
-        body = {'aps': {'alert': {'title': 'EvidenceGuard', 'body': {
-            'test': '手机通知测试，请点开查看结果。',
-            'run': '你交给助手的事项有了结果，点开查看。',
-            'draft': '助手已准备好草案，等待你确认。',
-        }.get(delivery['kind'], '助手有一条新提醒，点开查看。')}, 'sound': 'default',
+        body = {'aps': {'alert': {'title': ASSISTANT_NAME, 'body': {
+            'test': '这是一条测试提醒，点开后可以查看结果。',
+            'run': '这件事有结果了，点开看看。',
+            'draft': '草案整理好了，等你看看。',
+        }.get(delivery['kind'], '有件事想提醒你，点开看看。')}, 'sound': 'default',
             'thread-id': 'evidenceguard-' + scope}, 'eg': {'deliveryId': delivery['id'], 'scope': scope}}
         response = await client.post('https://' + host + '/3/device/' + device['token'], json=body,
             headers={'authorization': self.authorization(), 'apns-topic': self.topic,
@@ -215,7 +216,7 @@ class PushService:
     def target(self, delivery):
         target = json.loads(delivery['target'])
         client = delivery['client']
-        if delivery['kind'] == 'test': return dict(kind='test', title='手机通知测试', body='已记录你点开这条测试通知。')
+        if delivery['kind'] == 'test': return dict(kind='test', title=ASSISTANT_NAME + ' · 通知测试', body='你已点开这条测试提醒。')
         if 'messageId' in target:
             row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (target['messageId'],client)).fetchone()
             if not row: raise KeyError('message')
@@ -226,7 +227,7 @@ class PushService:
                         skillId=message.get('skillId'), evidenceId=evidence)
         run = self.store.run(target['runId'])
         if not run or run.get('clientId') != client: raise KeyError('run')
-        return dict(kind='run',title='助手处理结果',body=run.get('text') or run.get('error') or '请查看对话中的结果。',
+        return dict(kind='run',title=ASSISTANT_NAME,body=run.get('text') or run.get('error') or '点开对话看看结果。',
                     conversationId=run['conversationId'],skillId=run.get('skillId'),
                     executionMode=run.get('executionMode','live'),
                     draftId=run.get('draft',{}).get('id') if run.get('draft') else None)

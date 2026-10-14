@@ -261,7 +261,7 @@ struct ProactiveMessageCard: View {
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
             if message.body != message.title { Text(message.body).font(.body).textSelection(.enabled) }
-            Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
+            Text("\(AssistantIdentity.name) · \(displayTime(message.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
             Label(testSource ? "测试 / 回放资料" : "事件记录", systemImage: "clock")
                 .font(.caption).foregroundStyle(Brand.muted)
             DisclosureGroup("查看来源") {

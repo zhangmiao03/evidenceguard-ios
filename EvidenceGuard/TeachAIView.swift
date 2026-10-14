@@ -49,7 +49,7 @@ struct ConversationView: View {
     private var conversationTitle: String {
         if skillID != nil { return "任务对话" }
         if historyEvidenceID != nil { return "事件追问" }
-        return isMainConversation ? "助手" : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
+        return isMainConversation ? AssistantIdentity.name : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
     }
     private var conversationDrafts: [VisualSkill] {
         let ids = Set(runs.compactMap { $0.draft?.id } + [skillID].compactMap { $0 })
@@ -91,7 +91,7 @@ struct ConversationView: View {
                     }
                     if showCamera && executionMode == "live" {
                         CameraFrame(camera: selectedCamera)
-                        Text("需要看现场时，AI 会请求新画面，并显示设备与采集时间。")
+                        Text("需要看现场时，\(AssistantIdentity.name) 会请求新画面，并显示设备与采集时间。")
                             .font(.caption).foregroundStyle(Brand.muted)
                     }
                     if runs.isEmpty && proactiveMessages.isEmpty { suggestions }
@@ -201,7 +201,7 @@ struct ConversationView: View {
     private var suggestions: some View {
         VStack(alignment: .leading, spacing: 14) {
             Image("DogAvatar").resizable().scaledToFill().frame(width: 52, height: 52).clipShape(Circle())
-            Text(isMainConversation ? "有事，直接和我说。" : "接着聊聊这件事。")
+            Text(isMainConversation ? "我是 \(AssistantIdentity.name)，有事和我说。" : "接着聊聊这件事。")
                 .font(.title2.weight(.semibold))
             Text(executionMode == "history" ? "想找哪段记录？" : "你想关注什么，或者有什么想问的？")
                 .foregroundStyle(Brand.muted)
@@ -230,7 +230,7 @@ struct ConversationView: View {
             }
             if allowsConversationSwitching && !isMainConversation && store.unreadAssistantCount > 0 {
                 Button { store.selectConversation(store.generalConversation) } label: {
-                    HStack { Label("助手有 \(store.unreadAssistantCount) 条新提醒", systemImage: "bell.badge"); Spacer(); Image(systemName: "arrow.up.right") }
+                    HStack { Label("\(AssistantIdentity.name) 有 \(store.unreadAssistantCount) 条新提醒", systemImage: "bell.badge"); Spacer(); Image(systemName: "arrow.up.right") }
                         .font(.caption).padding(8).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 10))
                 }.disabled(sending)
             }
@@ -276,7 +276,7 @@ struct ConversationView: View {
                 Button { inputFocused = false; voice = true } label: {
                     Image(systemName: "mic").font(.system(size: 21)).frame(width: 44, height: 44)
                 }.accessibilityLabel("语音输入").accessibilityIdentifier("chat.voice")
-                TextField("说点什么…", text: $input, axis: .vertical)
+                TextField("和 \(AssistantIdentity.name) 聊聊…", text: $input, axis: .vertical)
                     .lineLimit(1...5).focused($inputFocused)
                     .padding(.horizontal, 12).padding(.vertical, 12)
                     .background(Brand.background).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -334,7 +334,7 @@ struct ConversationView: View {
 
     private func reply(_ run: AgentRun) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(displayTime(run.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
+            Text("\(AssistantIdentity.name) · \(displayTime(run.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
             if run.isRunning {
                 HStack { ProgressView(); Text(events.last?.progressLabel ?? "正在处理…").font(.subheadline) }
                 Button("停止本次回复", role: .cancel) { Task { await cancel(run) } }.accessibilityIdentifier("chat.cancel")
@@ -497,7 +497,7 @@ private struct ConversationListSheet: View {
                             Image(systemName: "sparkles").font(.title2).foregroundStyle(Brand.blue)
                                 .frame(width: 44, height: 44).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("助手主对话").font(.headline).foregroundStyle(Brand.dark)
+                                Text("\(AssistantIdentity.name) 主对话").font(.headline).foregroundStyle(Brand.dark)
                                 Text("主动提醒与日常沟通").font(.caption).foregroundStyle(Brand.muted)
                             }
                             Spacer()

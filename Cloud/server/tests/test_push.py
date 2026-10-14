@@ -166,7 +166,13 @@ def test_api_requires_bearer_and_device_secret_and_does_not_cross_services(tmp_p
         assert http.post('/api/push/deliveries/'+key+'/open',headers=headers).status_code==404
 
 
-def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch):
+@pytest.mark.parametrize('kind,body', [
+    ('test','这是一条测试提醒，点开后可以查看结果。'),
+    ('run','这件事有结果了，点开看看。'),
+    ('draft','草案整理好了，等你看看。'),
+    ('message','有件事想提醒你，点开看看。'),
+])
+def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch,kind,body):
     async def check():
         key=ec.generate_private_key(ec.SECP256R1()); path=tmp_path/'apns.p8'
         path.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
@@ -181,10 +187,12 @@ def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch):
             assert request.headers['apns-push-type']=='alert'
             payload=json.loads(request.content)
             assert set(payload['eg'])=={'deliveryId','scope'}
+            assert payload['aps']['alert']=={'title':'anker','body':body}
+            assert payload['aps']['thread-id']=='evidenceguard-demo'
             assert 'private message' not in request.content.decode()
             return httpx.Response(200)
         provider.clients['production']=httpx.AsyncClient(transport=httpx.MockTransport(respond))
-        assert await provider.send({'environment':'production','token':TOKEN},{'id':str(uuid4()),'kind':'message','expires_at':time.time()+300,'private':'private message'},'demo')==(200,'')
+        assert await provider.send({'environment':'production','token':TOKEN},{'id':str(uuid4()),'kind':kind,'expires_at':time.time()+300,'private':'private message'},'demo')==(200,'')
         await provider.close()
     asyncio.run(check())
 

@@ -1,5 +1,9 @@
 import Foundation
 
+enum AssistantIdentity {
+    static let name = "anker"
+}
+
 struct ROI: Codable, Equatable { var x: Double; var y: Double; var width: Double; var height: Double
     static let initial = ROI(x: 0.18, y: 0.25, width: 0.55, height: 0.55)
 }
