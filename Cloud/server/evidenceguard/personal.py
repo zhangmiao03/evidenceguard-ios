@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import time
 import uuid
 from datetime import datetime
@@ -125,6 +126,10 @@ class PersonalAgent:
         with self.store.transaction():
             profiles = self.store.db.execute('SELECT id,payload FROM personal_profiles').fetchall()
             skills = self.store.skills()
+            if os.getenv('EG_CAMERA_SOURCE')=='official_sdk':
+                ingest=getattr(self.engine,'ingest',None)
+                ids={d['id'] for d in ingest.devices()} if ingest else set()
+                skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
             for client, raw in profiles:
                 p = json.loads(raw)['preferences']
                 if not p['enabled']: continue

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 import uuid
 from pydantic import BaseModel, Field
 from .camera.adapters.fixture_lab import FixtureLabAdapter
+from .camera.adapters.sdk_events import SDKEventsAdapter
 from .camera.registry import CameraRegistry
 from .camera.service import CameraService
 from .harness.scheduler import TaskScheduler
@@ -30,7 +31,7 @@ from .access import install_access
 from .personal import PersonalAgent, Preferences, MemoryInput, installation
 from .proactive import ProactiveEngine, Feedback, BindConversation
 from .visual_review import VisualReview
-from .camera.ingest import SDKIngest, SDKBatch
+from .camera.ingest import SDKIngest, SDKBatch, SDKDevices
 from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
 from .push import PushService, DeviceRegistration, Presence
@@ -77,7 +78,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     store=Store(db_path or Path(os.getenv('EG_DATABASE',str(root/'data/evidenceguard.sqlite3'))))
     store.recover_ownership()
     personal = PersonalAgent(store)
-    camera=CameraRegistry(camera_adapter or FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')))
+    official_events=os.getenv('EG_CAMERA_SOURCE')=='official_sdk'
+    camera=CameraRegistry(camera_adapter or (SDKEventsAdapter(store) if official_events else FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787'))))
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
     database=Path(store.db.execute('PRAGMA database_list').fetchone()[2])
@@ -97,8 +99,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     agent.visual_review=visual_review
     replay_worker.visual_budget=visual_review
     ingest=SDKIngest(store,visual_review,personal)
+    camera.sdk_ingest=ingest
     proactive.ingest=ingest
     demo=DemoScenes(store,visual_review,proactive)
+    if official_events: demo.enabled=False
     proactive.demo=demo
     worker=ObservationWorker(store,camera,camera_service=captures,scheduler=scheduler,replay_worker=replay_worker)
     @asynccontextmanager
@@ -157,7 +161,13 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def bootstrap(request: Request):
         manifests=await camera.manifests()
         skills=[s | {'capability':assess(s,videos,manifests)} for s in store.skills()]
-        return dict(personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in store.evidence()],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='fixture-lab/v1',officialSdk='received; physical integration pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in videos.db.recordings()[:100]],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+        evidence=store.evidence(); recordings=videos.db.recordings()[:100]
+        if official_events:
+            ids={m.id for m in manifests}
+            skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
+            evidence=[e for e in evidence if e['sourceType']=='official_sdk']
+            recordings=[r for r in recordings if r['sourceType']=='official_sdk']
+        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='native event relay; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
     def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
     def push_key(request): return request.headers.get('X-EG-Push-Key')
     @app.get('/api/push/status')
@@ -186,6 +196,13 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             raw.extend(chunk)
             if len(raw)>8_000_000: raise HTTPException(413,'单批事件上限为8MB，请分批上传')
         return ingest.accept(SDKBatch.model_validate_json(bytes(raw)),client)
+    @app.post('/api/sdk/devices')
+    async def sdk_devices(request: Request,body: SDKDevices):
+        personal_client(request)
+        return ingest.register_devices(body)
+    @app.get('/api/sdk/events')
+    async def sdk_events(cameraId: str | None = Query(default=None,max_length=100)):
+        return ingest.timeline(cameraId)
     @app.get('/api/sdk/events/status')
     async def sdk_status(): return ingest.status()
     @app.get('/api/personal')

@@ -18,13 +18,8 @@ struct ProfileView: View {
                 NavigationLink(value: AppRoute.privacy) { Label("隐私与数据", systemImage: "hand.raised") }
                 NavigationLink(value: AppRoute.help) { Label("使用帮助", systemImage: "questionmark.circle") }
             }
-            Section("测试与联调") {
-                if MobileServiceConfiguration.current.isInternalDemo {
-                    NavigationLink(value: AppRoute.demoScene) { Label("合成场景演示", systemImage: "play.rectangle") }
-                }
-                if !MobileServiceConfiguration.current.isInternalDemo {
-                    NavigationLink(value: AppRoute.officialSDK) { Label("官方摄像头接入", systemImage: "link") }
-                }
+            Section("摄像头与记录") {
+                NavigationLink(value: AppRoute.officialSDK) { Label("摄像头账号", systemImage: "video") }
                 NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }
             }
         }.contentMargins(.top, 12, for: .scrollContent).scrollContentBackground(.hidden).agentPageStyle("我的", largeTitle: true)

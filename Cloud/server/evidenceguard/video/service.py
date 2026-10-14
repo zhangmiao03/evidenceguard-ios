@@ -123,6 +123,7 @@ class VideoService:
             if not skill: raise ValueError('任务不存在')
             scope=set(skill['devices'])
         recordings={r['id']:r for r in self.db.recordings(camera_id) if not scope or r['cameraId'] in scope}
+        if os.getenv('EG_CAMERA_SOURCE')=='official_sdk': recordings={k:r for k,r in recordings.items() if r['sourceType']=='official_sdk'}
         now=datetime.now(ZoneInfo('Asia/Shanghai')); start_at=end_at=None
         if period:
             midnight=now.replace(hour=0,minute=0,second=0,microsecond=0)

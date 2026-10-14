@@ -14,6 +14,8 @@ struct RootView: View {
             tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
         .tint(Brand.blue)
+        .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
+                                        active: scenePhase == .active) { await store.refresh() } }
         .task { await store.poll() }
         .task(id: store.client.baseURL) {
             push.attach(store.client)
@@ -63,6 +65,7 @@ struct RootView: View {
         case .evidenceConversation(let id): ConversationView(conversationID: "evidence-" + id, skillID: nil, historyEvidenceID: id)
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)
+        case .cameraEvents: CameraSkillsView()
         case .notificationSettings: NotificationSettingsView()
         case .voiceSettings: VoiceSettingsView()
         case .privacy: PrivacyView()

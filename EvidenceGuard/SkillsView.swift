@@ -2,6 +2,84 @@ import SwiftUI
 
 struct CameraSkillsView: View {
     @EnvironmentObject private var store: AppStore
+    var body: some View { OfficialCameraHomeView(connection: store.officialSDK) }
+}
+
+private struct OfficialCameraHomeView: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject var connection: OfficialSDKConnection
+    private var events: [SDKEventRecord] { store.data.cameraEvents?.events ?? [] }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ConnectionBanner()
+                HStack {
+                    Text("我的摄像头").font(.headline)
+                    Spacer()
+                    NavigationLink("连接摄像头", value: AppRoute.officialSDK).font(.subheadline)
+                        .accessibilityIdentifier("cameraSkills.connect")
+                }
+                if connection.devices.filter(\.isCompetitionCamera).isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Image(systemName: "video.badge.plus").font(.largeTitle).foregroundStyle(Brand.blue)
+                        Text("等你连接第一台摄像头").font(.title3.weight(.semibold))
+                        Text("连接后，在这里看门铃、人物和包裹等设备事件。").foregroundStyle(Brand.muted)
+                        NavigationLink("连接摄像头", value: AppRoute.officialSDK).buttonStyle(.borderedProminent)
+                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 22))
+                } else {
+                    VStack(spacing: 12) {
+                        ForEach(connection.devices.filter(\.isCompetitionCamera)) { device in
+                            NavigationLink { OfficialSDKInspectionView(connection: connection, camera: device) } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "video").font(.title2).foregroundStyle(Brand.blue)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(device.name).font(.headline)
+                                        Text(device.model + " · " + (device.online.map { $0 ? "在线" : "离线" } ?? "状态待确认"))
+                                            .font(.caption).foregroundStyle(Brand.muted)
+                                    }
+                                    Spacer(); Image(systemName: "chevron.right").font(.caption)
+                                }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    Toggle("App 打开时同步新事件", isOn: Binding(
+                        get: { connection.syncEnabled(for: store.client) },
+                        set: { connection.setEventSync($0, client: store.client) }))
+                        .accessibilityIdentifier("cameraSkills.sync")
+                    Text(connection.syncMessage).font(.caption).foregroundStyle(Brand.muted)
+                    Text("切换页面后继续同步；锁屏后暂停。收到的新事件按你的通知偏好处理。")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                }
+                HStack { Text("最近事件").font(.headline); Spacer(); NavigationLink("提醒设置", value: AppRoute.notificationSettings).font(.subheadline) }
+                if events.isEmpty {
+                    Text("还没有收到摄像头事件。").foregroundStyle(Brand.muted).padding(.vertical, 12)
+                }
+                ForEach(events) { event in
+                    NavigationLink(value: AppRoute.evidence(event.id)) {
+                        HStack(alignment: .top, spacing: 12) {
+                            if let url = store.client.absoluteURL(event.imageUrl) {
+                                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.gray.opacity(0.1) }
+                                    .frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 12))
+                            } else { Image(systemName: "video").frame(width: 64, height: 64).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(event.label).font(.headline)
+                                Text(event.deviceName + " · " + displayTime(Double(event.startMs) / 1_000)).font(.caption).foregroundStyle(Brand.muted)
+                                Text(event.reviewStatus == "completed" ? "设备检测 · 查看图片分析" : "设备检测 · 图片待分析").font(.caption).foregroundStyle(Brand.muted)
+                            }
+                            Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption)
+                        }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
+                    }.buttonStyle(.plain).accessibilityIdentifier("cameraSkills.event." + event.id)
+                }
+                if store.data.cameraEvents?.truncated == true { Text("显示最近 100 条已同步事件。").font(.caption).foregroundStyle(Brand.muted) }
+            }.padding(20)
+        }.agentPageStyle("摄像头 Skill", largeTitle: true)
+            .refreshable { await store.refresh() }
+    }
+}
+
+struct CameraTestToolsView: View {
+    @EnvironmentObject private var store: AppStore
     @State private var creatingDraft = false
     private var camera: CameraDevice? { store.camera(store.selectedCameraID) ?? store.data.cameras.first }
 

@@ -1,6 +1,6 @@
 # 团队开发
 
-本仓库包含原生 iOS、Cloud harness 和模拟摄像头。Web 原型在 [独立仓库](https://github.com/zhangmiao03/evidenceguard-web)，当前暂缓开发。`main` 保存可编译的集成版本；每个成员在 `feat/主题` 或 `fix/主题` 分支工作，通过 Pull Request 合并。
+本仓库包含原生 iOS、Cloud harness、官方摄像头事件接入和隔离测试摄像头。Web 原型在 [独立仓库](https://github.com/zhangmiao03/evidenceguard-web)，当前暂缓开发。`main` 保存可编译的集成版本；每个成员在 `feat/主题` 或 `fix/主题` 分支工作，通过 Pull Request 合并。
 
 ## 分工边界
 
@@ -21,7 +21,7 @@ cd evidenceguard-ios
 git switch -c feat/你的主题
 ```
 
-已有工作副本先回到 `main` 并执行 `git pull --ff-only origin main`，再创建自己的分支。当前集成版包括五栏交互、APNs 和同页自动保存的通知设置；手机测试使用 TestFlight `1.0 (8)`。通知配置和验证边界见 [APNs](Docs/APNS.md)，上线资源见 [服务器访问](Docs/SERVER-ACCESS.md)。
+已有工作副本先回到 `main` 并执行 `git pull --ff-only origin main`，再创建自己的分支。当前集成版包括五栏交互、精简助手、官方事件、APNs 和同页自动保存的通知设置；build 9 已签名归档，分发状态见 [TestFlight](Docs/TESTFLIGHT.md)。通知配置见 [APNs](Docs/APNS.md)，接入与未验证能力见 [官方摄像头事件](Docs/OFFICIAL-CAMERA-EVENTS.md)，上线资源见 [服务器访问](Docs/SERVER-ACCESS.md)。
 
 按 README 启动 Cloud 与 iOS。真实摄像头联调另外恢复官方资料包：
 
@@ -54,6 +54,8 @@ python3 SDK/prepare.py --archive-downloads
 SDK 构建用 workspace / `EvidenceGuardSDK`，Simulator 用 project / `EvidenceGuard`。本次默认通过 TestFlight 安装手机测试包，现场拿到摄像头与凭证后再验证 SDK。签名、HTTPS 服务和 App Store Connect 准备见 [TestFlight](Docs/TESTFLIGHT.md)。
 
 聊天、视觉和工具调用统一使用 `doubao-seed-2-1-lite-260915`；Embedding 使用 `doubao-embedding-vision-251215`、1024 维。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
+
+`.env.example` 使用 `EG_CAMERA_SOURCE=official_sdk`，无真实设备时返回空列表。需要历史 fixture-lab 回归时，只在隔离环境显式改为 `fixture_lab`；正常手机环境不启用合成场景。官方 SDK User ID / Token 仅填写 App 的「摄像头 Skill → 连接摄像头」，不会随设备登记请求发往 Cloud。
 
 ## 提交前检查
 

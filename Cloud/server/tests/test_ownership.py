@@ -165,7 +165,7 @@ def test_history_scopes_saved_media_and_never_calls_camera(store):
             media=store.save_media(frame,b'saved-image','image/jpeg')
             store.save_evidence(a,dict(**frame,source_type='fixture',imageUrl=media['imageUrl'],mediaStatus='saved'))
         tools=build_tools(store,camera,skill_id=a['id'],camera_id='cam-a',execution_mode='history')
-        assert set(tools.names)=={'search_evidence','read_stored_image'}
+        assert set(tools.names)=={'search_evidence','read_stored_image','list_camera_events'}
         for name in ['request_camera_snapshot','request_recheck','draft_visual_skill','list_camera_capabilities']:
             with pytest.raises(ValueError): await tools.call(name)
         result=await tools.call('search_evidence',start_at=90,end_at=110)
@@ -213,7 +213,7 @@ def test_history_lane_runs_while_live_chat_is_busy(store):
     async def check():
         gate=asyncio.Event(); entered=asyncio.Event(); provider=ScriptedProvider([])
         async def respond(messages,schemas):
-            if schemas and schemas[0]['function']['name']=='search_evidence':
+            if schemas and {s['function']['name'] for s in schemas} <= {'search_evidence','read_stored_image','search_recordings','list_camera_events'}:
                 return {'role':'assistant','content':'历史分析'}
             entered.set(); await gate.wait(); return {'role':'assistant','content':'实时对话'}
         provider.complete.side_effect=respond
