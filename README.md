@@ -10,6 +10,8 @@
 
 iOS 埋点使用独立、限流的 URLSession，避免慢埋点请求占用业务会话；超时或失败直接放弃。macOS CI 除原有界面测试外，增加真实 APIClient 的网络故障回归，验证直播心跳、取样上传、停止、旧服务兼容与原有错误处理；后端还覆盖追踪队列满、写库失败时的画面→Agent 链路。模拟器检查不包含主办方 arm64 SDK 真机播放验收。
 
+Actions 暂不可用时，由 Mac 队友按 [iOS 验证交接](Docs/IOS-MAC-VERIFICATION.md) 检出固定提交、运行完整测试并回传日志与 `.xcresult`。当前 `6ed031b` 的两项测试等待修正仍待复验，不能仅凭编译通过宣布全部回归通过。
+
 本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
