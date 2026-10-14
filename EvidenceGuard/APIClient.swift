@@ -50,8 +50,12 @@ struct APIClient {
         #endif
     }
     var baseURL: URL
+    private let transport: URLSession
+    private let observations: OpsDelivery
     var accessToken: String { ServiceAccess.token(for: baseURL) }
-    init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
+        self.baseURL = baseURL; self.transport = transport; self.observations = observations
+    }
     func pushStatus() async throws -> PushStatus { try await send("/api/push/status", method: "GET", body: Optional<String>.none, push: true) }
     func registerPush(token: String) async throws -> PushStatus {
         let environment = Bundle.main.object(forInfoDictionaryKey: "EGAPNSEnvironment") as? String ?? ""
@@ -129,7 +133,7 @@ struct APIClient {
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
         try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
+        let (data, response) = try await transport.upload(for: request, fromFile: file)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             throw APIProblem(message: json?["detail"] as? String ?? "录像上传失败，请重试")
@@ -214,7 +218,7 @@ struct APIClient {
         if let body { req.httpBody = try JSONEncoder().encode(body) }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await URLSession.shared.data(for: req) }
+        do { (data, response) = try await transport.data(for: req) }
         catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             let message: String
@@ -265,18 +269,6 @@ struct APIClient {
         request.httpBody = try? JSONEncoder().encode([Event(name: name, traceId: traceID, parentSpanId: parentSpanID, status: status,
             durationMs: durationMS, deviceId: deviceID, requestId: requestID, route: route)])
         guard request.httpBody != nil else { return }
-        Task { await OpsDelivery.shared.send(request) }
-    }
-}
-
-private actor OpsDelivery {
-    static let shared = OpsDelivery()
-    private var pending = 0
-    func send(_ request: URLRequest) async {
-        guard pending < 8 else { return }
-        pending += 1
-        defer { pending -= 1 }
-        // No retries: a missing/disabled dashboard never blocks an app action.
-        _ = try? await URLSession.shared.data(for: request)
+        Task(priority: .background) { await observations.send(request) }
     }
 }

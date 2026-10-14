@@ -8,6 +8,8 @@
 
 追踪默认不影响已有服务：现有后端需显式设置 `EG_OPS_ENABLED=1` 才采集。默认提示词动态内容仅存摘要；需要全文时用启动器 `--capture-content`。独立 Dashboard 访问权限、采集口径、模型覆盖、导入格式和完整操作见 [Dashboard 开发与使用说明](Docs/DASHBOARD.md)。
 
+iOS 埋点使用独立、限流的 URLSession，避免慢埋点请求占用业务会话；超时或失败直接放弃。macOS CI 除原有界面测试外，增加真实 APIClient 的网络故障回归，验证直播心跳、取样上传、停止、旧服务兼容与原有错误处理；后端还覆盖追踪队列满、写库失败时的画面→Agent 链路。模拟器检查不包含主办方 arm64 SDK 真机播放验收。
+
 本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 
 - [iOS 主仓库](https://github.com/zhangmiao03/evidenceguard-ios)
