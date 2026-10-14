@@ -15,6 +15,14 @@
 
 ## 拉取后运行
 
+```bash
+git clone https://github.com/zhangmiao03/evidenceguard-ios.git
+cd evidenceguard-ios
+git switch -c feat/你的主题
+```
+
+已有工作副本先回到 `main` 并执行 `git pull --ff-only origin main`，再创建自己的分支。当前集成版包括五栏交互、APNs 和同页自动保存的通知设置；手机测试使用 TestFlight `1.0 (8)`。通知配置和验证边界见 [APNs](Docs/APNS.md)，上线资源见 [服务器访问](Docs/SERVER-ACCESS.md)。
+
 按 README 启动 Cloud 与 iOS。真实摄像头联调另外恢复官方资料包：
 
 ```bash
@@ -45,10 +53,14 @@ python3 SDK/prepare.py --archive-downloads
 
 SDK 构建用 workspace / `EvidenceGuardSDK`，Simulator 用 project / `EvidenceGuard`。本次默认通过 TestFlight 安装手机测试包，现场拿到摄像头与凭证后再验证 SDK。签名、HTTPS 服务和 App Store Connect 准备见 [TestFlight](Docs/TESTFLIGHT.md)。
 
+聊天、视觉和工具调用统一使用 `doubao-seed-2-1-lite-260915`；Embedding 使用 `doubao-embedding-vision-251215`、1024 维。模型 Key、服务访问令牌、APNs 私钥和私有签名配置分别由已有权限的成员配置，不随仓库复制。默认本地 `.env.example` 关闭 APNs；请使用本地或隔离测试数据运行，避免多个开发副本同时调度生产摄像头。
+
 ## 提交前检查
 
 ```bash
-python -m pytest -q
+python3 scripts/check_repository.py
+Cloud/.venv/bin/python -m pytest -q
+scripts/check_mobile_contracts.sh
 xcodebuild -project EvidenceGuard.xcodeproj -scheme EvidenceGuard -configuration Debug -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 

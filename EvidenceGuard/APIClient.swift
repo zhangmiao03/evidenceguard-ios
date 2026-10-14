@@ -51,6 +51,25 @@ struct APIClient {
     var baseURL: URL
     var accessToken: String { ServiceAccess.token(for: baseURL) }
     init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    func pushStatus() async throws -> PushStatus { try await send("/api/push/status", method: "GET", body: Optional<String>.none, push: true) }
+    func registerPush(token: String) async throws -> PushStatus {
+        let environment = Bundle.main.object(forInfoDictionaryKey: "EGAPNSEnvironment") as? String ?? ""
+        guard ["development", "production"].contains(environment), let topic = Bundle.main.bundleIdentifier else { throw APIProblem(message: "此版本缺少通知配置，请更新 App。") }
+        return try await send("/api/push/device", method: "PUT", body: ["token":token,"environment":environment,"topic":topic], push: true)
+    }
+    func disablePush() async throws -> PushStatus { try await send("/api/push/device", method: "DELETE", body: Optional<String>.none, push: true) }
+    func pushPresence(active: Bool) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/push/presence", method: "PUT", body: ["active":active], push: true)
+    }
+    func testPush() async throws {
+        struct Result: Decodable { var id: String }
+        let _: Result = try await send("/api/push/test", body: [String:String](), push: true)
+    }
+    func openPush(_ id: String) async throws -> PushDestination {
+        guard UUID(uuidString: id) != nil else { throw APIProblem(message: "通知无效") }
+        return try await send("/api/push/deliveries/\(id)/open", body: [String:String](), push: true)
+    }
     func ingestSDKEvents(_ events: [SDKCloudEvent], review: Bool) async throws -> SDKImportReceipt {
         struct Body: Encodable { var events: [SDKCloudEvent]; var reviewRequested: Bool }
         return try await send("/api/sdk/events", body: Body(events: events, reviewRequested: review))
@@ -63,6 +82,7 @@ struct APIClient {
     func startTrial(_ skill: VisualSkill, expectedOutcome: String) async throws -> SkillTrial { try await send("/api/skills/\(skill.id)/trials", body: TrialRequestBody(revision: skill.revision, expectedOutcome: expectedOutcome)) }
     func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
     func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
+    func personalSettings() async throws -> PersonalSnapshot { try await get("/api/personal") }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
         struct Body: Encodable { var content: String; var temporary: Bool }
@@ -141,9 +161,13 @@ struct APIClient {
         guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?) async throws -> T {
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, push: Bool = false) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
+        if push {
+            guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
+            req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
+        }
         req.httpMethod = method; req.timeoutInterval = 30
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

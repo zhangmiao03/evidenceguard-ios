@@ -43,17 +43,17 @@ struct ConversationView: View {
     @State private var creatingDraft = false
     @State private var replyingTo: AssistantMessage?
     @State private var showConversations = false
+    @State private var showScope = false
     private var isMainConversation: Bool { conversationID == store.generalConversation }
     private var conversationTitle: String {
         if skillID != nil { return "任务对话" }
         if historyEvidenceID != nil { return "事件追问" }
-        return isMainConversation ? "安防助手" : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
+        return isMainConversation ? "助手" : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
     }
     private var conversationDrafts: [VisualSkill] {
         let ids = Set(runs.compactMap { $0.draft?.id } + [skillID].compactMap { $0 })
         return store.data.skills.filter { $0.status == "draft" && ($0.originConversationId == conversationID || ids.contains($0.id) || $0.replacesId.map { ids.contains($0) } == true) }
     }
-    private var cameraDrafts: [VisualSkill] { conversationDrafts.filter { draft in selectedCamera.map { camera in draft.devices.contains(camera.id) } == true } }
     private func draftForCapture(_ capture: CameraCapture) -> VisualSkill? {
         guard executionMode == "live", capture.historical != true else { return nil }
         return conversationDrafts.first { $0.replay == nil && $0.devices.contains(capture.cameraId) }
@@ -119,18 +119,13 @@ struct ConversationView: View {
                 }.padding(16)
             }
             .scrollDismissesKeyboard(.interactively)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if executionMode == "live" && !cameraDrafts.isEmpty { draftActions }
-            }
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
             .onChange(of: timeline.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             .onChange(of: activeRun?.status) { _, status in
                 if status == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
         }
-        .pageStyle(conversationTitle)
-        .toolbarBackground(Brand.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .agentPageStyle(conversationTitle)
         .toolbar {
             if allowsConversationSwitching {
                 ToolbarItem(placement: .topBarLeading) {
@@ -166,6 +161,13 @@ struct ConversationView: View {
         }
         .onChange(of: input) { _, value in store.conversationDrafts[effectiveConversationID] = value }
         .onDisappear { inputFocused = false; store.conversationDrafts[effectiveConversationID] = input }
+        .onChange(of: store.composerRevision) { _, _ in
+            guard allowsConversationSwitching else { return }
+            changeMode(store.conversationModes[conversationID] ?? "live")
+            input = store.conversationDrafts[effectiveConversationID] ?? ""
+            if store.pendingChatRequests[effectiveConversationID] == nil { cameraID = store.selectedCameraID }
+        }
+        .sheet(isPresented: $showScope) { scopeSettings }
         .sheet(isPresented: $showConversations) { ConversationListSheet() }
         .sheet(isPresented: $rangeSheet) {
             HistoryRangeSheet(current: historyFilter) { historyFilter = $0 }
@@ -183,32 +185,6 @@ struct ConversationView: View {
         }
     }
 
-    private var draftActions: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let draft = cameraDrafts.first {
-                HStack {
-                    Text("待编辑 · " + draft.name).font(.subheadline.bold()).lineLimit(1)
-                    Spacer()
-                    if cameraDrafts.count > 1 {
-                        Menu("其他草案") { ForEach(cameraDrafts) { item in Button(item.name) { inputFocused = false; store.openEditor(item) } } }
-                    }
-                }
-                HStack {
-                    Button("编辑草案") { inputFocused = false; store.openEditor(draft) }.buttonStyle(.borderedProminent).accessibilityIdentifier("chat.editDraft")
-                    Button("圈选画面") { inputFocused = false; store.openEditor(draft, regionCameraID: draft.target.cameraId) }.buttonStyle(.bordered).accessibilityIdentifier("chat.editRegion")
-                    Spacer()
-                    Button("新建") { Task { await createDraft(camera: selectedCamera?.id) } }.disabled(creatingDraft || selectedCamera == nil).accessibilityIdentifier("chat.newDraft")
-                }
-            } else {
-                HStack {
-                    Label("当前视角暂无待编辑草案", systemImage: "square.dashed").font(.caption)
-                    Spacer()
-                    Button(creatingDraft ? "创建中…" : "新建草案并圈选") { Task { await createDraft(camera: selectedCamera?.id) } }.font(.subheadline.bold()).disabled(creatingDraft || selectedCamera == nil).accessibilityIdentifier("chat.newDraft")
-                }
-            }
-            Text("保存只保留草案；不会自动开始守护。").font(.caption2).foregroundStyle(Brand.muted)
-        }.padding(.horizontal, 16).padding(.vertical, 8).background(.regularMaterial).disabled(!store.isConnected)
-    }
     private func createDraft(camera: String?) async {
         guard let camera, !creatingDraft, store.isConnected else { return }
         creatingDraft = true; inputFocused = false; defer { creatingDraft = false }
@@ -230,13 +206,7 @@ struct ConversationView: View {
                 Text("这段对话有独立的聊天记录；你的主动提醒仍在助手主对话中。")
                     .font(.subheadline).foregroundStyle(Brand.muted)
             }
-            if isMainConversation && executionMode == "live" {
-                NavigationLink(value: AppRoute.personalAgent) {
-                    Label(store.data.personal?.preferences.enabled == true ? "助手会关注摄像头观察变化，主动消息也会出现在这里" : "开启主动守护，让助手在有依据时提醒你", systemImage: "bell.badge")
-                        .font(.subheadline)
-                }
-            }
-            Text(executionMode == "history" ? "可以查找已导入录像，也可以回顾已保存图片和事件。找到录像后，点击证据卡播放对应时间点；资料缺口会明确说明。" : "直接输入，或点麦克风说话。创建守护规则前，AI 会和你一起确认。")
+            Text(executionMode == "history" ? "查找已存录像、图片和观察记录。资料缺口会明确标注。" : "说说你想关注什么。需要持续守护时，我们一起确认规则。")
                 .font(.subheadline).foregroundStyle(Brand.muted)
             ForEach(executionMode == "history" ? ["查录像：包裹什么时候被拿走？找到片段并定位时间点。", "回顾今天已保存的观察记录，说明有哪些资料缺口。", "查找有人放下包裹的录像，说明动作的先后顺序。"] : skillID == nil ? ["看住这个箱子，离开区域时提醒我。", "我关心的任务现在怎么样？", "帮我找一下最近的观察记录。"] : ["请重新查看任务现场，并说明当前状态。", "解释一下这项守护的提醒条件。", "我想调整这项任务的提醒条件。"], id: \.self) { prompt in
                 Button { input = prompt; inputFocused = true } label: {
@@ -264,39 +234,21 @@ struct ConversationView: View {
                 }.disabled(sending)
             }
             HStack(spacing: 10) {
-            if historyEvidenceID == nil { Menu {
-                Picker("对话范围", selection: Binding(get: { executionMode }, set: { value in
-                store.conversationDrafts[effectiveConversationID] = input
-                executionMode = value; runs = []; events = []; error = nil; syncError = nil
-                showCamera = false
-                store.conversationModes[conversationID] = value
-                input = store.conversationDrafts[effectiveConversationID] ?? ""
-                if value == "live" && cameraID == "all" { cameraID = availableCameras.first?.id ?? "" }
-            })) {
-                Text("实时守护").tag("live")
-                Text("历史回顾").tag("history")
-                }
-            } label: {
-                HStack(spacing: 4) { Image(systemName: executionMode == "history" ? "clock.arrow.circlepath" : "shield"); Text(executionMode == "history" ? "历史回顾" : "实时守护"); Image(systemName: "chevron.down").font(.system(size: 9)) }
-                    .font(.caption).padding(.horizontal, 9).padding(.vertical, 7).background(Brand.paleBlue).clipShape(Capsule())
-            }.disabled(sending).accessibilityLabel("对话范围").accessibilityIdentifier("chat.mode") }
-                if !availableCameras.isEmpty && historyEvidenceID == nil {
-                    Menu {
-                        Picker("观察视角", selection: $cameraID) {
-                            if executionMode == "history" { Text("全部绑定摄像头").tag("all") }
-                            ForEach(availableCameras) { camera in Text(camera.name).tag(camera.id) }
-                        }
-                    } label: {
-                        Label(selectedCamera?.name ?? "全部摄像头", systemImage: "video")
-                            .font(.caption).lineLimit(1)
-                    }.accessibilityLabel("选择对话摄像头")
+                if historyEvidenceID == nil {
+                    Button { inputFocused = false; showScope = true } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: executionMode == "history" ? "clock.arrow.circlepath" : "video")
+                            Text("\(executionMode == "history" ? "历史" : "现场") · \(selectedCamera?.name ?? "全部摄像头")").lineLimit(1)
+                            Image(systemName: "chevron.down").font(.system(size: 9))
+                        }.font(.caption).foregroundStyle(Brand.muted)
+                    }.disabled(sending).accessibilityLabel("对话范围与摄像头").accessibilityIdentifier("chat.scope")
                 }
                 Spacer()
                 Menu {
                     if executionMode == "live" {
                         Button("请 AI 查看新画面", systemImage: "viewfinder") { input = "请调用当前摄像头拍一张新画面，告诉我看到了什么。"; inputFocused = true }.accessibilityIdentifier("chat.inspect")
                         Button(showCamera ? "收起摄像头画面" : "查看摄像头画面", systemImage: "video") { inputFocused = false; showCamera.toggle() }
-                        Button("新建 Skill 草案并圈选", systemImage: "square.dashed") { Task { await createDraft(camera: selectedCamera?.id) } }
+                        Button("新建守护并圈选", systemImage: "square.dashed") { Task { await createDraft(camera: selectedCamera?.id) } }
                             .disabled(creatingDraft || selectedCamera == nil || !store.isConnected)
                     } else {
                         Button("查录像", systemImage: "magnifyingglass") { input = "查录像：包裹什么时候被拿走？找到正确片段并定位时间点。"; inputFocused = true }.accessibilityIdentifier("chat.findVideo")
@@ -344,6 +296,38 @@ struct ConversationView: View {
         }
         .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 10)
         .background(.regularMaterial)
+    }
+
+    private func changeMode(_ value: String) {
+        guard value != executionMode else { return }
+        store.conversationDrafts[effectiveConversationID] = input
+        executionMode = value; runs = []; events = []; error = nil; syncError = nil
+        showCamera = false; replyingTo = nil
+        store.conversationModes[conversationID] = value
+        input = store.conversationDrafts[effectiveConversationID] ?? ""
+        if value == "live" && cameraID == "all" { cameraID = availableCameras.first?.id ?? "" }
+    }
+
+    private var scopeSettings: some View {
+        NavigationStack {
+            Form {
+                Section("这次想看什么") {
+                    Picker("对话范围", selection: Binding(get: { executionMode }, set: { changeMode($0) })) {
+                        Text("现场与守护").tag("live")
+                        Text("历史资料").tag("history")
+                    }.pickerStyle(.segmented).accessibilityIdentifier("chat.mode")
+                    Text(executionMode == "history" ? "只读取已保存的资料；不会调用实时摄像头或更改守护。" : "可以请求新画面、讨论守护规则；新规则需要你确认后才会启用。")
+                        .font(.caption).foregroundStyle(Brand.muted)
+                }
+                Section("摄像头") {
+                    Picker("观察范围", selection: $cameraID) {
+                        if executionMode == "history" { Text("全部摄像头").tag("all") }
+                        ForEach(availableCameras) { camera in Text(camera.name).tag(camera.id) }
+                    }.pickerStyle(.inline).labelsHidden().accessibilityIdentifier("chat.camera")
+                }
+            }.navigationTitle("对话范围").navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showScope = false } } }
+        }.presentationDetents([.medium, .large])
     }
 
     private func reply(_ run: AgentRun) -> some View {
@@ -406,8 +390,8 @@ struct ConversationView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(current.name, systemImage: "doc.badge.gearshape").font(.headline)
-                        Text(current.status == "draft" ? "编辑对象、区域与条件；保存不会启用，验收通过后才能继续" : "查看任务当前状态").font(.caption)
-                        Text(current.status == "draft" ? "编辑草案 →" : "查看任务 →").font(.subheadline.bold())
+                        Text(current.status == "draft" ? "对象与区域 → 提醒条件 → 确认；保存不会启用" : "查看任务当前状态").font(.caption)
+                        Text(current.status == "draft" ? "继续设置 →" : "查看任务 →").font(.subheadline.bold())
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                         .background(Brand.background).clipShape(RoundedRectangle(cornerRadius: 12))
                 }.buttonStyle(.plain).accessibilityIdentifier("chat.draft")

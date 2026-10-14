@@ -120,11 +120,17 @@ struct RunEvent: Decodable, Identifiable {
     var id: String { "\(runId)-\(sequence)" }
     var label: String { ["timing_review_required":"检测已升级为按秒抽样，需重新验收", "trial_reviewed":"已核验试跑报告", "capability_checked":"已检查任务执行能力", "replay_acknowledged":"已标记核验，证据保留", "camera_requested":"已请求新画面", "camera_completed":"已取得新画面", "camera_failed":"画面请求未完成", "recheck_requested":"已请求复核", "alert_opened":"触发提醒", "alert_resolved":"新证据确认恢复", "observation_recovered":"恢复观察，等待新画面", "result_changed":"观察结果更新", "skill_confirmed":"用户已确认启用", "skill_revised":"草案已更新", "skill_drafted":"已生成草案", "lifecycle_changed":"任务状态已变更", "skill_completed":"一次性任务已完成", "replay_observing":"正在分析已到达的回放片段", "replay_model_completed":"回放模型观察完成", "replay_model_failed":"回放模型复核失败", "replay_input_failed":"回放输入失败，已暂停", "replay_finished":"回放测试结束", "replay_interrupted":"回放中断，等待恢复", "replay_transport_changed":"回放输入连接已变化", "run_queued":"请求已排队", "run_started":"开始理解需求", "model_started":"AI 正在处理", "tool_started":"正在查询或生成草案", "tool_completed":"操作已完成", "tool_failed":"操作未完成", "frame_attached":"已附上所选摄像头画面", "frame_unavailable":"本次未取得画面", "response_completed":"回复已完成", "run_failed":"本次请求未完成", "run_cancelled":"已取消"][type] ?? type }
 }
+enum AppTab: Int, CaseIterable {
+    case assistant, cameraSkills, tasks, memory, profile
+}
+
 enum AppRoute: Hashable {
+    case pushDelivery(String, String)
+    case pushConversation(String, String?, String)
     case demoScene
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
     case conversation(String, String?), settings, officialSDK, notificationSettings, voiceSettings, privacy, help, profile
-    case addDevice, personalAgent, personalInbox
+    case addDevice, personalAgent, personalInbox, account
     case recordings, video(String, Double), replayVideo(String, Double)
     case evidenceConversation(String)
 }
