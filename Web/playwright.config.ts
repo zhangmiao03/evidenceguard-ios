@@ -3,8 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./tests/browser",
   fullyParallel: true,
-  timeout: 30000,
-  workers: 3,
+  // Linux WebKit on shared CI spends significant time on page/input setup.
+  // Keep assertion timeouts unchanged; allow setup time without blind retries.
+  timeout: process.env.CI ? 60000 : 30000,
+  workers: process.env.CI ? 2 : 3,
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://127.0.0.1:5178",

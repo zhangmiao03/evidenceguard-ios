@@ -14,6 +14,7 @@ file = group.files.find { |f| f.path == 'WorkspaceTests.swift' } || group.new_fi
 target.source_build_phase.add_file_reference(file, true)
 target.build_configurations.each do |config|
   config.build_settings.merge!(
+    'PRODUCT_NAME' => '$(TARGET_NAME)',
     'PRODUCT_BUNDLE_IDENTIFIER' => 'com.anker.evidenceguard.reviewtests',
     'GENERATE_INFOPLIST_FILE' => 'YES', 'SWIFT_VERSION' => '5.0',
     'TARGETED_DEVICE_FAMILY' => '1', 'TEST_TARGET_NAME' => 'EvidenceGuard',
