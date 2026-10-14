@@ -12,7 +12,7 @@
 
 ## 当前进度
 
-2026-10-14 · 同步主分支：`dongrunze` 合入 `main` 的 `0959463`。保留新的“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏、APNs 和自动保存提醒设置，并整合实时设备接入、Agent 新画面采集、Web 与官方 SDK 工作区。AppDelegate 同时处理推送与播放器旋转；官方工作区内点开的通知会保留，返回并释放完成后再进入助手。合并后重新执行测试，结果见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次是源码同步，未部署或上传 TestFlight。
+2026-10-14 · 同步主分支：`dongrunze` 合入 `main` 的 `0959463`，合并提交 `60ca514`。保留新的“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”五栏、APNs 和自动保存提醒设置，并整合实时设备接入、Agent 新画面采集、Web 与官方 SDK 工作区。AppDelegate 同时处理推送与播放器旋转；官方工作区内点开的通知会保留，返回并释放完成后再进入助手。合并后后端 179 项、Web 协议 4 项、Linux 浏览器 48 项、macOS WebKit 24 项、原生 UI 3 项及 Swift 契约检查通过，iOS 编译与 Web 构建通过。跳过项和实机边界见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次是源码同步，未部署或上传 TestFlight。
 
 2026-10-14 · 合并前源码复审与兼容性回归：修复快速重连/退出时的释放、iOS 离页取消 Agent、Web 存储受限白屏、HTTPS 凭证保护、逐帧降级与手机退出入口。后端 163 项、本地浏览器 74 项、Linux 浏览器 48 项、macOS WebKit 24 项和原生 Simulator UI 2 项通过，普通 iOS 编译通过。跳过原因、官方 arm64 待验收项，以及此次已处理的 8 个合并冲突见 [Web / iOS 兼容性复审](Docs/WEB-IOS-COMPATIBILITY-REVIEW.md)。本次没有更新线上服务或 TestFlight。
 
