@@ -59,6 +59,7 @@ export const api = {
     session?: MediaSession,
     method?: string,
     traceOverride?: string,
+    executorToken?: string,
   ): Promise<T> {
     if (!path.startsWith("/api/")) throw new Error("请求不属于当前服务");
     if (this.token) requireSecureConnection();
@@ -74,6 +75,7 @@ export const api = {
     if (location.protocol === "https:" || ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)) headers["X-EG-Private-Key"] = privateKey();
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     if (session) headers["X-EG-Media-Session"] = session.token;
+    if (executorToken) headers["X-EG-Executor-Token"] = executorToken;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);

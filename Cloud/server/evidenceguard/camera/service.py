@@ -39,6 +39,8 @@ class CameraService:
             self.store.event(skill_id or request_id, 'camera_requested', receipt)
             try:
                 async with asyncio.timeout(8):
+                    if getattr(self,'hardware_busy',lambda _:False)(device_id):
+                        raise ValueError('设备控制尚未结束或结果未知，暂不使用当前视角判断')
                     if self.store.capture_context(device_id, skill_id) != epoch:
                         raise ValueError('任务已切换，本次旧请求不再执行')
                     owner=self.store.owner(device_id)

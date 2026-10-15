@@ -663,3 +663,17 @@ details p {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* Hardware diagnostics retain the product's responsive cards and focus styles. */
+.hardware-panel, .camera-events { margin-top: 18px; padding: 22px; }
+.hardware-panel label { display: block; margin: 12px 0; }
+.hardware-panel textarea { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; }
+.hardware-panel select, .camera-events select { max-width: 100%; }
+.hardware-operation { margin-top: 14px; padding: 16px; border: 1px solid #d9e5f7; border-radius: 16px; background: #f5f9ff; overflow-wrap: anywhere; }
+.hardware-operation pre { white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto; }
+.hardware-operation .actions, .hardware-panel .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.hardware-operation summary, .hardware-panel summary { cursor: pointer; padding: 10px 0; }
+.camera-event { display: grid; grid-template-columns: minmax(80px, 140px) minmax(0, 1fr); gap: 16px; padding: 18px 0; border-bottom: 1px solid #e2e9f4; }
+.camera-event img { width: 100%; border-radius: 12px; }
+.camera-event p, .camera-event small { font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.event-no-image { display: grid; place-items: center; min-height: 80px; color: #53637f; background: #edf2fa; border-radius: 12px; }
+@media (max-width: 600px) { .camera-event { grid-template-columns: 80px minmax(0, 1fr); gap: 10px; } .hardware-panel, .camera-events { padding: 16px; } }

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from evidenceguard.harness.codex import CodexTurn, EXECUTOR
+from evidenceguard.harness.codex import CodexTurn, EXECUTOR, structured_text
 from evidenceguard.harness.providers import ProviderError
 
 
@@ -70,7 +70,6 @@ def test_stdio_history_tool_receipt_images_and_final_answer(server,monkeypatch):
         messages=[dict(role='system',content='You are anker.'),dict(role='user',content='My dog is 小白.'),
                   dict(role='assistant',content='I understand.'),dict(role='user',content='tool')]
         turn=turn_for(server)
-        turn.output_schema={'type':'object','properties':{'answer':{'type':'string'}}}
         async with turn:
             answer=await turn.complete(messages,TOOLS)
             assert answer['tool_calls'][0]['function']['name']=='list_tasks'
@@ -93,7 +92,6 @@ def test_stdio_history_tool_receipt_images_and_final_answer(server,monkeypatch):
         start=next(v['params'] for v in wire if v.get('method')=='thread/start')
         assert 'My dog' not in start['baseInstructions']
         assert start['environments']==[] and start['ephemeral'] and not start['allowProviderModelFallback']
-        assert next(v['params'] for v in wire if v.get('method')=='turn/start')['outputSchema']==turn.output_schema
         content=next(v['result']['contentItems'] for v in wire if v.get('id')==77 and 'result' in v)
         assert content[-1]['type']=='inputImage' and content[1]['text'].startswith('No camera')
     asyncio.run(check())
@@ -150,3 +148,16 @@ def test_runtime_uses_codex_scoped_tools_and_keeps_post_turn_memory(server,tmp_p
         assert saved['draft'] is None
         store.close()
     asyncio.run(check())
+
+
+@pytest.mark.parametrize('raw',['{"valueScore":10}',"{'valueScore':10}",'```json\n{"valueScore":10}\n```'])
+def test_structured_format_normalization_does_not_fill_missing_fields(raw):
+    from evidenceguard.proactive import Decision
+    assert json.loads(structured_text(raw))=={'valueScore':10}
+    with pytest.raises(ValueError): Decision.model_validate_json(structured_text(raw))
+
+
+@pytest.mark.parametrize('raw',["__import__('os').system('echo bad')",'Explanation: {"valueScore":99}',
+    '{"valueScore":NaN}',"{'sourceIds':{1,2}}",'[]','x'*16001])
+def test_structured_format_rejects_code_prose_and_non_json_values(raw):
+    with pytest.raises(ProviderError):structured_text(raw)

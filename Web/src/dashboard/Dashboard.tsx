@@ -11,6 +11,7 @@ import {
   sampleBundle,
 } from "./data.mjs";
 import "./dashboard.css";
+import { AgentCycle, CloudStatus, DeploymentPanel, ServerResources } from "./CloudPanels";
 
 type Row = {
   id: string;
@@ -43,8 +44,10 @@ const pages = [
   "质量与试跑",
   "用量与覆盖",
   "数据与版本",
+  "服务器资源",
+  "部署代码核对",
 ];
-const glyphs = ["◈", "▣", "≋", "◇", "⌘", "☷", "▤", "◎", "▥", "⇄"];
+const glyphs = ["◈", "▣", "≋", "◇", "⌘", "☷", "▤", "◎", "▥", "⇄", "▧", "⌁"];
 const fmtTime = (at: number) =>
   at
     ? new Date(at * 1000).toLocaleString("zh-CN", { hour12: false })
@@ -72,6 +75,12 @@ export default function Dashboard() {
   const [bundle, setBundle] = useState<Bundle>(emptyBundle());
   const [page, setPage] = useState(0);
   const [mode, setMode] = useState("offline");
+  const [cloud, setCloud] = useState(false);
+  const [environment, setEnvironment] = useState("demo");
+  const [environments, setEnvironments] = useState<Array<{id:string;title:string}>>([]);
+  const [refreshNumber, setRefreshNumber] = useState(0);
+  const [liveAt, setLiveAt] = useState(0);
+  const [cloudFailed, setCloudFailed] = useState(false);
   const [filters, setFilters] = useState(initialFilters);
   const [selected, setSelected] = useState<Row | null>(null);
   const [trace, setTrace] = useState<string | null>(null);
@@ -115,7 +124,34 @@ export default function Dashboard() {
   useEffect(() => {
     setSelected(null);
     setTrace(null);
-  }, [filters, page, bundle]);
+  }, [filters, page, bundle.dataset.id]);
+  useEffect(() => {
+    const c = new AbortController();
+    void fetch("/dashboard/api/info", {signal:c.signal}).then(async response => {
+      if (!response.ok) return;
+      const info = await response.json();
+      if (info.mode !== "competition" || !Array.isArray(info.environments)) return;
+      setCloud(true); setEnvironments(info.environments);
+      setEnvironment(info.defaultEnvironment || "demo"); setMode("cloud");
+    }).catch(() => {});
+    return () => c.abort();
+  }, []);
+  useEffect(() => {
+    if (!cloud || mode !== "cloud") return;
+    const c = new AbortController(); let active = true; let timer: number | undefined;
+    async function poll() {
+      try {
+        const response = await fetch(`/dashboard/api/snapshot?environment=${encodeURIComponent(environment)}`, {signal:c.signal});
+        if (!response.ok) throw Error(`云端采样暂不可用（${response.status}）；显示的旧数据不会标为最新。`);
+        const value = sanitizeBundle(validateBundle(await response.json())) as Bundle;
+        if (active) { setBundle(value); setLiveAt(Date.now()); setCloudFailed(false); setError(""); }
+      } catch (e) {
+        if (active) { setCloudFailed(true); setError(e instanceof Error ? e.message : "云端连接失败"); }
+      } finally { if (active) timer = window.setTimeout(poll, 5000); }
+    }
+    void poll();
+    return () => { active=false; c.abort(); clearTimeout(timer); };
+  }, [cloud, mode, environment, refreshNumber]);
   useEffect(
     () => () => {
       generation.current++;
@@ -426,7 +462,7 @@ export default function Dashboard() {
             ["客户端埋点", `${stats.clientEvents} 条（客户端自述）`],
             [
               "数据新鲜度",
-              mode === "local"
+              mode === "cloud" ? "云端只读 · 5 秒自动刷新" : mode === "local"
                 ? "手动刷新 · 本地服务快照"
                 : "离线快照 · 不代表当前运行",
             ],
@@ -455,6 +491,8 @@ export default function Dashboard() {
     );
   }
   function content() {
+    if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
+    if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
     if (page === 0)
       return (
         <>
@@ -552,7 +590,7 @@ export default function Dashboard() {
           )}
           {table(
             resources(["model_configuration"]),
-            "本地模型配置",
+            "服务模型配置",
             "配置值不代表实际调用",
           )}
         </>
@@ -560,6 +598,7 @@ export default function Dashboard() {
     if (page === 4)
       return (
         <>
+          {table(resources(["deployed_prompt"]), "已部署的系统提示词与工具定义", "由实际后端进程启动时读取")}
           {table(
             rows.filter((r) => r.kind === "prompt"),
             "请求提示词快照",
@@ -626,7 +665,7 @@ export default function Dashboard() {
       );
     return (
       <>
-        <section className="eg-ops-panel">
+        {!cloud && <section className="eg-ops-panel">
           <div className="eg-ops-panel-head">
             <h2>本地离线归档</h2>
             <button disabled={busy} onClick={() => readArchive()}>
@@ -647,10 +686,10 @@ export default function Dashboard() {
           <p className="eg-ops-note">
             通过同源 API 读取已归档数据；访问密钥使用顶部连接设置。
           </p>
-        </section>
+        </section>}
         <section className="eg-ops-panel">
           <div className="eg-ops-panel-head">
-            <h2>本地与离线工作区</h2>
+            <h2>{cloud ? "云端快照与离线导出" : "本地与离线工作区"}</h2>
             <small>{SCHEMA}</small>
           </div>
           <div className="eg-ops-source-info">
@@ -661,20 +700,19 @@ export default function Dashboard() {
               {bundle.records.length} 条记录 · 当前筛选 {rows.length} 条
             </p>
             <p>
-              离线文件只进入浏览器内存。刷新页面将清除数据与访问密钥；请导出保存。归档到本地服务需要独立
-              Dashboard 授权。
+              {cloud ? "导入只在当前浏览器中查看，不写入云端；点击“刷新云端数据”恢复实时视图。导出包含当前筛选的记录和采样时间。" : "离线文件只进入浏览器内存。刷新页面将清除数据与访问密钥；请导出保存。归档到本地服务需要独立 Dashboard 授权。"}
             </p>
             <div className="eg-ops-actions">
               <button onClick={() => input.current?.click()}>导入 JSON</button>
               <button onClick={download} disabled={!bundle.records.length}>
                 导出当前筛选
               </button>
-              <button
+              {!cloud && <button
                 disabled={busy || mode !== "imported"}
                 onClick={archiveImport}
               >
                 归档到本地追踪库
-              </button>
+              </button>}
               <button
                 onClick={() => {
                   generation.current++;
@@ -721,8 +759,8 @@ export default function Dashboard() {
         </a>
         <div className="eg-ops-workspace">
           <span className="eg-ops-dot" />
-          <strong>本地开发工作区</strong>
-          <small>研发追踪 / Offline ready</small>
+          <strong>{cloud ? "比赛云端工作区" : "本地开发工作区"}</strong>
+          <small>{cloud ? "Singapore / Live telemetry" : "研发追踪 / Offline ready"}</small>
         </div>
         <p className="eg-ops-nav-label">工作台</p>
         <nav aria-label="Dashboard 页面">
@@ -739,13 +777,13 @@ export default function Dashboard() {
           ))}
         </nav>
         <div className="eg-ops-sidebar-bottom">
-          <span>{mode === "local" ? "LOCAL API" : "OFFLINE WORKSPACE"}</span>
+          <span>{mode === "cloud" ? "CLOUD / READ ONLY" : mode === "local" ? "LOCAL API" : "OFFLINE WORKSPACE"}</span>
           <p>
             只读追踪与诊断
             <br />
-            无需服务器 root 权限
+            {cloud ? "真实服务 · 提示词 · 执行链路" : "无需服务器 root 权限"}
           </p>
-          <a href="/">返回 EvidenceGuard App ↗</a>
+          {!cloud && <a href="/">返回 EvidenceGuard App ↗</a>}
         </div>
       </aside>
       <main className="eg-ops-main">
@@ -756,7 +794,7 @@ export default function Dashboard() {
           <span className="eg-ops-badge">
             {synthetic
               ? "模拟样例"
-              : mode === "local"
+              : mode === "cloud" ? "云端实时 · 免登录只读" : mode === "local"
                 ? "本地服务"
                 : mode === "imported"
                   ? "导入数据 · 未核验"
@@ -780,17 +818,23 @@ export default function Dashboard() {
               className="primary"
               disabled={busy}
               onClick={() =>
-                mode === "local" ? refresh() : setConnecting(!connecting)
+                cloud ? (setMode("cloud"),setRefreshNumber(n=>n+1)) : mode === "local" ? refresh() : setConnecting(!connecting)
               }
             >
               {busy
                 ? "正在读取…"
-                : mode === "local"
+                : cloud ? "刷新云端数据" : mode === "local"
                   ? "刷新本地数据"
                   : "连接本地服务"}
             </button>
           </div>
         </div>
+        {cloud && <div className="eg-ops-cloud-controls">
+          <label>后端环境<select value={environment} onChange={e=>{setEnvironment(e.target.value);setMode("cloud");setLiveAt(0);setBundle(emptyBundle());}}>{environments.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
+          <span>当前访问为只读；原 App API 继续使用原有鉴权。</span>
+          <span>{liveAt ? `最近读取 ${new Date(liveAt).toLocaleTimeString("zh-CN",{hour12:false})}` : "连接采集服务…"}</span>
+        </div>}
+        {mode === "cloud" && <CloudStatus coverage={{...bundle.coverage, stale:cloudFailed || bundle.coverage?.stale}} />}
         <input
           ref={input}
           type="file"
@@ -856,9 +900,9 @@ export default function Dashboard() {
             快照 {fmtTime(bundle.dataset.exportedAt)} · {rows.length} /{" "}
             {bundle.records.length} 条
           </span>
-          {mode !== "local" && <span>离线内容不会自动更新</span>}
+          {mode !== "local" && mode !== "cloud" && <span>离线内容不会自动更新</span>}
         </div>
-        <section className="eg-ops-filters" aria-label="全局筛选">
+        {page < 10 && <section className="eg-ops-filters" aria-label="全局筛选">
           <label>
             时间窗口
             <select
@@ -926,7 +970,7 @@ export default function Dashboard() {
             />
           </label>
           <button onClick={() => setFilters(initialFilters)}>重置</button>
-        </section>
+        </section>}
         <div className="eg-ops-content">{content()}</div>
         <footer>
           时间为服务端接收或快照时间；客户端来源不等于硬件核验。· {SCHEMA}
@@ -972,6 +1016,7 @@ export default function Dashboard() {
                   的全部记录（包含筛选外上下文）；仅同一进程内的 duration
                   可直接比较。
                 </p>
+                <AgentCycle records={bundle.records.filter(r=>r.traceId===trace)} onSelect={r=>{setSelected(r as Row);setTrace(null);}} />
                 <div className="eg-ops-timeline">
                   {bundle.records
                     .filter((r) => r.traceId === trace)

@@ -178,9 +178,19 @@ def test_routes_session_auth_and_public_web_shell(tmp_path, monkeypatch):
         assert client.post('/api/sdk/openapi/v1/x', headers={'Authorization':'Bearer vendor-token'}).status_code == 401
 
 
-def test_http_capture_exchange(tmp_path):
+@pytest.mark.parametrize('observation_mode', ['disabled', 'enabled', 'write_failure', 'queue_full'])
+def test_http_capture_exchange(tmp_path, monkeypatch, observation_mode):
+    monkeypatch.setenv('EG_OPS_ENABLED', '0' if observation_mode == 'disabled' else '1')
+    monkeypatch.setenv('EG_OPS_DATABASE', str(tmp_path/'ops.sqlite3'))
     async def run():
         app = create_app(tmp_path/'db.sqlite3', start_worker=False)
+        ops = getattr(app.state, 'ops', None)
+        if observation_mode == 'write_failure':
+            with ops.lock: ops.db.execute('DROP TABLE records')
+        if observation_mode == 'queue_full':
+            import queue
+            def full(_record): raise queue.Full
+            monkeypatch.setattr(ops.q, 'put_nowait', full)
         headers = {'X-EG-Installation-ID':'00000000-0000-4000-8000-000000000001'}
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test', headers=headers) as client:
             d = (await client.post('/api/devices/import', json=dict(accountId='u', platform='web', devices=[dict(sn='T8214TEST0001', model='T8214', name='门口')]))).json()[0]
@@ -202,7 +212,14 @@ def test_http_capture_exchange(tmp_path):
             assert records[0]['deviceName'] == '门口' and records[0]['capturedAt'] is None
             assert (await client.get(records[0]['imageUrl'])).headers['content-type'] == 'image/jpeg'
             assert (await client.get('/api/bootstrap')).json()['cameras'][0]['id'] == d['id']
+            assert (await client.post(url+'/stop')).json()['status'] == 'stopped'
+            assert (await client.get(url+'/commands')).status_code == 409
         await app.state.agent.shutdown()
+        await app.state.camera.live.shutdown()
+        if ops:
+            ops.close()
+            if observation_mode == 'write_failure': assert ops.write_errors > 0
+            if observation_mode == 'queue_full': assert ops.dropped > 0
         app.state.store.close()
     asyncio.run(run())
 
@@ -237,7 +254,10 @@ def test_push_binding_and_live_lease_remain_independent(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('direct_vision', [True, False])
-def test_agent_receives_challenged_live_image_or_completed_visual_review(tmp_path, monkeypatch, direct_vision):
+@pytest.mark.parametrize('observation_mode', ['disabled', 'enabled', 'write_failure'])
+def test_agent_receives_challenged_live_image_or_completed_visual_review(tmp_path, monkeypatch, direct_vision, observation_mode):
+    monkeypatch.setenv('EG_OPS_ENABLED', '0' if observation_mode == 'disabled' else '1')
+    monkeypatch.setenv('EG_OPS_DATABASE', str(tmp_path/'ops.sqlite3'))
     async def run():
         monkeypatch.setenv('EG_MODEL_VISION', '1' if direct_vision else '0')
         messages = []
@@ -252,6 +272,9 @@ def test_agent_receives_challenged_live_image_or_completed_visual_review(tmp_pat
                 messages.append(json.loads(json.dumps(history)))
                 return next(answers)
         app = create_app(tmp_path/'agent.sqlite3', start_worker=False, provider=Provider())
+        ops = getattr(app.state, 'ops', None)
+        if observation_mode == 'write_failure':
+            with ops.lock: ops.db.execute('DROP TABLE records')
         hub = app.state.camera.live
         device = imported(hub)
         _, session = ready(hub, device['id'])
@@ -281,5 +304,8 @@ def test_agent_receives_challenged_live_image_or_completed_visual_review(tmp_pat
         assert app.state.store.skills() == []
         await app.state.agent.shutdown()
         await app.state.camera.live.shutdown()
+        if ops:
+            ops.close()
+            if observation_mode == 'write_failure': assert ops.write_errors > 0
         app.state.store.close()
     asyncio.run(run())

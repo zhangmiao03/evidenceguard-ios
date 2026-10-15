@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AF1020261016000000000001 /* HardwareTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261016000000000001 /* HardwareTools.swift */; };
+		AF1020261015000000000001 /* OpsDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261015000000000001 /* OpsDelivery.swift */; };
+		AF1020261016000000000002 /* HardwareTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261016000000000001 /* HardwareTools.swift */; };
+		AF1020261015000000000002 /* OpsDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261015000000000001 /* OpsDelivery.swift */; };
 		AF1020261014000000000001 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
 		AF1020261014000000000002 /* LiveCameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF1020261014000000000001 /* LiveCameraView.swift */; };
 		AC8800000000000000000001 /* ReminderSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC8800000000000000000003 /* ReminderSettings.swift */; };
@@ -80,6 +84,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		BF1020261016000000000001 /* HardwareTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareTools.swift; sourceTree = "<group>"; };
+		BF1020261015000000000001 /* OpsDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpsDelivery.swift; sourceTree = "<group>"; };
 		BF1020261014000000000001 /* LiveCameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveCameraView.swift; sourceTree = "<group>"; };
 		AC8800000000000000000003 /* ReminderSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReminderSettings.swift; sourceTree = "<group>"; };
 		AB9900000000000000000003 /* PushNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotifications.swift; sourceTree = "<group>"; };
@@ -183,6 +189,8 @@
 				AC8800000000000000000003 /* ReminderSettings.swift */,
 				B10000000000000000000002 /* AppModels.swift */,
 				B10000000000000000000003 /* APIClient.swift */,
+				BF1020261015000000000001 /* OpsDelivery.swift */,
+				BF1020261016000000000001 /* HardwareTools.swift */,
 				B10000000000000000000004 /* AppStore.swift */,
 				B10000000000000000000005 /* DesignSystem.swift */,
 				B10000000000000000000006 /* RootView.swift */,
@@ -392,6 +400,8 @@
 				AC8800000000000000000001 /* ReminderSettings.swift in Sources */,
 				A10000000000000000000002 /* AppModels.swift in Sources */,
 				A10000000000000000000003 /* APIClient.swift in Sources */,
+				AF1020261015000000000001 /* OpsDelivery.swift in Sources */,
+				AF1020261016000000000001 /* HardwareTools.swift in Sources */,
 				A10000000000000000000004 /* AppStore.swift in Sources */,
 				A10000000000000000000005 /* DesignSystem.swift in Sources */,
 				A10000000000000000000006 /* RootView.swift in Sources */,
@@ -423,6 +433,8 @@
 				AC8800000000000000000002 /* ReminderSettings.swift in Sources */,
 				DF3F94B327698F0B584A8707 /* AppModels.swift in Sources */,
 				21C35FE1B78E2B0042D84E2F /* APIClient.swift in Sources */,
+				AF1020261015000000000002 /* OpsDelivery.swift in Sources */,
+				AF1020261016000000000002 /* HardwareTools.swift in Sources */,
 				647262E8F663A54E08B4622C /* AppStore.swift in Sources */,
 				D7A973876C49E520042D8583 /* DesignSystem.swift in Sources */,
 				482D36A55B57EE0C37DC5A91 /* RootView.swift in Sources */,

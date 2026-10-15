@@ -44,6 +44,9 @@ private struct OfficialCameraHomeView: View {
                             NavigationLink { OfficialLiveCameraView(camera: device) } label: {
                                 Label("查看直播", systemImage: "play.circle")
                             }.accessibilityIdentifier("cameraSkills.live." + device.sn)
+                            NavigationLink { HardwareToolsView(deviceID: IOSToolExecutor.deviceID(device.sn)) } label: {
+                                Label("硬件工具与执行回执", systemImage: "wrench.and.screwdriver")
+                            }.accessibilityIdentifier("cameraSkills.tools." + device.sn)
                         }
                     }
                     Toggle("App 打开时同步新事件", isOn: Binding(

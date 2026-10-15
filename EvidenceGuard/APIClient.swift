@@ -50,8 +50,14 @@ struct APIClient {
         #endif
     }
     var baseURL: URL
-    var accessToken: String { ServiceAccess.token(for: baseURL) }
-    init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    private let transport: URLSession
+    private let observations: OpsDelivery
+    private var pinnedAccessToken: String?
+    var accessToken: String { pinnedAccessToken ?? ServiceAccess.token(for: baseURL) }
+    func scoped() -> APIClient { var copy = self; copy.pinnedAccessToken = accessToken; return copy }
+    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
+        self.baseURL = baseURL; self.transport = transport; self.observations = observations
+    }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
     func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
@@ -158,7 +164,7 @@ struct APIClient {
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
         try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
+        let (data, response) = try await transport.upload(for: request, fromFile: file)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             throw APIProblem(message: json?["detail"] as? String ?? "录像上传失败，请重试")
@@ -166,7 +172,7 @@ struct APIClient {
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
     func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String? }
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios" }
         return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
@@ -217,7 +223,10 @@ struct APIClient {
         try await send("/api/devices/\(deviceID)/capture", body:[String:String]())
     }
     func agentRun(_ id: String) async throws -> AgentRun { try await get("/api/runs/\(id)") }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil) async throws -> T {
+    func hardware(_ path: String, body: HardwareValue? = nil, executor: HardwareExecutorSession? = nil) async throws -> HardwareValue {
+        try await send("/api/hardware/" + path, method: body == nil ? "GET" : "POST", body: body, executor: executor)
+    }
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
         let trace = traceID ?? mediaSession?.traceId ?? UUID().uuidString
@@ -233,6 +242,7 @@ struct APIClient {
             }
         }
         if let mediaSession { req.setValue(mediaSession.token, forHTTPHeaderField: "X-EG-Media-Session") }
+        if let executor { req.setValue(executor.token, forHTTPHeaderField: "X-EG-Executor-Token") }
         if push {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
@@ -243,7 +253,7 @@ struct APIClient {
         if let body { req.httpBody = try JSONEncoder().encode(body) }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await URLSession.shared.data(for: req) }
+        do { (data, response) = try await transport.data(for: req) }
         catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             let message: String
@@ -297,18 +307,6 @@ struct APIClient {
         request.httpBody = try? JSONEncoder().encode([Event(name: name, traceId: traceID, parentSpanId: parentSpanID, status: status,
             durationMs: durationMS, deviceId: deviceID, requestId: requestID, route: route)])
         guard request.httpBody != nil else { return }
-        Task { await OpsDelivery.shared.send(request) }
-    }
-}
-
-private actor OpsDelivery {
-    static let shared = OpsDelivery()
-    private var pending = 0
-    func send(_ request: URLRequest) async {
-        guard pending < 8 else { return }
-        pending += 1
-        defer { pending -= 1 }
-        // No retries: a missing/disabled dashboard never blocks an app action.
-        _ = try? await URLSession.shared.data(for: request)
+        Task(priority: .background) { await observations.send(request) }
     }
 }

@@ -1,3 +1,4 @@
+import { HardwareOperationCard } from "./HardwareTools";
 import {
   forwardRef,
   useEffect,
@@ -344,7 +345,7 @@ export const Assistant = forwardRef<
       try {
         const run = await client.current.request<ChatRun>(
           "/api/agent/runs",
-          pending,
+          { ...pending, clientPlatform: "web" },
         );
         if (!mounted.current || e !== epoch.current) {
           await client.current
@@ -624,6 +625,7 @@ export const Assistant = forwardRef<
                         编辑后重试
                       </button>
                     )}
+                    {run.hardwareOperations?.map(op => <HardwareOperationCard key={op.id} operation={op} />)}
                     {run.captures?.map((c) => (
                       <div className="capture-receipt" key={c.id}>
                         {c.imageUrl && (
@@ -781,6 +783,7 @@ export const Assistant = forwardRef<
           <textarea
             id="question"
             value={input}
+            disabled={initializing || !conversation}
             onChange={(e) => saveInput(e.target.value)}
             placeholder={`和 ${assistantName} 聊聊…`}
             rows={3}

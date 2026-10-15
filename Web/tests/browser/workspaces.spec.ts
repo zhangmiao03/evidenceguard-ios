@@ -104,6 +104,8 @@ async function setup(
         agent: { ready: true, provider: "test" },
       };
     if (path === "/api/captures") json = [];
+    if (path === "/api/hardware/snapshot") json = { devices: [], operations: [], tools: [] };
+    if (path === "/api/sdk/events") json = { events: [], truncated: false, continuousCoverage: false };
     if (path === "/api/media-sessions") {
       if (options.delayStart)
         await new Promise((resolve) => setTimeout(resolve, 1000));

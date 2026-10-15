@@ -11,6 +11,7 @@ Pods/
 SDK/Vendor/
 SDK/DerivedData/
 SDK/.tools/
+SDK/.tools-local/
 SDK/.gradle/
 node_modules/
 dist/

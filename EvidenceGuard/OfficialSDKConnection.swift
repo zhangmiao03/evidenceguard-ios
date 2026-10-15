@@ -103,6 +103,7 @@ enum SDKCredentialVault {
 }
 
 @MainActor final class OfficialSDKConnection: ObservableObject {
+    let toolExecutor = IOSToolExecutor()
     @Published private(set) var devices: [SDKDiscoveredCamera] = []
     @Published private(set) var officialDemoController: UIViewController?
     @Published private(set) var switchingWorkspace = false
@@ -272,6 +273,7 @@ enum SDKCredentialVault {
         resetInspection()
     }
     func disconnect() {
+        toolExecutor.invalidate()
         eventSyncOrigin = nil
         UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
         liveController?.stop()
@@ -317,6 +319,7 @@ enum SDKCredentialVault {
         workspaceError = nil
         switchingWorkspace = true
         workspaceMessage = "正在停止本项目直播与取帧…"
+        await toolExecutor.shutdown()
         await liveController?.stopForWorkspaceSwitch()
         disconnect()
         // EvidenceGuardLiveBridge releases the native player after 500 ms.
@@ -357,6 +360,31 @@ enum SDKCredentialVault {
         let cameras = devices.filter(\.isCompetitionCamera)
         guard !cameras.isEmpty else { throw APIProblem(message: "官方账号下没有可导入的赛事设备") }
         return try await client.importDevices(account: credentials.userID, environment: credentials.environment, cameras: cameras)
+    }
+
+    func hardwareManifest(camera: SDKDiscoveredCamera) async throws -> HardwareValue {
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        let json: String = await withCheckedContinuation { continuation in
+            bridge.hardwareManifest(sn: camera.sn) { continuation.resume(returning: $0) }
+        }
+        return try HardwareValue.parse(json)
+        #else
+        throw APIProblem(message: "此构建未包含官方 arm64 SDK")
+        #endif
+    }
+
+    func executeHardware(camera: SDKDiscoveredCamera, command: HardwareValue) async throws -> HardwareValue {
+        guard officialDemoController == nil, !switchingWorkspace, devices.contains(where: { $0.sn == camera.sn }) else {
+            throw APIProblem(message: "设备执行会话已结束")
+        }
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        let json: String = await withCheckedContinuation { continuation in
+            bridge.executeHardware(sn: camera.sn, commandJSON: command.json) { continuation.resume(returning: $0) }
+        }
+        return try HardwareValue.parse(json)
+        #else
+        throw APIProblem(message: "此构建未包含官方 arm64 SDK")
+        #endif
     }
 
     #if canImport(SampleCore) && !targetEnvironment(simulator)

@@ -9,6 +9,7 @@ receipt validation; it never makes a model request itself or falls back silently
 from __future__ import annotations
 
 import asyncio
+import ast
 from collections import deque
 import json
 import os
@@ -26,6 +27,29 @@ def toml_value(value):
     if isinstance(value, dict):
         return '{' + ', '.join(k + ' = ' + toml_value(v) for k, v in value.items()) + '}'
     return json.dumps(value, ensure_ascii=False)
+
+
+def structured_text(text):
+    """Normalize representation only; the host still validates the full schema.
+
+    Some custom Responses gateways ignore strict output format. Accept a whole
+    JSON object, one JSON fence, or a data-only Python literal. Never execute
+    code, extract a convenient substring, or invent missing decision fields.
+    """
+    if len(text)>16000: raise ProviderError('主动评估输出超出长度限制。')
+    text=text.strip()
+    if text.startswith('```json\n') and text.endswith('\n```'): text=text[8:-4]
+    try:
+        try: value=json.loads(text)
+        except ValueError: value=ast.literal_eval(text)
+        def data_only(v):
+            if isinstance(v,dict):return all(isinstance(k,str) and data_only(x) for k,x in v.items())
+            if isinstance(v,list):return all(data_only(x) for x in v)
+            return type(v) in {str,int,float,bool,type(None)}
+        if not isinstance(value,dict) or not data_only(value): raise ValueError()
+        return json.dumps(value,ensure_ascii=False,allow_nan=False)
+    except (ValueError,TypeError,SyntaxError,RecursionError) as error:
+        raise ProviderError('主动评估格式无效，未发布消息。') from error
 
 
 class CodexTurn:
@@ -222,4 +246,4 @@ class CodexTurn:
                 if params.get('turn', {}).get('status') != 'completed' or not self.final_text:
                     raise ProviderError('Codex 本轮执行未完成，请重试；没有自动启用任务。')
                 self.event('executor_completed', dict(executor=EXECUTOR, version=PINNED_VERSION))
-                return dict(role='assistant', content=self.final_text)
+                return dict(role='assistant', content=structured_text(self.final_text) if self.output_schema is not None else self.final_text)

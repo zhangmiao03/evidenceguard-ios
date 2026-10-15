@@ -91,7 +91,24 @@ if 'pod("SSZipArchive")' in content:
 bridge = common / 'src/iosArm64Main/kotlin/com/anker/esiotkit/sample/evidenceguard/EvidenceGuardSDKBridge.kt'
 bridge.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(sdk / 'Bridge/EvidenceGuardSDKBridge.kt', bridge)
+tool_sources = common / 'src/iosArm64Main/kotlin/evidenceguard/tools'
+tool_sources.mkdir(parents=True, exist_ok=True)
+for source in sorted((sdk / 'Bridge/Tools').glob('*.kt')):
+    shutil.copyfile(source, tool_sources / source.name)
 (ios / 'kotlin/gradlew').chmod(0o755)
+# Fingerprint the actual restored iOS artifacts, never an Android build or a placeholder.
+import hashlib
+artifact_hash = hashlib.sha256()
+artifacts = sorted(p for p in (ios / 'libs').rglob('*') if p.is_file())
+if not artifacts:
+    raise SystemExit('No restored iOS SDK artifacts to fingerprint')
+for artifact in artifacts:
+    artifact_hash.update(artifact.relative_to(ios / 'libs').as_posix().encode())
+    artifact_hash.update(b'\0')
+    with artifact.open('rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            artifact_hash.update(block)
+env['EG_SDK_ARTIFACT_HASH'] = artifact_hash.hexdigest()
 subprocess.run(ruby_command + [str(sdk / 'configure_project.rb')], cwd=root, env=env, check=True)
 subprocess.run([str(ios / 'kotlin/gradlew'), '-p', str(ios / 'kotlin'), ':sample-core:generateDummyFramework', '--console=plain'], cwd=ios, env=env, check=True)
 subprocess.run(pod_command + ['install'], cwd=root, env=env, check=True)

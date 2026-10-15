@@ -1,5 +1,36 @@
 import Foundation
 
+enum HardwareValue: Codable, Equatable, Sendable {
+    case object([String: HardwareValue]), array([HardwareValue]), string(String), number(Double), bool(Bool), null
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode(Double.self) { self = .number(v) }
+        else if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode([String: HardwareValue].self) { self = .object(v) }
+        else { self = .array(try c.decode([HardwareValue].self)) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .object(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .string(let v): try c.encode(v)
+        case .number(let v): try c.encode(v)
+        case .bool(let v): try c.encode(v)
+        case .null: try c.encodeNil()
+        }
+    }
+    subscript(_ key: String) -> HardwareValue { object[key] ?? .null }
+    var object: [String: HardwareValue] { if case .object(let v) = self { return v }; return [:] }
+    var array: [HardwareValue] { if case .array(let v) = self { return v }; return [] }
+    var string: String { if case .string(let v) = self { return v }; return "" }
+    var boolean: Bool { if case .bool(let v) = self { return v }; return false }
+    var json: String { let e=JSONEncoder(); e.outputFormatting=[.prettyPrinted,.sortedKeys]; return (try? String(data:e.encode(self),encoding:.utf8)) ?? "{}" }
+    static func parse(_ json: String) throws -> HardwareValue { try JSONDecoder().decode(Self.self,from:Data(json.utf8)) }
+}
+
 enum AssistantIdentity {
     static let name = "anker"
 }
@@ -119,6 +150,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var id: String; var conversationId: String; var skillId: String?; var message: String; var status: String; var createdAt: Double
     var text: String?; var error: String?; var draft: VisualSkill?; var toolReceipts: [ToolReceipt]
     var captures: [CameraCapture]?
+    var hardwareOperations: [HardwareValue]?
     var executionMode: String?
     var videos: [VideoHit]?
     var cameraId: String?
