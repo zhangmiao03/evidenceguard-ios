@@ -1,4 +1,5 @@
 import type { Capture, Device, Run } from "./api";
+import type { HardwareOperation } from "./hardware-tools";
 
 export type Tab = "assistant" | "cameras" | "tasks" | "memory" | "settings";
 export type ROI = { x: number; y: number; width: number; height: number };
@@ -192,7 +193,14 @@ export type Camera = Device & {
   adapter?: string;
   channels?: { id: string; label: string }[];
 };
+export type CameraEvent = {
+  id: string; cameraId: string; deviceName: string; startMs: number; endMs: number;
+  detectionType: string; hasVideo: boolean; imageUrl?: string | null;
+  reviewStatus: string; reason: string; sourceType: "official_sdk";
+};
+export type CameraEventTimeline = { events: CameraEvent[]; truncated: boolean; continuousCoverage: false };
 export type Bootstrap = {
+  cameraEvents?: CameraEventTimeline | null;
   skills: Skill[];
   cameras: Camera[];
   evidence: Evidence[];
@@ -221,6 +229,7 @@ export type HistoryFilter = {
   endAt?: number;
 };
 export type ChatRun = Omit<Run, "captures"> & {
+  hardwareOperations?: HardwareOperation[];
   conversationId: string;
   createdAt: number;
   executionMode?: string;

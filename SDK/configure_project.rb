@@ -25,6 +25,7 @@ target.build_configurations.each do |configuration|
   configuration.build_settings['EG_APP_BUNDLE_ID'] = 'com.anker.evidenceguard.sdkdemo'
   configuration.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = '$(EG_APP_BUNDLE_ID)'
   configuration.build_settings['PRODUCT_NAME'] = 'EvidenceGuardSDK'
+  configuration.build_settings['EG_SDK_ARTIFACT_HASH'] = ENV.fetch('EG_SDK_ARTIFACT_HASH', '')
   conditions = original.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] || '$(inherited)'
   configuration.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = "#{conditions} EVIDENCEGUARD_OFFICIAL_SDK"
   configuration.build_settings['FRAMEWORK_SEARCH_PATHS'] = [

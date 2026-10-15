@@ -1,0 +1,847 @@
+{
+  "version": "0.2.0",
+  "tools": [
+    {
+      "name": "devices_list",
+      "description": "列出当前授权范围的设备，不推断实时在线状态",
+      "capabilities": [
+        "C01"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "device_inspect",
+      "description": "读取登记能力、来源和未验证项",
+      "capabilities": [
+        "C02"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "camera_observe",
+      "description": "获取新直播帧，不移动设备",
+      "capabilities": [
+        "C07"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "freshness": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "camera_events_query",
+      "description": "查询带来源的历史事件",
+      "capabilities": [
+        "C10"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "from": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999999999
+          },
+          "to": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9999999999
+          },
+          "cursor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "camera_ptz_step",
+      "description": "有限方向单步；移动后旧观察失效",
+      "capabilities": [
+        "C16"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "LEFT",
+              "RIGHT",
+              "UP",
+              "DOWN"
+            ]
+          },
+          "referenceObservationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expectedViewRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "deviceId",
+          "direction",
+          "referenceObservationId",
+          "expectedViewRevision"
+        ]
+      }
+    },
+    {
+      "name": "camera_goto_preset",
+      "description": "跳转本设备真实预置位目录中的位置",
+      "capabilities": [
+        "C17"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "presetRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "referenceObservationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId",
+          "presetRef",
+          "referenceObservationId"
+        ]
+      }
+    },
+    {
+      "name": "camera_set_night_vision",
+      "description": "使用同一设置路线的选项；首版仅持久设置",
+      "capabilities": [
+        "C20"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "optionRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "persistent"
+            ]
+          }
+        },
+        "required": [
+          "deviceId",
+          "optionRef",
+          "scope"
+        ]
+      }
+    },
+    {
+      "name": "doorbell_light_set",
+      "description": "T8214 灯光兼容入口",
+      "capabilities": [
+        "C23"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "channelRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deviceId",
+          "channelRef",
+          "enabled"
+        ]
+      }
+    },
+    {
+      "name": "doorbell_reply_play",
+      "description": "播放已准备的设备回复，不接受任意 TTS 文本",
+      "capabilities": [
+        "C25"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "replyRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId",
+          "replyRef"
+        ]
+      }
+    },
+    {
+      "name": "camera_record_clip",
+      "description": "有限客户端录制；严格检查采集音轨策略",
+      "capabilities": [
+        "C13"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          },
+          "audioPolicy": {
+            "type": "string",
+            "enum": [
+              "required",
+              "forbidden",
+              "allowIfPresent"
+            ]
+          }
+        },
+        "required": [
+          "deviceId",
+          "duration",
+          "audioPolicy"
+        ]
+      }
+    },
+    {
+      "name": "operation_get",
+      "description": "读取本任务操作；ACK 不代表物理结果",
+      "capabilities": [
+        "C42"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "operationId"
+        ]
+      }
+    },
+    {
+      "name": "camera_stop",
+      "description": "停止指定操作；逐项返回停止结果",
+      "capabilities": [
+        "C42"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "operationId"
+        ]
+      }
+    },
+    {
+      "name": "device_state_get",
+      "description": "读取真实状态，未获取字段为 UNKNOWN",
+      "capabilities": [
+        "C02"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "privacy",
+                "battery",
+                "network",
+                "storage",
+                "version"
+              ]
+            },
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "device_settings_get",
+      "description": "读取注册设置字段与可用选项",
+      "capabilities": [
+        "C21"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "maxItems": 32
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "device_settings_set",
+      "description": "仅设置白名单字段；需要版本、选项和用户确认",
+      "capabilities": [
+        "C21"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "value": {},
+          "expectedSettingsRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "deviceId",
+          "field",
+          "value",
+          "expectedSettingsRevision"
+        ]
+      }
+    },
+    {
+      "name": "camera_events_subscribe",
+      "description": "建立有限期事件订阅",
+      "capabilities": [
+        "C11"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "maxItems": 32
+          },
+          "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          }
+        },
+        "required": [
+          "deviceId",
+          "duration"
+        ]
+      }
+    },
+    {
+      "name": "camera_events_unsubscribe",
+      "description": "解除指定订阅",
+      "capabilities": [
+        "C11"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "subscriptionId"
+        ]
+      }
+    },
+    {
+      "name": "camera_event_get",
+      "description": "读取当前任务有权访问的事件详情",
+      "capabilities": [
+        "C10"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "eventRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "eventRef"
+        ]
+      }
+    },
+    {
+      "name": "camera_evidence_get",
+      "description": "读取授权媒体元数据，不接收任意 URL",
+      "capabilities": [
+        "C12"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mediaRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "mediaRef"
+        ]
+      }
+    },
+    {
+      "name": "camera_evidence_download",
+      "description": "下载指定证据；目标限受控存储",
+      "capabilities": [
+        "C12"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mediaRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "destination": {
+            "type": "string",
+            "enum": [
+              "executorLocal"
+            ]
+          }
+        },
+        "required": [
+          "mediaRef",
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "camera_presets_list",
+      "description": "读取本设备真实预置位目录",
+      "capabilities": [
+        "C17"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "doorbell_replies_list",
+      "description": "读取已准备的门铃回复目录",
+      "capabilities": [
+        "C25"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId"
+        ]
+      }
+    },
+    {
+      "name": "camera_talk_start",
+      "description": "从人授权的执行端麦克风开启有限期普通对讲",
+      "capabilities": [
+        "C14"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "microphoneSessionRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "duration": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "required": [
+          "deviceId",
+          "microphoneSessionRef",
+          "duration"
+        ]
+      }
+    },
+    {
+      "name": "camera_talk_stop",
+      "description": "停止普通对讲操作并释放资源",
+      "capabilities": [
+        "C14"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "operationId"
+        ]
+      }
+    },
+    {
+      "name": "camera_light_set",
+      "description": "设置已登记的灯光通道",
+      "capabilities": [
+        "C23"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "channelRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "deviceId",
+          "channelRef",
+          "enabled"
+        ]
+      }
+    },
+    {
+      "name": "camera_dual_mode_set",
+      "description": "切换已验证的双摄布局，更新视图版本",
+      "capabilities": [
+        "C27"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "modeRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expectedViewRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "deviceId",
+          "modeRef",
+          "expectedViewRevision"
+        ]
+      }
+    },
+    {
+      "name": "camera_ptz_mode_set",
+      "description": "条件扩展：仅诊断或已验证的跟踪/巡航",
+      "capabilities": [
+        "C19"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "modeRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId",
+          "modeRef"
+        ]
+      }
+    },
+    {
+      "name": "camera_panorama_generate",
+      "description": "条件扩展：按已验证选项生成全景",
+      "capabilities": [
+        "C34"
+      ],
+      "control": true,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "optionRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "deviceId",
+          "optionRef"
+        ]
+      }
+    },
+    {
+      "name": "operation_cancel",
+      "description": "取消未发出的操作，已发出的操作请求停止",
+      "capabilities": [
+        "C42"
+      ],
+      "control": false,
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": [
+          "operationId"
+        ]
+      }
+    }
+  ]
+}

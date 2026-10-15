@@ -351,6 +351,9 @@ struct ConversationView: View {
                 Text(error).foregroundStyle(.orange).font(.subheadline)
                 Button("编辑后重试") { prepareRetry(run) }
             }
+            ForEach(Array((run.hardwareOperations ?? []).enumerated()), id: \.offset) { item in
+                HardwareOperationCard(operation: item.element)
+            }
             ForEach(run.captures ?? []) { capture in
                 VStack(alignment: .leading, spacing: 8) {
                     Label(store.camera(capture.cameraId)?.name ?? capture.cameraId, systemImage: "video")

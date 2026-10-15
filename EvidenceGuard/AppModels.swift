@@ -115,6 +115,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var id: String; var conversationId: String; var skillId: String?; var message: String; var status: String; var createdAt: Double
     var text: String?; var error: String?; var draft: VisualSkill?; var toolReceipts: [ToolReceipt]
     var captures: [CameraCapture]?
+    var hardwareOperations: [HardwareValue]?
     var executionMode: String?
     var videos: [VideoHit]?
     var cameraId: String?

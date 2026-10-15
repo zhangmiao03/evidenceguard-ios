@@ -23,6 +23,7 @@ private struct ProductRootView: View {
         .tint(Brand.blue)
         .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
                                         active: scenePhase == .active) { await store.refresh() } }
+        .background { HardwareExecutorWorker(connection: store.officialSDK, client: store.client, active: scenePhase == .active) }
         .sheet(item: $store.editor, onDismiss: { store.editorRegionCameraID = nil }) { skill in CreateSkillView(skill: skill, initialRegionCameraID: store.editorRegionCameraID).environmentObject(store) }
         .alert("操作未完成", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) { Button("知道了") { store.errorMessage = nil } } message: { Text(store.errorMessage ?? "") }
         .overlay(alignment: .top) {

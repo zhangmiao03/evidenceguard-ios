@@ -42,17 +42,24 @@ class ToolRegistry:
         self._tools[name]=tool; self._specs[name]=(schema,description)
     async def call(self,tool_name,**arguments):
         if tool_name not in self._tools: raise ValueError('工具未授权：'+tool_name)
-        args=self._specs[tool_name][0].model_validate(arguments)
+        schema=self._specs[tool_name][0]
+        if isinstance(schema,dict):
+            from ..hardware_tools.vendor.camera_tools.catalog import check, ToolError
+            try: check(schema,arguments)
+            except ToolError as error: raise ValueError(error.message) from error
+            return await self._tools[tool_name](**arguments)
+        args=schema.model_validate(arguments)
         return await self._tools[tool_name](**args.model_dump())
+    def register_json(self,name,tool,schema,description): self.register(name,tool,schema,description)
     @property
     def names(self): return sorted(self._tools)
     @property
     def schemas(self):
-        return [dict(type='function',function=dict(name=n,description=d,parameters=s.model_json_schema())) for n,(s,d) in self._specs.items()]
+        return [dict(type='function',function=dict(name=n,description=d,parameters=s if isinstance(s,dict) else s.model_json_schema())) for n,(s,d) in self._specs.items()]
 
-def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,execution_mode='live',video_service=None,history_scope=None,progress=None):
+def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,execution_mode='live',video_service=None,history_scope=None,progress=None,run=None):
     registry=ToolRegistry(); registry.camera_service=camera_service
-    registry.for_context=lambda sid,cid,mode='live',scope=None,notify=None: build_tools(store,cameras,camera_service,sid,cid,mode,video_service,scope,notify)
+    registry.for_context=lambda sid,cid,mode='live',scope=None,notify=None,run=None: build_tools(store,cameras,camera_service,sid,cid,mode,video_service,scope,notify,run)
     def resolve(requested=None):
         if skill_id and requested and requested != skill_id:
             raise ValueError('当前对话绑定另一项 Skill，请从对应任务进入对话')
@@ -187,6 +194,9 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
     registry.register('read_stored_image',read_stored_image,StoredImage,'读取 search_evidence 返回的某张已保存图片；图片属于过去，不代表当前现场。')
     if video_service:
         registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后配置的视觉模型观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
+    from ..hardware_tools.gateway import HardwareGateway
+    if execution_mode=='live' and isinstance(getattr(cameras,'hardware',None), HardwareGateway):
+        cameras.hardware.attach_tools(registry,skill_id,camera_id,run)
     if execution_mode=='history':
         allowed={'search_evidence','read_stored_image','search_recordings','list_camera_events'}
         registry._tools={k:v for k,v in registry._tools.items() if k in allowed}

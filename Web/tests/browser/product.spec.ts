@@ -64,6 +64,7 @@ async function setup(
     proactive?: boolean;
     replay?: boolean;
     sendGate?: Promise<void>;
+    restoreGate?: Promise<void>;
   } = {},
 ) {
   const state = {
@@ -163,6 +164,8 @@ async function setup(
       };
     else if (path === "/api/devices") json = [camera];
     else if (path === "/api/captures") json = [];
+    else if (path === "/api/hardware/snapshot") json = { devices: [], operations: [], tools: [] };
+    else if (path === "/api/sdk/events") json = { events: [], truncated: false, continuousCoverage: false };
     else if (path === "/api/personal/preferences") {
       if (state.failPreferences) {
         state.failPreferences = false;
@@ -191,9 +194,10 @@ async function setup(
         read: true,
       };
       json = state.personal;
-    } else if (path === "/api/agent/conversations/main")
+    } else if (path === "/api/agent/conversations/main") {
+      await options.restoreGate;
       json = state.conversations[0];
-    else if (path === "/api/agent/conversations" && method === "GET")
+    } else if (path === "/api/agent/conversations" && method === "GET")
       json = state.conversations;
     else if (path === "/api/agent/conversations") {
       json = { ...main, id: "topic-test", kind: "topic", title: "新对话" };
@@ -418,6 +422,19 @@ test("reminder edits survive refresh, navigation, failure and explicit retry", a
   });
   await nav(page, "任务");
   await expect(page.getByRole("heading", { name: "每天 21:00" })).toBeVisible();
+});
+
+test("assistant waits for conversation restoration before accepting input", async ({ page }) => {
+  let restore!: () => void;
+  const restoreGate = new Promise<void>((resolve) => { restore = resolve; });
+  await setup(page, { restoreGate });
+  const input = page.getByPlaceholder("告诉我，你想看什么…");
+  await expect(input).toBeDisabled();
+  restore();
+  await expect(input).toBeEnabled();
+  await input.fill("恢复后的输入必须保留");
+  await expect(page.getByRole("button", { name: "发送问题" })).toBeEnabled();
+  await expect(input).toHaveValue("恢复后的输入必须保留");
 });
 
 test("assistant sends without a device and reuses the failed request identity", async ({

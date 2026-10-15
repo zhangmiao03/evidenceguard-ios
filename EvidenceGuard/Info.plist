@@ -22,6 +22,8 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>EGServiceBaseURL</key>
 	<string>$(EG_SERVICE_BASE_URL)</string>
+	<key>EGSDKArtifactHash</key>
+	<string>$(EG_SDK_ARTIFACT_HASH)</string>
 	<key>EGInternalDemo</key>
 	<string>$(EG_INTERNAL_DEMO)</string>
 	<key>EGDemoAccessToken</key>

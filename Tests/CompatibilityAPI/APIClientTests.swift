@@ -55,6 +55,25 @@ final class APIClientTests: XCTestCase {
     private func client() -> APIClient {
         APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)))
     }
+
+    func testHardwareEnvelopeUsesBoundExecutorAndKeepsJSONTypes() async throws {
+        let requests = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            requests.append(item.request)
+            item.reply(#"{"command":"execute","operation":{"id":"op-test","simulated":false,"arguments":{"value":true,"expectedSettingsRevision":3},"nullable":null}}"#)
+        }
+        let session = HardwareExecutorSession(id: "executor-test", token: "synthetic-executor-token", deviceID: "sdk-test")
+        let response = try await client().hardware("executors/executor-test/claim", body: .object([:]), executor: session)
+        XCTAssertEqual(response["command"], .string("execute"))
+        XCTAssertEqual(response["operation"]["arguments"]["value"], .bool(true))
+        XCTAssertEqual(response["operation"]["arguments"]["expectedSettingsRevision"], .number(3))
+        XCTAssertEqual(response["operation"]["nullable"], .null)
+        XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Executor-Token"), "synthetic-executor-token")
+        XCTAssertEqual(requests.all.first?.httpMethod, "POST")
+        XCTAssertEqual(try HardwareValue.parse(response.json), response)
+        XCTAssertEqual(IOSToolExecutor.deviceID("T8171TESTTOOLS1"), "sdk-e41d9c3701a5f085f9ea")
+    }
     override func tearDown() {
         transports.forEach { $0.invalidateAndCancel() }
         transports.removeAll()

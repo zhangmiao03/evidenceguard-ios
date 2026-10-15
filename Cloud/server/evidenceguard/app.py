@@ -39,6 +39,8 @@ from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
 from .push import PushService, DeviceRegistration, Presence
 from .ops import install_ops
+from .hardware_tools.gateway import HardwareGateway
+from .hardware_tools.routes import install_hardware_routes
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -52,6 +54,7 @@ class LifecycleRequest(BaseModel):
     action: Literal['pause','resume','stop']
     switchFrom: dict[str,str] = Field(default_factory=dict)
 class AgentRequest(BaseModel):
+    clientPlatform: Literal['ios','web'] | None = None
     message: str = Field(min_length=1,max_length=2000)
     conversationId: str = Field(min_length=1,max_length=100)
     requestId: str = Field(min_length=1,max_length=100)
@@ -107,6 +110,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     replay_worker.visual_budget=visual_review
     ingest=SDKIngest(store,visual_review,personal)
     camera.sdk_ingest=ingest
+    hardware=HardwareGateway(store,camera,captures,database.with_name(database.stem+'-hardware.sqlite3'))
+    camera.hardware=hardware
     proactive.ingest=ingest
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
@@ -138,6 +143,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await videos.shutdown()
             await scheduler.shutdown()
             await camera.live.shutdown()
+            await hardware.close()
             if getattr(store, 'ops', None): await asyncio.to_thread(store.ops.close)
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
@@ -146,6 +152,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     for model in (agent.model_provider, videos.vision, getattr(videos, 'embedding', None)):
         if model is not None: model.ops = store.ops
     install_live_routes(app, camera, captures)
+    install_hardware_routes(app, hardware)
+    app.state.hardware=hardware
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
     app.state.replay_worker=replay_worker
@@ -451,7 +459,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             reply=next((m for m in proactive.messages(client) if m['id']==body.replyToMessageId),None) if client else None
             if not reply or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
-        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId)
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform)
         if client: value['clientId']=client; store.save_run(value)
         return value
     @app.get('/api/agent/conversations')

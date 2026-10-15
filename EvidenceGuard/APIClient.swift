@@ -52,7 +52,9 @@ struct APIClient {
     var baseURL: URL
     private let transport: URLSession
     private let observations: OpsDelivery
-    var accessToken: String { ServiceAccess.token(for: baseURL) }
+    private var pinnedAccessToken: String?
+    var accessToken: String { pinnedAccessToken ?? ServiceAccess.token(for: baseURL) }
+    func scoped() -> APIClient { var copy = self; copy.pinnedAccessToken = accessToken; return copy }
     init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
         self.baseURL = baseURL; self.transport = transport; self.observations = observations
     }
@@ -149,7 +151,7 @@ struct APIClient {
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
     func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String? }
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios" }
         return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
@@ -200,7 +202,10 @@ struct APIClient {
         try await send("/api/devices/\(deviceID)/capture", body:[String:String]())
     }
     func agentRun(_ id: String) async throws -> AgentRun { try await get("/api/runs/\(id)") }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil) async throws -> T {
+    func hardware(_ path: String, body: HardwareValue? = nil, executor: HardwareExecutorSession? = nil) async throws -> HardwareValue {
+        try await send("/api/hardware/" + path, method: body == nil ? "GET" : "POST", body: body, executor: executor)
+    }
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
         let trace = traceID ?? mediaSession?.traceId ?? UUID().uuidString
@@ -216,6 +221,7 @@ struct APIClient {
             }
         }
         if let mediaSession { req.setValue(mediaSession.token, forHTTPHeaderField: "X-EG-Media-Session") }
+        if let executor { req.setValue(executor.token, forHTTPHeaderField: "X-EG-Executor-Token") }
         if push {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
