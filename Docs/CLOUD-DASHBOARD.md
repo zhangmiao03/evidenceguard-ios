@@ -65,7 +65,7 @@ Agent 不一定调用工具；缺失回执不等于成功。Trace 展示执行�
 | 环境 | 原服务 / 内部端口 | 业务源码 | Python 环境 |
 | --- | --- | --- | --- |
 | team | evidenceguard / 8790 | /opt/evidenceguard/Cloud/server | /opt/evidenceguard/venv |
-| demo | evidenceguard-demo / 8792 | /opt/evidenceguard-demo/Cloud/server | /opt/evidenceguard-demo/venv-build10 |
+| demo | evidenceguard-demo / 8792 | /opt/evidenceguard-demo/releases/codex-20261015/Cloud/server | /opt/evidenceguard-demo/venv-build10 |
 | review | evidenceguard-review / 8791 | 同 team | 同 team |
 
 原服务增加 `40-dashboard-observer.conf` systemd drop-in，入口改为加载原应用的 `eg_dashboard.bootstrap:app`，保留原工作目录、venv、端口、环境文件、业务权限和沙箱。追踪写入各自 `/var/lib/<服务>/observability.sqlite3`。新版使用已有 `evidenceguard.ops`；旧版用打包时复制的同一实现作为兼容库，不维护两份 recorder 源码。
@@ -127,3 +127,5 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 公网无登录 GET/HEAD `/dashboard` 200；写入 405；非法环境 422；不存在的管理路由 404。三套快照均连接、未过期、启动指纹与当前磁盘一致。三套原 HTTPS `/api/health` 200、未授权 `/api/bootstrap` 401。可重复执行 `python Cloud/dashboard/verify_public.py`，不调用模型。
 - 仓库差异：demo 21 个 Python 文件；team/review 各 34 个，详情见页面。这里的“进程与启动指纹一致”与“仓库代码一致”是两个独立判断。
 - 浏览器检查了实际页面、环境切换、模型→提示词关联、持续自动刷新、390px 移动布局；页面无横向溢出。实际导出的 75 条记录 JSON 通过后端 schema 校验并包含服务器采样信息。
+
+2026-10-15 Codex 接入补充：手机保留观察器入口，但执行器已改为官方 Codex App Server。业务事件新增 executor_started / executor_usage / executor_completed；旧 Python HTTP 包装器不覆盖 Codex 子进程的请求，不能把缺失的 HTTP 明细补造成成功或失败。真实执行以运行契约及执行事件为准。当前路径和验证见 [CODEX-CLOUD.md](CODEX-CLOUD.md)。

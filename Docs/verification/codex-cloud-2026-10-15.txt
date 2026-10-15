@@ -1,0 +1,41 @@
+2026-10-15 官方 Codex 云端上线验证
+
+结果：新加坡手机服务 evidenceguard-demo 已运行官方 Codex App Server 0.162.1。
+模型：doubao-seed-2-1-lite-260915；视觉与 embedding 原配置保留。
+执行器：codex-app-server-v1；不是切换为 OpenAI 模型。
+
+部署：
+- 从实际 tools-6336a97c95c4bc5a 发布复制新目录 /opt/evidenceguard-demo/releases/codex-20261015/Cloud/server。
+- 四个替换/新增文件来自 b4b2c16，哈希与本地一致；其余当前源码保留。
+- 新增 60-codex-runtime.conf，保持 eg_dashboard.bootstrap 入口和所有已有沙箱配置。
+- 备份 /root/evidenceguard-backups/codex-harness-20261015-final，包括一致性 SQLite、原配置和文件清单。
+- 初期探针误判 /api/health 的字段、接续文档过时的运行路径，均已回滚；最终以实际 ExecStart、鉴权 bootstrap 和真实对话确认上线。健康接口无论是否鉴权都只返回 status，不能用它检查模型。
+- 当前 MainPID=72542，验证时 NRestarts=0；运行目录每轮结束后清空。
+- 仅增加三个 Codex 配置项；原密钥、模型、APNs、连接器、媒体和用户数据保留。
+
+线上验证（专用随机安装身份，未登记推送设备）：
+- “你是谁？” → “我是 anker，你的安防小助手。”，不查设备。
+- 摄像头数量及任务数量 → list_tasks + list_camera_capabilities，成功回执。
+- 无摄像头后普通计算 → “21。”，不查设备。
+- 三轮均 completed，执行契约为 codex-app-server-v1，均有 executor_completed 事件。
+- demo/team/review HTTPS 健康、各自授权200、匿名401、交叉令牌401。
+- team/review PID、源码、配置哈希保持；仍使用原 bounded 执行器。
+- Dashboard 接口在线，SQLite quick_check=ok，部署文件哈希通过。
+
+隔离验证：
+- 正式服务账号、相同只读系统权限，关闭 workers/APNs。
+- 真实豆包六轮：身份、家庭事实与提醒偏好、保存记忆后新会话回忆、多工具、无设备普通问答、另一安装身份不读取前一用户记忆。
+- 只读主动评估通过；分值和来源由宿主严格核验。网关结构化输出存在格式差异，适配器只接受可安全解析的完整对象，不填补字段或执行代码。
+- 合成红图通过动态工具回传和豆包识图。这不是实际摄像头验证。
+
+代码整合：
+- 将 origin/dongrunze 7d9d360 的硬件工具与 Dashboard 合入 feat/anker-assistant，提交 b4b2c16；PR #4 仍为草稿，未合入 main。
+- 后端280项、Dashboard5项、Swift7组契约、Web11项及生产构建通过。
+- iOS Simulator 最终构建通过；HardwareValue 移入公共数据模型，保持独立契约检查可编译。
+- 449文件分享检查通过；测试用凭证形状改为运行时生成的纯假数据，不提交真实凭证。
+
+边界：
+- 未上传或分发 TestFlight；SDK 闪退修复仍待后续客户端分发和真机确认。
+- 未进行摄像头取流、硬件控制或向用户发送测试通知。
+- 本次测试不证明锁屏后的摄像头采集、身份识别、Gmail/飞书授权或完整 APNs 实地链路已经验收。
+- 无新增 EC2、成员访问或外部端口。单进程调度限制保留在现有800MiB预算内。

@@ -1,5 +1,7 @@
 # EvidenceGuard 服务器与访问
 
+2026-10-15 最新状态：手机 `evidenceguard-demo` 已启用官方 **Codex App Server 0.162.1**，使用原豆包模型。实际业务目录为 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`，由 `60-codex-runtime.conf` 指定；入口继续为 `eg_dashboard.bootstrap:app`，保留现有 Dashboard。该发布从当时实际运行的 `tools-6336a97c95c4bc5a` 复制，更新 `b4b2c16` 的 harness/runtime.py、harness/contract.py、harness/codex.py、assistant_identity.py 四个文件，保留同事硬件确认和操作回执。**不要再把 `/opt/evidenceguard-demo/Cloud/server` 当作当前运行目录；后续先核对 systemd ExecStart。** 线上三轮对话的 Codex 执行回执、三环境 HTTPS/令牌隔离、库完整性和源码哈希均通过。未分发新 App。详见 [执行器说明](CODEX-CLOUD.md) 和 [上线验证](verification/codex-cloud-2026-10-15.txt)。
+
 2026-10-14：手机、团队联调和 Apple 审核服务已迁入新加坡。三套服务保留原来的独立账号、数据库、录像和访问令牌，每套只有一个应用进程。美国实例 `i-06744490347d73778` 已删除，AWS 已确认 `terminated`。旧地址不再提供服务，手机须在 TestFlight 更新到 `1.0 (5)`。
 
 2026-10-15：仅手机 `evidenceguard-demo` 更新至应用代码 `904c5c8`，使用独立 `venv-build10`。上线前在关闭所有 worker 的备份库上验证迁移，正式切换前保存一致性数据库、源码和配置；首次运行权限检查失败已自动回滚，修复运行目录权限后重新上线。现在线上健康、模型就绪、数据库完整性和跨服务令牌隔离通过，进程无重启。Doubao 模型、Embedding 维数、APNs 和已有数据保持；新增独立连接器加密密钥用于手机信息快照，Gmail/飞书 OAuth 尚未配置。团队与 Apple 审核代码及数据未改。
@@ -24,7 +26,7 @@
 | 团队联调 | `https://team.47.131.21.137.sslip.io` | `evidenceguard` / `/var/lib/evidenceguard` |
 | Apple 审核 | `https://review.47.131.21.137.sslip.io` | `evidenceguard-review` / `/var/lib/evidenceguard-review` |
 
-手机源码在 `/opt/evidenceguard-demo/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
+手机当前源码在 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
 
 三个 HTTPS 入口使用受信任证书，每六小时检查续期；三个证书的续期演练均已成功。地址依赖当前 Elastic IP，不能释放或更换它后仍期望旧地址有效。换笔记本 Wi-Fi 不会改变服务器地址。
 
