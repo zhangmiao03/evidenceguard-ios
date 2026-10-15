@@ -2,7 +2,9 @@ from __future__ import annotations
 import asyncio, base64, json, os, time, uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from contextlib import asynccontextmanager
 from .providers import OpenAICompatibleProvider, ProviderError
+from .codex import CodexTurn, EXECUTOR as CODEX_EXECUTOR
 from .scheduler import TaskScheduler, TaskEnvelope
 from ..history import HistoryFilter, resolve_filter
 from ..camera.sources import official_mode
@@ -44,6 +46,13 @@ class AgentRuntime:
     def __init__(self,store,tools,provider=None,cameras=None,scheduler=None):
         self.store,self.tools=store,tools
         self.model_provider=provider or OpenAICompatibleProvider()
+        self.executor=os.getenv('EG_AGENT_EXECUTOR','bounded-chat-v1')
+        if self.executor not in {'bounded-chat-v1',CODEX_EXECUTOR}:
+            raise ValueError('未知 Agent 执行器')
+        if self.executor==CODEX_EXECUTOR: self.mode='official Codex App Server · durable runs'
+        # The existing mobile unit has an 800 MiB ceiling; serialize official
+        # runtimes rather than competing with video/observation workers for RAM.
+        self.codex_gate=asyncio.Semaphore(1)
         self.cameras=cameras
         self.push=None
         self.memory=None
@@ -56,7 +65,19 @@ class AgentRuntime:
     @property
     def provider(self): return self.model_provider.name
     @property
-    def ready(self): return self.model_provider.ready
+    def ready(self):
+        return self.model_provider.ready and (self.executor!=CODEX_EXECUTOR or
+            bool(os.path.isfile(os.getenv('EG_CODEX_BINARY','')) and os.getenv('EG_CODEX_RUNTIME_DIR')))
+    @asynccontextmanager
+    async def turn_provider(self,run):
+        if run['executionContract']['executor']==CODEX_EXECUTOR:
+            from ..proactive import Decision
+            async with self.codex_gate, CodexTurn(self.model_provider,
+                output_schema=Decision.model_json_schema() if run.get('executionMode')=='proactive' else None,
+                event=lambda kind,value:self.store.event(run['id'],kind,value)) as turn:
+                yield turn
+        else:
+            yield self.model_provider
     def start(self,text,conversation_id,skill_id=None,request_id=None,camera_id=None,execution_mode='live',history_filter=None,personal_context=None,reply_to=None,client_id=None,connector_access=False):
         if execution_mode not in {'live','history'}: raise ValueError('未知任务方式')
         if history_filter is not None:
@@ -83,7 +104,7 @@ class AgentRuntime:
         run['clientId']=client_id
         run['connectorAccess']=bool(connector_access and client_id)
         if run['connectorAccess'] and self.connectors: scoped=self.connectors.tools(scoped,client_id)
-        contract = ExecutionContract(execution_mode, tuple(scoped.names), selected_camera, skill_id)
+        contract = ExecutionContract(execution_mode, tuple(scoped.names), selected_camera, skill_id,executor=self.executor)
         run['executionContract'] = contract.public()
         run['personalContext'] = personal_context
         run['replyToMessageId'] = reply_to
@@ -125,7 +146,7 @@ class AgentRuntime:
             return await visual.review(source.get('cameraId','unknown'),source.get('episodeId',source_id),
                                        [(url.rsplit('/',1)[1],source.get('observedAt'))])
         registry.register('read_observation_image',read_image,ImageRequest,'核验本轮来源中已经保存的摄像头图片，不请求新画面。返回视觉模型的文字核验回执，不直接返回原图；只有 status=completed 才能引用 review 中的可见事实，不支持或核验失败时明确说明。')
-        contract = ExecutionContract('proactive', tuple(registry.names), None, None, max_steps=4)
+        contract = ExecutionContract('proactive', tuple(registry.names), None, None, executor=self.executor,max_steps=4)
         run = dict(id=run_id, conversationId='background:'+run_id, skillId=None, message='',
                    initiator='agent', clientId=source_context['clientId'], executionMode='proactive', status='queued', createdAt=time.time(),
                    text=None, error=None, draft=None, toolReceipts=[], executionContract=contract.public(),sourceContext=source_context)
@@ -140,10 +161,10 @@ class AgentRuntime:
             read = False
             try:
                 if not self.ready: raise ProviderError('主动助手模型暂未就绪')
-                async with asyncio.timeout(120):
+                async with asyncio.timeout(120), self.turn_provider(run) as turn:
                     for step in range(contract.max_steps):
                         self.store.event(run_id,'model_started',{'step':step+1})
-                        answer = await self.model_provider.complete(messages, registry.schemas)
+                        answer = await turn.complete(messages, registry.schemas)
                         calls = answer.get('tool_calls') or []
                         messages.append({k:v for k,v in answer.items() if k in {'role','content','tool_calls','reasoning_content'}})
                         if not calls:
@@ -239,10 +260,10 @@ class AgentRuntime:
                 messages.append(dict(role='system',content=CHAT_GUIDANCE+'\n本轮表达要求：单独的问候只回一句自然问候，例如“嗨，我在。”，不要介绍功能或举例。只问名字或身份时仅回答名字或身份，不查设备、不追加设备状态或连接指引。必要的能力限制用一句话说清，不展开与本轮问题无关的回放、采样和验收清单，不重复邀请用户提出需求。'))
                 content=[dict(type='text',text=run['message'])]
                 messages.append(dict(role='user',content=content if len(content)>1 else run['message']))
-                async with asyncio.timeout(390 if run.get('executionMode')=='history' else 150):
+                async with asyncio.timeout(390 if run.get('executionMode')=='history' else 150), self.turn_provider(run) as turn:
                     for step in range(contract.max_steps):
                         self.store.event(run['id'],'model_started',{'step':step+1})
-                        answer=await self.model_provider.complete(messages,active_tools.schemas)
+                        answer=await turn.complete(messages,active_tools.schemas)
                         calls=answer.get('tool_calls') or []
                         messages.append({k:v for k,v in answer.items() if k in {'role','content','tool_calls','reasoning_content'}})
                         if not calls:
