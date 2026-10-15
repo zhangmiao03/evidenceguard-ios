@@ -118,3 +118,12 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 真实 demo Trace：`dashboard-smoke-70fe44dac2014861b65b2404fed2dad1`；team Trace：`dashboard-smoke-686bc87a5cdd481592ba9386b18b3606`。均 completed，各 2 次 `doubao-seed-2-1-lite-260915` HTTP 200、2 份提示词、2 次 Usage、27 条关联记录；工具为 `list_camera_capabilities` 和 `list_tasks`，可在页面搜索。
 - 真实测试仅创建标记测试会话，没有取图、云台、声音、通知或其他硬件动作。`smoke_live.py` 使用真实模型额度，只供显式一次验证，不能循环当健康检查。
 - 本轮未运行 iOS Simulator 或真机 SDK；摄像头协议回归不能代替实际播放、双向音频和弱网验收。Mac 交接见 [IOS-MAC-VERIFICATION.md](IOS-MAC-VERIFICATION.md)。
+
+## 最终部署回执
+
+- 活跃 release：`/opt/evidenceguard-dashboard/releases/f212ce8abc27d477`；发布包 SHA-256：`f212ce8abc27d4774f2dd62944b905a7da7728109ce9eb3c2d34a54edd0ff738`。源码实现提交 `a7ef5bf`。
+- 对应回滚目录：`/var/backups/evidenceguard-dashboard/20261015T005440494935Z`。
+- 最终版本再次完成真实模型循环：demo `dashboard-smoke-cf262c67dfcf4bac9cd49a9712114acd`，team `dashboard-smoke-78d17025a8d9479583456ad8a0974ec1`。每轮都是 2 次模型 HTTP 200、2 个只读工具、2 份提示词/Usage、27 条关联记录。
+- 公网无登录 GET/HEAD `/dashboard` 200；写入 405；非法环境 422；不存在的管理路由 404。三套快照均连接、未过期、启动指纹与当前磁盘一致。三套原 HTTPS `/api/health` 200、未授权 `/api/bootstrap` 401。可重复执行 `python Cloud/dashboard/verify_public.py`，不调用模型。
+- 仓库差异：demo 21 个 Python 文件；team/review 各 34 个，详情见页面。这里的“进程与启动指纹一致”与“仓库代码一致”是两个独立判断。
+- 浏览器检查了实际页面、环境切换、模型→提示词关联、持续自动刷新、390px 移动布局；页面无横向溢出。实际导出的 75 条记录 JSON 通过后端 schema 校验并包含服务器采样信息。
