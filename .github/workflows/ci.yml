@@ -11,6 +11,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python scripts/check_repository.py
+      - run: python scripts/check_sdk_host.py
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: python -m pip install -r Cloud/server/requirements.txt
       - run: python -m pytest -q

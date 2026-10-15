@@ -107,6 +107,7 @@ enum SDKCredentialVault {
     @Published private(set) var officialDemoController: UIViewController?
     @Published private(set) var switchingWorkspace = false
     @Published private(set) var workspaceMessage = ""
+    @Published var workspaceError: String?
     weak var liveController: LiveCameraController?
     @Published private(set) var checking = false
     @Published private(set) var message = "等待主办方发放账号与 Token"
@@ -306,6 +307,14 @@ enum SDKCredentialVault {
     }
     func enterOfficialWorkspace() async {
         guard canDiscover, officialDemoController == nil, !switchingWorkspace else { return }
+        // Compose 1.7.1 checks the host plist asynchronously and aborts on a
+        // missing flag. Check before stopping the current camera/session;
+        // Swift error handling cannot catch that Kotlin background failure.
+        guard (Bundle.main.object(forInfoDictionaryKey: "CADisableMinimumFrameDurationOnPhone") as? NSNumber)?.boolValue == true else {
+            workspaceError = "当前版本无法打开官方设备页面，请更新到修复版本后重试。其他页面仍可使用。"
+            return
+        }
+        workspaceError = nil
         switchingWorkspace = true
         workspaceMessage = "正在停止本项目直播与取帧…"
         await liveController?.stopForWorkspaceSwitch()

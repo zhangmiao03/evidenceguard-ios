@@ -2,6 +2,11 @@
 
 日期：2026-10-14。分支：`dongrunze`。
 
+2026-10-15 补充：build 10 的宿主缺少 Compose 1.7.1 必需的
+`CADisableMinimumFrameDurationOnPhone = true`，会在首次打开官方页面时触发异步致命检查。
+源码已修正，并增加进入前检查、CI 与归档/导出检查；尚未分发修复版。
+详见 [本次定位与验证](verification/sdk-switch-2026-10-15.txt)。下方早期验证记录不代表该问题已通过真机验收。
+
 ## 目的与实现
 
 团队可以在同一个 iOS App 或 Web 工作台中，快速切换到赛事交付的原版 Demo，先确认账号、硬件和 SDK 能力，再回到 EvidenceGuard 检查业务链路。

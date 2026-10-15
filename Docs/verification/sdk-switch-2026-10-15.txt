@@ -1,0 +1,43 @@
+官方 SDK 页面启动修复 · 2026-10-15
+
+用户报告：1.0 (10) 点击顶部“切换官方 SDK”后立即闪退，未进入登录页。
+
+已确认的缺陷
+- build 10 的实际归档 App Info.plist 缺少 CADisableMinimumFrameDurationOnPhone。
+- 官方 iOS Demo 的宿主 Info.plist 包含该键，类型为 boolean true。
+- SDK 配置及本机依赖为 Compose Multiplatform UI 1.7.1；归档 SampleCore 二进制包含相应 PlistSanityCheck 报错文本。
+- 发布方的 ui-1.7.1-sources.jar 中，ComposeUIViewControllerConfiguration 默认 enforceStrictPlistSanityCheck = true。
+  PlistSanityCheck.performIfNeeded 在全局队列读取主 Bundle；该 NSNumber 不为 true 时调用 Kotlin error(message)，导致进程终止。
+  来源：https://repo.maven.apache.org/maven2/org/jetbrains/compose/ui/ui/1.7.1/ui-1.7.1-sources.jar
+  文件：uikitMain/androidx/compose/ui/uikit/PlistSanityCheck.uikit.kt、ComposeUIViewControllerConfiguration.uikit.kt。
+- 这条代码路径与用户现象吻合；尚未取得该手机的崩溃堆栈，不能排除后续页面存在其他独立问题。
+
+修正
+- 补齐宿主 Info.plist 的 boolean true，保持官方 Compose 严格检查开启，不换 SDK 或模型。
+- 进入官方页面之前检查配置；错误时保留当前会话并显示更新提示，不先停流或断开账号。
+- 弹窗期间保留待处理推送路由，关闭后再处理。
+- scripts/check_sdk_host.py 在 CI、移动端检查、归档前后与导出前校验；只报告键名，不输出带凭证的 plist。
+
+已执行验证
+- 官方 Demo plist 和修正后的源码检查通过。
+- build 10 原归档被检查器拒绝；通过实际 export_ios.py validate --execute 入口确认在调用 Xcode/签名/上传前拒绝。
+- 七项现有 Swift 契约检查通过，包含官方工作区期间保留推送导航。
+- Python 编译及 git diff --check 通过。
+- EvidenceGuardSDK / Debug / generic iOS / arm64 本地构建成功（CODE_SIGNING_ALLOWED=NO）。
+- 生成 App 的 Info.plist 检查通过；包含真实 arm64 SampleCore，散列与本地官方 podDebugFramework 一致。
+- 本次 Swift 编译有既有 Sendable 桥接警告及无 AppIntents 元数据警告，没有构建错误。
+
+验收边界
+- xcrun devicectl 未发现连接手机；本机未找到 EvidenceGuard 崩溃报告。
+- Simulator 的官方入口只打开说明页，不加载 arm64 Compose，不能代替真机官方页面验收。
+- 待修复版本获准分发/安装后：冷启动进入官方登录页、返回、重复进入；有账号与硬件时再验证登录、直播期间切换和清理。
+- 本轮没有上传、分发或部署 AWS；手机仍为 build 10。原 build 10 归档保持不变。
+
+人物身份能力核查
+- 当前 SDK 桥接将 HUMAN 和 FACE 检测统一映射为 human；返回类型没有家庭成员标识或身份置信结果。
+- 检查过的官方 Demo 没有发现熟人登记/身份查询接口。该结论仅限目前资料和接入，不能推断硬件永远不支持。
+- 因而“检测到人脸”不等于“认出房主”。现阶段提醒应描述有人，不称陌生人、入侵者或主人。
+- 后续需要用户同意的家庭成员登记，以及可核验的专用识别结果；结果至少保留已匹配成员、未匹配、无法判断。
+  若官方 SDK 能提供此结果，优先保留其身份标识和置信信息。若未提供，需另行选型，当前 Doubao 默认与 embedding 不变。
+- 通用视觉模型负责可见行为/场景，不凭衣着猜具体身份；对话记忆与手机在家状态不能证明画面中的人是房主。
+- 家庭成员匹配只用于普通进出提醒偏好，不覆盖火情、跌倒等危险事件规则。

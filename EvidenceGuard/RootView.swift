@@ -133,14 +133,21 @@ private struct SDKWorkspaceContainer<Content: View>: View {
         .onChange(of: push.pending) { _, _ in routePush() }
         .onChange(of: store.editor == nil) { _, _ in routePush() }
         .onChange(of: guide) { _, _ in routePush() }
+        .onChange(of: connection.workspaceError) { _, _ in routePush() }
         .onChange(of: connection.switchingWorkspace) { _, _ in routePush() }
         .onChange(of: connection.officialDemoController == nil) { _, _ in routePush() }
         .sheet(isPresented: $guide) { OfficialWorkspaceGuide(connection: connection) }
+        .alert("暂时无法打开官方页面", isPresented: Binding(
+            get: { connection.workspaceError != nil },
+            set: { if !$0 { connection.workspaceError = nil } }
+        )) {
+            Button("知道了") { connection.workspaceError = nil }
+        } message: { Text(connection.workspaceError ?? "") }
     }
     private func routePush() {
         PushNavigation.consume(&push.pending, selection: &store.selectedTab, paths: &store.tabPaths,
             productVisible: connection.officialDemoController == nil && !connection.switchingWorkspace && !returningToProduct,
-            presentationBlocked: guide || store.editor != nil || scenePhase != .active)
+            presentationBlocked: guide || connection.workspaceError != nil || store.editor != nil || scenePhase != .active)
     }
 }
 

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Prepare a signed SDK archive for manual App Store Connect/TestFlight upload."""
 import argparse
+import plistlib
 from pathlib import Path
 import re
 import shlex
 import subprocess
 from urllib.parse import urlsplit
+from check_sdk_host import validate_sdk_host
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -40,4 +42,17 @@ if not args.execute:
 elif not (root/'EvidenceGuard.xcworkspace').exists() or not (root/'Pods/Manifest.lock').exists():
     parser.error('Restore the official SDK and complete python3 SDK/prepare.py before archiving')
 else:
+    with (root / 'EvidenceGuard/Info.plist').open('rb') as file:
+        try:
+            validate_sdk_host(plistlib.load(file))
+        except ValueError as error:
+            parser.error(str(error))
     subprocess.run(command, cwd=root, check=True)
+    apps = list((args.archive.resolve() / 'Products/Applications').glob('*.app'))
+    if len(apps) != 1:
+        parser.error('Expected exactly one archived app for SDK host validation.')
+    with (apps[0] / 'Info.plist').open('rb') as file:
+        try:
+            validate_sdk_host(plistlib.load(file))
+        except ValueError as error:
+            parser.error(str(error))
