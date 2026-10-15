@@ -26,7 +26,7 @@
 | 团队联调 | `https://team.47.131.21.137.sslip.io` | `evidenceguard` / `/var/lib/evidenceguard` |
 | Apple 审核 | `https://review.47.131.21.137.sslip.io` | `evidenceguard-review` / `/var/lib/evidenceguard-review` |
 
-手机当前源码在 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
+手机当前源码在 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
 
 三个 HTTPS 入口使用受信任证书，每六小时检查续期；三个证书的续期演练均已成功。地址依赖当前 Elastic IP，不能释放或更换它后仍期望旧地址有效。换笔记本 Wi-Fi 不会改变服务器地址。
 
@@ -70,3 +70,5 @@ Apple 审核备注已改为新加坡独立审核地址，保留原审核凭证�
 迁移过程、配置、最终应用备份和 AWS 快照记录保存在当前接续工作区的私有目录，不放入 Git。美国最终备份快照 `snap-0f6a87cd886b7b645` 已完成并保留；当前运行服务均在新加坡。
 
 参考：[AWS Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)、[Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/working-with-eips.html)。
+
+2026-10-15 早晚报告更新：手机服务使用 `70-briefing-runtime.conf` 指向上述 briefings release，保留 `eg_dashboard.bootstrap:app` 和现有 Codex/豆包配置。仅覆盖 8 个后端文件；上线前备份主库、硬件库、观测库及 drop-ins，在线身份与只读报告工具检查通过。配置摘要、其他环境 PID/配置/源码一致；未启用任何新订阅或分发安装包。详见 [早晚报告与验收](BRIEFINGS-AND-ACCEPTANCE.txt)。

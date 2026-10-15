@@ -12,8 +12,9 @@ import time
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .camera.sources import official_mode, registered_device_ids
+from .briefings import normalize_preferences, due_report, LABELS
 
 
 class Preferences(BaseModel):
@@ -21,9 +22,18 @@ class Preferences(BaseModel):
     enabled: bool = False
     dailySummary: bool = False
     summaryHour: int = Field(default=18, ge=0, le=23)
+    morningReport: bool = False
+    eveningReport: bool = False
+    morningHour: int = Field(default=8, ge=0, le=23)
+    eveningHour: int = Field(default=20, ge=0, le=23)
     quietStart: int = Field(default=22, ge=0, le=23)
     quietEnd: int = Field(default=8, ge=0, le=23)
     timezone: str = 'UTC'
+    @model_validator(mode='after')
+    def distinct_reports(self):
+        if self.morningReport and self.eveningReport and self.morningHour == self.eveningHour:
+            raise ValueError('早晚报告请选择不同时间')
+        return self
     @field_validator('timezone')
     @classmethod
     def known_zone(cls, value):
@@ -63,12 +73,27 @@ class PersonalAgent:
     def profile(self, client):
         with self.store.lock:
             row = self.store.db.execute('SELECT payload FROM personal_profiles WHERE id=?', (client,)).fetchone()
-        return json.loads(row[0]) if row else dict(preferences=Preferences().model_dump(), revision=0)
+        profile = json.loads(row[0]) if row else dict(preferences=Preferences().model_dump(), revision=0)
+        profile['preferences'] = normalize_preferences(profile['preferences'])
+        return profile
 
     def preferences(self, client, values: Preferences):
         with self.store.transaction():
             old = self.profile(client)
-            profile = dict(preferences=values.model_dump(), revision=old['revision']+1)
+            incoming = values.model_dump(exclude_unset=True)
+            merged = old['preferences'] | values.model_dump(exclude={'morningReport','eveningReport','morningHour','eveningHour'}) | incoming
+            # Old App builds cannot express two slots. Preserve an existing
+            # morning subscription on unrelated saves; explicit daily-off stops both.
+            if not any(k in incoming for k in ('morningReport','eveningReport','morningHour','eveningHour')):
+                if incoming.get('dailySummary') is False:
+                    merged.update(morningReport=False, eveningReport=False)
+                elif incoming.get('dailySummary') is True and not (merged['morningReport'] or merged['eveningReport']):
+                    merged.update(eveningReport=True, eveningHour=merged['summaryHour'])
+                if 'summaryHour' in incoming and incoming['summaryHour'] != old['preferences']['summaryHour']:
+                    merged['eveningHour' if merged['eveningReport'] else 'morningHour'] = incoming['summaryHour']
+            merged = normalize_preferences(merged)
+            Preferences.model_validate(merged)
+            profile = dict(preferences=merged, revision=old['revision']+1)
             self.store.db.execute('INSERT OR REPLACE INTO personal_profiles VALUES (?,?)', (client, json.dumps(profile)))
         return self.snapshot(client)
 
@@ -135,11 +160,19 @@ class PersonalAgent:
                 ids=registered_device_ids(self.store)
                 skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
             for client, raw in profiles:
-                p = json.loads(raw)['preferences']
+                p = self.profile(client)['preferences']
                 if not p['enabled']: continue
                 local = datetime.fromtimestamp(now, ZoneInfo(p['timezone']))
                 start, end, hour = p['quietStart'], p['quietEnd'], local.hour
                 quiet = (start <= hour < end) if start < end else (hour >= start or hour < end) if start != end else False
+                report = due_report(p, now)
+                if report and (self.engine or not quiet):
+                    dedupe = 'briefing:'+report['timezone']+':'+report['localDate']+':'+report['slot']
+                    dedupe += ':'+hashlib.sha256(json.dumps(report['schedule'],sort_keys=True).encode()).hexdigest()[:12]
+                    if self.engine:
+                        self.engine.enqueue(client, dedupe, 'schedule', LABELS[report['slot']], '按订阅整理已保存记录', now, report=report)
+                    else:
+                        self.emit(client, dedupe, 'schedule', LABELS[report['slot']], '仅汇总已保存记录，不能确认整段时间的现场情况。', now)
                 if quiet: continue  # Evaluate still-current facts when the quiet period ends.
                 for skill in skills:
                     if self.engine and skill['status']=='active' and skill['result']=='unknown':
@@ -156,11 +189,6 @@ class PersonalAgent:
                     self.emit(client,f'event:{event_id}','event','有一项守护需要关注',skill['name']+'：'+skill['resultReason'],now,skill['id'])
                     if now-at >= 300:
                         self.emit(client,f'followup:{event_id}','followup','这件事还需要确认',skill['name']+' 的提醒尚未处理。可以查看证据或请求复核；助手没有替你关闭任务。',now,skill['id'])
-                if p['dailySummary'] and hour >= p['summaryHour']:
-                    active = [s for s in skills if s['status']=='active']
-                    alerts = sum(s.get('alert')=='open' for s in skills)
-                    self.emit(client,'daily:'+local.date().isoformat(),'schedule','今天的守护概况',
-                              f'当前有 {len(active)} 项运行中的守护、{alerts} 项待处理提醒。此概况来自已记录的任务状态，不代表全天现场均已覆盖。',now)
             self.last_error = None
 
     async def run(self):

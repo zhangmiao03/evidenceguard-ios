@@ -50,6 +50,14 @@ struct APIClient {
         fatalError("Timed out waiting for preference save")
     }
     @MainActor static func main() async {
+        let legacy = Data("{\"enabled\":true,\"dailySummary\":true,\"summaryHour\":19,\"quietStart\":22,\"quietEnd\":8,\"timezone\":\"Asia/Shanghai\"}".utf8)
+        let migrated = try! JSONDecoder().decode(PersonalPreferences.self, from: legacy)
+        precondition(migrated.eveningReport && migrated.eveningHour == 19 && !migrated.morningReport)
+        precondition(!migrated.supportsTwoReports)
+        let legacyEncoded = String(data: try! JSONEncoder().encode(migrated), encoding: .utf8)!
+        precondition(!legacyEncoded.contains("morningReport"), "New clients must not send unsupported fields to isolated older services")
+        precondition(try! JSONDecoder().decode(PersonalPreferences.self, from: JSONEncoder().encode(migrated)) == migrated)
+        print("PASS: older preferences retain their single evening slot and round-trip")
         let backend = TestBackend(), store = AppStore(TestBackend())
         store.client.backend = backend
         let settings = ReminderSettings()
@@ -92,5 +100,14 @@ struct APIClient {
         let otherResult = await other.result()
         precondition(otherResult.1.count == 1)
         print("PASS: late responses cannot overwrite another service's preferences")
+
+        settings.update(\.morningReport, to: true)
+        settings.update(\.eveningReport, to: true)
+        settings.update(\.eveningHour, to: 21)
+        await wait { !settings.saving }
+        let reports = await other.result()
+        precondition(reports.0.morningReport && reports.0.eveningReport && reports.0.dailySummary && reports.0.summaryHour == 21)
+        precondition(reports.0.reportScheduleLabel == "早安 08:00 · 晚间 21:00")
+        print("PASS: morning and evening choices persist independently with legacy fields")
     }
 }

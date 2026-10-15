@@ -51,3 +51,7 @@ Linux x86_64 二进制来自官方 npm 包 `@openai/codex@0.162.1-linux-x64`；�
 - 这些结果不等于真实摄像头到锁屏通知的验收。官方硬件/凭证、独立于手机前台的云端采集来源和 APNs 送达仍需分别验证；部署 Codex 不会凭空增加摄像头接入能力。
 
 协议依据：[官方 App Server 文档](https://learn.chatgpt.com/docs/app-server)、[官方配置说明](https://learn.chatgpt.com/docs/config-file/config-reference)。
+
+## 早晚报告与记忆验收（2026-10-15）
+
+手机活跃源码已更新为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`，由 `70-briefing-runtime.conf` 选择，Codex 版本与豆包模型不变。新报告通过同一 Codex 只读评估，事实模板负责证据边界；记忆专用 JSON 请求关闭深度思考并保留持久重试。上线前后检查及公开数据集选题范围见 [验收记录](BRIEFINGS-AND-ACCEPTANCE.txt)。

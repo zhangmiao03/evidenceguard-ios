@@ -56,4 +56,16 @@ final class WorkspaceTests: XCTestCase {
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
+
+    func testMorningAndEveningReportsHaveSeparateControls() {
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["profile.notifications"].tap()
+        XCTAssertTrue(app.switches["notifications.morning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["notifications.evening"].exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "不把没有事件当作家里安全")).firstMatch.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Morning and evening report subscriptions"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
 }

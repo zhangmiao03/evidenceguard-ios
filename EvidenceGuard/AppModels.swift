@@ -290,9 +290,53 @@ struct PersonalPreferences: Codable, Equatable {
     var enabled = false
     var dailySummary = false
     var summaryHour = 18
+    var morningReport = false
+    var eveningReport = false
+    var morningHour = 8
+    var eveningHour = 20
+    var supportsTwoReports = true
     var quietStart = 22
     var quietEnd = 8
     var timezone = TimeZone.current.identifier
+    init() {}
+    private enum CodingKeys: String, CodingKey {
+        case enabled, dailySummary, summaryHour, morningReport, eveningReport, morningHour, eveningHour, quietStart, quietEnd, timezone
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        supportsTwoReports = c.contains(.morningReport) && c.contains(.eveningReport)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        dailySummary = try c.decodeIfPresent(Bool.self, forKey: .dailySummary) ?? false
+        summaryHour = try c.decodeIfPresent(Int.self, forKey: .summaryHour) ?? 18
+        morningReport = try c.decodeIfPresent(Bool.self, forKey: .morningReport) ?? false
+        eveningReport = try c.decodeIfPresent(Bool.self, forKey: .eveningReport) ?? dailySummary
+        morningHour = try c.decodeIfPresent(Int.self, forKey: .morningHour) ?? 8
+        eveningHour = try c.decodeIfPresent(Int.self, forKey: .eveningHour) ?? summaryHour
+        quietStart = try c.decodeIfPresent(Int.self, forKey: .quietStart) ?? 22
+        quietEnd = try c.decodeIfPresent(Int.self, forKey: .quietEnd) ?? 8
+        timezone = try c.decodeIfPresent(String.self, forKey: .timezone) ?? TimeZone.current.identifier
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(dailySummary, forKey: .dailySummary)
+        try c.encode(summaryHour, forKey: .summaryHour)
+        try c.encode(quietStart, forKey: .quietStart)
+        try c.encode(quietEnd, forKey: .quietEnd)
+        try c.encode(timezone, forKey: .timezone)
+        if supportsTwoReports {
+            try c.encode(morningReport, forKey: .morningReport)
+            try c.encode(eveningReport, forKey: .eveningReport)
+            try c.encode(morningHour, forKey: .morningHour)
+            try c.encode(eveningHour, forKey: .eveningHour)
+        }
+    }
+    var reportScheduleLabel: String {
+        var parts: [String] = []
+        if morningReport { parts.append(String(format: "早安 %02d:00", morningHour)) }
+        if eveningReport { parts.append(String(format: "晚间 %02d:00", eveningHour)) }
+        return parts.isEmpty ? "尚未开启" : parts.joined(separator: " · ")
+    }
 }
 struct PersonalMemory: Codable, Identifiable, Equatable {
     var id: String; var content: String; var source: String; var createdAt: Double; var expiresAt: Double?

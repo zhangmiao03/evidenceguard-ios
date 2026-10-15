@@ -16,6 +16,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field
 from .camera.sources import official_mode, registered_device_ids
+from . import briefings
 
 
 class Decision(BaseModel):
@@ -84,12 +85,14 @@ class ProactiveEngine:
             rows = self.store.db.execute('SELECT id,status,payload FROM proactive_jobs WHERE client=? ORDER BY rowid DESC LIMIT 20',(client,)).fetchall()
         return [dict(id=key,status=status,kind=(j:=json.loads(raw))['kind'],reason=j.get('reason','等待检查摄像头观察记录'),createdAt=j['createdAt']) for key,status,raw in rows]
 
-    def enqueue(self, client, dedupe, kind, title, body, now, skill_id=None):
+    def enqueue(self, client, dedupe, kind, title, body, now, skill_id=None, report=None):
         key = 'proactive-'+uuid.uuid4().hex
         job = dict(id=key, client=client, dedupe=dedupe, kind=kind, title=title, body=body,
                    cameraObservationId=dedupe if kind=='camera_observation' else None,
                    skillId=skill_id, createdAt=now, expiresAt=now+86400, attempts=0,
                    cameraEpisodeId=dedupe if kind=='camera_event' else None,reason='等待检查摄像头观察记录',episode=dedupe.split(':')[-1] if kind in {'event','followup'} else None)
+        if report:
+            job.update(report=report, expiresAt=report['expiresAt'])
         with self.store.transaction():
             self.store.db.execute('INSERT OR IGNORE INTO proactive_jobs VALUES (?,?,?,?,?,?)',
                                   (key,client,dedupe,'pending',now,json.dumps(job,ensure_ascii=False)))
@@ -131,6 +134,16 @@ class ProactiveEngine:
         if not p['enabled']: return 'cancelled',None,'用户已关闭主动提醒'
         if now >= job['expiresAt']: return 'expired',None,'触发已过期，未发送旧提醒'
         if job['kind']=='schedule' and not p['dailySummary']: return 'cancelled',None,'每日概况已关闭'
+        if job['kind']=='schedule' and not job.get('report') and job['dedupe'].startswith('daily:'):
+            return 'cancelled',None,'旧版每日概况已由早晚报告计划替代'
+        if job.get('report') and job['report']['schedule'] != briefings.schedule_signature(p):
+            return 'cancelled',None,'早晚报告设置已更改，旧计划不再发送'
+        if job.get('report') and not job.get('parentMessageId'):
+            report = job['report']
+            with self.store.lock:
+                delivered = self.store.db.execute("SELECT 1 FROM assistant_messages WHERE client=? AND job_id!=? AND json_extract(payload,'$.report.localDate')=? AND json_extract(payload,'$.report.slot')=? LIMIT 1",
+                                                   (job['client'],job['id'],report['localDate'],report['slot'])).fetchone()
+            if delivered: return 'cancelled',None,'今天这份报告已经生成，不重复发送'
         kind=job.get('sourceKind',job['kind'])
         if kind=='camera_observation':
             observation=self.watch.observation(job.get('cameraObservationId') or job['dedupe']) if self.watch else None
@@ -175,14 +188,16 @@ class ProactiveEngine:
             if original.get('feedback') in {'handled','dismiss'}: return 'cancelled',None,'用户已处理或不再需要此事件提醒'
             if original.get('feedback')=='snooze': return 'cancelled',None,'后续提醒已交给用户选择的定时复查'
         if self.quiet(p,now): return 'deferred',now+60,'免打扰期间暂存，之后重新核对状态'
+        if job.get('report'): return None  # Explicit subscriptions have their own two-slot dedupe, not the unsolicited quota.
         if not publication: return None
         # Non-urgent assistant messages only: native security alarms are separate.
         day = datetime.fromtimestamp(now,ZoneInfo(p['timezone'])).date()
         if self.merge_target(job,now): return None
         start=datetime.combine(day,datetime.min.time(),ZoneInfo(p['timezone'])).timestamp()
         with self.store.lock:
-            count=self.store.db.execute('SELECT COUNT(*) FROM assistant_messages WHERE client=? AND created_at>=?',(job['client'],start)).fetchone()[0]
+            count=self.store.db.execute("SELECT COUNT(*) FROM assistant_messages WHERE client=? AND created_at>=? AND json_extract(payload,'$.report') IS NULL",(job['client'],start)).fetchone()[0]
         if count>=6: return 'deferred',now+3600,'今天的助手提醒已达频率上限'
+        recent = [m for m in recent if not m.get('report')]
         if recent and now-recent[-1]['createdAt'] < 300: return 'deferred',recent[-1]['createdAt']+300,'两条提醒至少间隔5分钟，稍后重新检查'
         return None
 
@@ -203,6 +218,8 @@ class ProactiveEngine:
         return (job.get('skillId') or job['dedupe'])+':'+('event' if job['kind'] in {'event','followup'} else job['kind'])
 
     def sources(self, job, now):
+        if job.get('report'):
+            return briefings.facts(self.store, job['report'], now)
         if job.get('sourceKind',job['kind'])=='camera_observation' and self.watch:
             return self.watch.sources(job.get('cameraObservationId') or job['dedupe'])
         if job.get('sourceKind',job['kind'])=='demo_event' and self.demo:
@@ -271,6 +288,8 @@ class ProactiveEngine:
             fingerprint = hashlib.sha256(json.dumps(context['personal'],sort_keys=True).encode()).hexdigest()
             job['contextRevision']=profile['revision']
             self.save(job,'running')
+        if job.get('report'):
+            return await self.deliver_report(job, sources, context, fingerprint, now, live_clock)
         try:
             source_fingerprint=hashlib.sha256(json.dumps(sources,sort_keys=True).encode()).hexdigest()
             cached=job.get('assessment')
@@ -329,6 +348,45 @@ class ProactiveEngine:
                 for source in refs:
                     if source['id'].startswith('digest:'):
                         self.store.db.execute("UPDATE proactive_jobs SET status='summarized' WHERE id=? AND client=? AND status='digest'",(source['id'][7:],job['client']))
+        return True
+
+    async def deliver_report(self, job, sources, context, fingerprint, now, live_clock):
+        """A subscribed report survives model failure; publication remains atomic."""
+        selected = []
+        generation = 'model_ranked'
+        job['runId'] = job['id']+f"-attempt-{job['attempts']}"
+        context['report'] = job['report']
+        try:
+            # No extra image call is needed: these are factual counts/statuses.
+            decision = await self.runtime.proactive(job['runId'], context)
+            selected = decision.sourceIds
+        except asyncio.CancelledError:
+            with self.store.transaction(): self.save(job,'retry',now+30,reason='服务暂停，恢复后继续生成报告')
+            raise
+        except Exception:
+            generation = 'facts_fallback'
+        with self.store.transaction():
+            current = time.time() if live_clock else now
+            blocked = self.gate(job, current)
+            if blocked:
+                self.save(job,*blocked[:2],reason=blocked[2]); return True
+            # Read fresh source facts under the publication lock. Ignore model
+            # prose and old ranking when preferences/source state has changed.
+            fresh = self.sources(job,current)
+            if fingerprint != hashlib.sha256(json.dumps(self.personal.context(job['client']),sort_keys=True).encode()).hexdigest():
+                selected = []
+                generation = 'facts_refreshed'
+            rendered = briefings.render(job['report'], fresh, selected)
+            message = dict(id='message-'+job['id'],jobId=job['id'],runId=job['runId'],role='assistant',
+                           origin='proactive',kind='schedule',createdAt=current,read=False,feedback=None,
+                           skillId=None,triggerKey=job['dedupe'],delivery='in_app',valueScore=None,
+                           report=job['report'],generation=generation, **rendered)
+            self.store.db.execute('INSERT OR IGNORE INTO assistant_messages VALUES (?,?,?,?,?)',
+                                  (message['id'],job['client'],job['id'],current,json.dumps(message,ensure_ascii=False)))
+            self.store.db.execute('INSERT OR IGNORE INTO personal_inbox VALUES (?,?,?,?)',
+                                  (message['id'],job['client'],job['dedupe'],json.dumps(message,ensure_ascii=False)))
+            if self.push: self.push.message(job['client'],message,job)
+            self.save(job,'sent',reason='已按订阅生成报告；记录不足时明确说明，不按价值评分跳过')
         return True
 
     async def run(self):

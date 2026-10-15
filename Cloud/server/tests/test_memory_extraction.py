@@ -119,3 +119,35 @@ def test_temporary_memory_expires_and_runtime_enqueues_after_chat_without_blocki
         assert any('用户希望回复简洁' in str(msg) for msg in provider.messages[-1])
         s.close()
     asyncio.run(check())
+
+
+def test_dedicated_extraction_uses_same_doubao_with_json_and_preserves_chat(monkeypatch):
+    import httpx
+    from evidenceguard.harness.providers import OpenAICompatibleProvider
+    monkeypatch.setenv('EG_MODEL_BASE_URL','https://model.invalid/v1')
+    monkeypatch.setenv('EG_MODEL_API_KEY','test-only')
+    monkeypatch.setenv('EG_MODEL_ID','doubao-seed-2-1-lite-260915')
+    requests=[]; original=httpx.AsyncClient
+    def reply(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200,json={'choices':[{'message':{'content':'{"facts":[]}'}}]})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kw:original(transport=httpx.MockTransport(reply)))
+    async def check():
+        model=OpenAICompatibleProvider()
+        await model.extract_memory([{'role':'user','content':'JSON please'}])
+        await model.complete([{'role':'user','content':'hello'}],[])
+    asyncio.run(check())
+    assert requests[0]['model']==requests[1]['model']=='doubao-seed-2-1-lite-260915'
+    assert requests[0]['thinking']=={'type':'disabled'} and requests[0]['response_format']=={'type':'json_object'}
+    assert 'thinking' not in requests[1] and 'response_format' not in requests[1]
+
+
+def test_memory_uses_dedicated_provider_without_changing_validation(tmp_path):
+    async def check():
+        s,p,model,m,c=setup(tmp_path)
+        model.extract_memory=AsyncMock(return_value={'content':json.dumps({'facts':[fact()]})})
+        enqueue(s,m,c); await m.step()
+        model.complete.assert_not_awaited(); model.extract_memory.assert_awaited_once()
+        assert p.memories(c)[0]['sourceQuote']=='回复简洁一些'
+        s.close()
+    asyncio.run(check())

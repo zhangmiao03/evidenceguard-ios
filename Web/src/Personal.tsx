@@ -3,6 +3,7 @@ import { api } from "./api";
 import { ErrorNotice, Modal } from "./ProductUI";
 import {
   timeLabel,
+  reportPreferences,
   type Bootstrap,
   type Memory,
   type Personal,
@@ -216,8 +217,9 @@ export function SettingsPage({
   onAssistant: () => void;
   onSkill: (id: string) => void;
 }) {
+  const supportsTwoReports = data.personal?.preferences.morningReport !== undefined;
   const [draft, setDraft] = useState<Preferences | null>(
-    data.personal?.preferences || null,
+    data.personal ? reportPreferences(data.personal.preferences) : null,
   );
   const [dirty, setDirty] = useState(false),
     [busy, setBusy] = useState(false),
@@ -233,13 +235,20 @@ export function SettingsPage({
     [],
   );
   useEffect(() => {
-    if (!dirty && !busy && data.personal) setDraft(data.personal.preferences);
+    if (!dirty && !busy && data.personal) setDraft(reportPreferences(data.personal.preferences));
   }, [data.personal?.revision, dirty, busy]);
   const change = <K extends keyof Preferences>(
     key: K,
     value: Preferences[K],
   ) => {
-    setDraft((old) => (old ? { ...old, [key]: value } : old));
+    setDraft((old) => {
+      if (!old) return old;
+      const next = { ...old, [key]: value };
+      next.dailySummary = !!(next.morningReport || next.eveningReport);
+      if (next.eveningReport) next.summaryHour = next.eveningHour ?? 20;
+      else if (next.morningReport) next.summaryHour = next.morningHour ?? 8;
+      return next;
+    });
     setDirty(true);
     setSaved("");
   };
@@ -251,13 +260,13 @@ export function SettingsPage({
     try {
       const result = await api.request<Personal>(
         "/api/personal/preferences",
-        draft,
+        supportsTwoReports ? draft : { enabled: draft.enabled, dailySummary: draft.dailySummary, summaryHour: draft.summaryHour, quietStart: draft.quietStart, quietEnd: draft.quietEnd, timezone: draft.timezone },
         undefined,
         "PUT",
       );
       if (mounted.current) {
         onUpdate(result);
-        setDraft(result.preferences);
+        setDraft(reportPreferences(result.preferences));
         setDirty(false);
         setSaved("提醒设置已保存");
       }
@@ -309,20 +318,33 @@ export function SettingsPage({
                 <label className="check-label">
                   <input
                     type="checkbox"
-                    checked={draft.dailySummary}
-                    onChange={(e) => change("dailySummary", e.target.checked)}
+                    checked={!!draft.morningReport}
+                    disabled={!supportsTwoReports}
+                    onChange={(e) => change("morningReport", e.target.checked)}
                   />
-                  每日守护概况
+                  早安报告
+                </label>
+                {!supportsTwoReports && <small>当前服务只支持单次每日概况；升级后可开启早安报告。</small>}
+                <label className="check-label">
+                  <input type="checkbox" checked={!!draft.eveningReport}
+                    onChange={(e) => change("eveningReport", e.target.checked)} />
+                  晚间报告
                 </label>
                 <div className="form-grid">
                   <label>
-                    每日概况时间
+                    早安报告时间
                     <select
-                      value={draft.summaryHour}
+                      value={draft.morningHour}
                       onChange={(e) =>
-                        change("summaryHour", Number(e.target.value))
+                        change("morningHour", Number(e.target.value))
                       }
                     >
+                      {hours()}
+                    </select>
+                  </label>
+                  <label>
+                    晚间报告时间
+                    <select value={draft.eveningHour} onChange={(e) => change("eveningHour", Number(e.target.value))}>
                       {hours()}
                     </select>
                   </label>

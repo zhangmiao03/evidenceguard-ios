@@ -96,22 +96,39 @@ private struct NotificationSettingsContent: View {
                 if let error = push.error { Text(error).foregroundStyle(.orange).font(.caption) }
             }
             Section("助手主动提醒") {
-                Toggle("摄像头事件与后续变化", isOn: preference(\.enabled))
+                Toggle("允许 anker 主动提醒", isOn: preference(\.enabled))
                     .accessibilityIdentifier("notifications.proactive")
-                Toggle("每日守护概况", isOn: preference(\.dailySummary))
-                    .disabled(!settings.preferences.enabled).accessibilityIdentifier("notifications.daily")
-                if settings.preferences.dailySummary && settings.preferences.enabled {
-                    Stepper("每日 \(settings.preferences.summaryHour):00", value: preference(\.summaryHour), in: 0...23)
-                        .accessibilityIdentifier("notifications.summaryHour")
-                }
                 Text("根据已接收的事件、守护记录和待处理事项提醒你。开启提醒不会自动启动摄像头守护。").font(.caption).foregroundStyle(Brand.muted)
+            }.disabled(!settings.loaded || settings.loading)
+            Section("早晚报告") {
+                if !settings.preferences.supportsTwoReports {
+                    Toggle("每日守护概况", isOn: preference(\.dailySummary))
+                    Stepper("每日 \(settings.preferences.summaryHour):00", value: preference(\.summaryHour), in: 0...23)
+                    Text("当前服务只支持一个报告时段，升级服务后可分别设置早晚报告。").font(.caption).foregroundStyle(Brand.muted)
+                } else {
+                Toggle("早安报告", isOn: preference(\.morningReport)).accessibilityIdentifier("notifications.morning")
+                if settings.preferences.morningReport {
+                    Stepper("早安 \(settings.preferences.morningHour):00", value: preference(\.morningHour), in: 0...23)
+                        .accessibilityIdentifier("notifications.morningHour")
+                }
+                Toggle("晚间报告", isOn: preference(\.eveningReport)).accessibilityIdentifier("notifications.evening")
+                if settings.preferences.eveningReport {
+                    Stepper("晚间 \(settings.preferences.eveningHour):00", value: preference(\.eveningHour), in: 0...23)
+                        .accessibilityIdentifier("notifications.eveningHour")
+                }
+                if settings.preferences.morningReport && settings.preferences.eveningReport && settings.preferences.morningHour == settings.preferences.eveningHour {
+                    Text("早晚报告请选择不同时间。").font(.caption).foregroundStyle(.orange)
+                }
+                }
+                Text("按时整理事件、待确认事项和缺少记录的时段，发到助手对话。没有数据时会明确告诉你；不把没有事件当作家里安全。").font(.caption).foregroundStyle(Brand.muted)
+                if !settings.preferences.enabled { Text("主动提醒已暂停，开启总开关后按计划生成。").font(.caption).foregroundStyle(Brand.muted) }
             }.disabled(!settings.loaded || settings.loading)
             Section("免打扰") {
                 Stepper("开始：\(settings.preferences.quietStart):00", value: preference(\.quietStart), in: 0...23)
                     .accessibilityIdentifier("notifications.quietStart")
                 Stepper("结束：\(settings.preferences.quietEnd):00", value: preference(\.quietEnd), in: 0...23)
                     .accessibilityIdentifier("notifications.quietEnd")
-                Text("使用手机当前时区。免打扰期间暂存，之后重新核对；起止相同则全天允许提醒。普通提醒每天最多 6 条，间隔至少 5 分钟。").font(.caption).foregroundStyle(Brand.muted)
+                Text("使用手机当前时区。免打扰后重新核对，过期报告不补发；起止相同则全天允许。早晚报告单独按订阅生成，普通提醒每天最多 6 条、间隔至少 5 分钟。").font(.caption).foregroundStyle(Brand.muted)
             }.disabled(!settings.loaded || settings.loading)
             Section {
                 if settings.loading || settings.saving {

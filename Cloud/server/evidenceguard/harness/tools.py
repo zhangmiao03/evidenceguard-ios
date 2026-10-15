@@ -192,6 +192,18 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
     registry.register('search_evidence',search_evidence,EvidenceQuery,'查询已保存证据。今天/昨天/过去24小时必须用 period=today/yesterday/last_24_hours，由服务器计算范围，不要自行换算时间戳。任务对话限定当前任务；返回数量、位置分类、带时区日期及资料缺口。inside/outside 是位置，不代表进入/离开动作。')
     registry.register('request_recheck',request_recheck,SkillID,'请求任务重新观察，先进入 unknown，不声称已安全。')
     registry.register('read_stored_image',read_stored_image,StoredImage,'读取 search_evidence 返回的某张已保存图片；图片属于过去，不代表当前现场。')
+    if not skill_id and not camera_id and execution_mode=='live':
+        async def read_home_report():
+            from ..briefings import facts, render
+            now=time.time()
+            zone=(run or {}).get('personalContext') or {}
+            zone=zone.get('preferences',{}).get('timezone','Asia/Shanghai')
+            report=dict(slot='morning' if datetime.fromtimestamp(now,ZoneInfo(zone)).hour<12 else 'evening',
+                        timezone=zone,startAt=now-86400,endAt=now)
+            result=render(report,facts(store,report,now))
+            return result | dict(title='最近24小时记录',startAt=report['startAt'],endAt=now,
+                                 continuousCoverage=False,delivery='preview_only',changesPreferences=False)
+        registry.register('read_home_report',read_home_report,Empty,'只读汇总最近24小时的真实来源记录、设备数据缺口和当前待确认任务。用户要求家庭概况时使用；无数据不能报平安。此工具只返回预览，不发送报告、不设置订阅、不操作摄像头。')
     if video_service:
         registry.register('search_recordings',search_recordings,RecordingQuery,'查询录像或动作时间点时优先调用。视频 Embedding 检索候选，然后配置的视觉模型观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
     from ..hardware_tools.gateway import HardwareGateway

@@ -248,6 +248,7 @@ class PushService:
         return dict(zip([c[0] for c in cursor.description], row)) if row else None
 
     def eligible(self, item, device, now):
+        subscribed_report = False
         if now >= item['expires_at']: return 'expired', 'Expired', None
         if not device or not device['enabled']: return 'cancelled', 'Disabled', None
         if item['opened_at']: return 'cancelled', 'Opened', None
@@ -257,6 +258,7 @@ class PushService:
             row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (item['source'],item['client'])).fetchone()
             if not row: return 'cancelled', 'Removed', None
             message = json.loads(row[0])
+            subscribed_report = bool(message.get('report'))
             if not p['enabled'] or message.get('read') or message.get('feedback') in {'read','handled','dismiss','snooze'}:
                 return 'cancelled', 'NoLongerNeeded', None
             job_row = self.store.db.execute('SELECT payload FROM proactive_jobs WHERE id=?', (message['jobId'],)).fetchone()
@@ -268,9 +270,13 @@ class PushService:
         if self.personal.engine.quiet(p, now): return 'retry', 'QuietHours', now+60
         # A short lease is renewed while this app is visible, never background polling.
         if device['active'] and now-device['seen_at'] < 75: return 'retry', 'AppVisible', now+30
+        if subscribed_report: return None  # Two explicit report slots; still obey opt-out, quiet hours, expiry and dedupe.
         zone = ZoneInfo(p['timezone'])
         day = datetime.fromtimestamp(now, zone).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
-        count,last = self.store.db.execute("SELECT COUNT(*),MAX(accepted_at) FROM push_outbox WHERE client=? AND kind!='test' AND accepted_at>=?", (item['client'],day)).fetchone()
+        count,last = self.store.db.execute("""SELECT COUNT(*),MAX(accepted_at) FROM push_outbox
+            WHERE client=? AND kind!='test' AND accepted_at>=? AND NOT EXISTS
+            (SELECT 1 FROM assistant_messages a WHERE a.id=push_outbox.source AND a.client=push_outbox.client
+             AND json_type(a.payload,'$.report')='object')""", (item['client'],day)).fetchone()
         if count >= 6: return 'retry', 'DailyLimit', now+3600
         if last and now-last < 300: return 'retry', 'RateLimit', last+300
         return None

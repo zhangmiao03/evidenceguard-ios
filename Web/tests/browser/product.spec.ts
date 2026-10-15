@@ -74,6 +74,7 @@ async function setup(
         enabled: false,
         dailySummary: false,
         summaryHour: 18,
+        morningReport: false, eveningReport: false, morningHour: 8, eveningHour: 20,
         quietStart: 22,
         quietEnd: 8,
         timezone: "Asia/Shanghai",
@@ -404,24 +405,27 @@ test("reminder edits survive refresh, navigation, failure and explicit retry", a
   const { state } = await setup(page, { failPreferences: true });
   await nav(page, "设置");
   await page.getByLabel("应用内主动提醒", { exact: true }).check();
-  await page.getByLabel("每日守护概况", { exact: true }).check();
-  await page.getByLabel("每日概况时间").selectOption("21");
+  await page.getByLabel("晚间报告", { exact: true }).check();
+  await page.getByLabel("早安报告", { exact: true }).check();
+  await page.getByLabel("晚间报告时间").selectOption("21");
   await nav(page, "任务");
   await page.getByRole("button", { name: "定时", exact: true }).click();
   await page.getByRole("button", { name: "设置时间与免打扰" }).click();
-  await expect(page.getByLabel("每日概况时间")).toHaveValue("21");
+  await expect(page.getByLabel("晚间报告时间")).toHaveValue("21");
   await page.getByRole("button", { name: "保存提醒设置" }).click();
   await expect(page.getByRole("alert")).toContainText("修改已保留");
-  await expect(page.getByLabel("每日概况时间")).toHaveValue("21");
+  await expect(page.getByLabel("晚间报告时间")).toHaveValue("21");
   await page.getByRole("button", { name: "保存提醒设置" }).click();
   await expect(page.getByRole("status")).toContainText("提醒设置已保存");
   expect(state.personal.preferences).toMatchObject({
     enabled: true,
     dailySummary: true,
     summaryHour: 21,
+    morningReport: true,
+    eveningReport: true,
   });
   await nav(page, "任务");
-  await expect(page.getByRole("heading", { name: "每天 21:00" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "早安 08:00 · 晚间 21:00" })).toBeVisible();
 });
 
 test("assistant waits for conversation restoration before accepting input", async ({ page }) => {

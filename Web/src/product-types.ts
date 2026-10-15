@@ -141,10 +141,19 @@ export type Preferences = {
   enabled: boolean;
   dailySummary: boolean;
   summaryHour: number;
+  morningReport?: boolean;
+  eveningReport?: boolean;
+  morningHour?: number;
+  eveningHour?: number;
   quietStart: number;
   quietEnd: number;
   timezone: string;
 };
+export function reportPreferences(p: Preferences): Preferences {
+  return { ...p, morningReport: p.morningReport ?? false,
+    eveningReport: p.eveningReport ?? p.dailySummary,
+    morningHour: p.morningHour ?? 8, eveningHour: p.eveningHour ?? p.summaryHour };
+}
 export type Memory = {
   source?: string;
   sourceQuote?: string;
