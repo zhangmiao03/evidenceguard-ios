@@ -26,6 +26,8 @@
 
 ## 管理连接
 
+2026-10-15：Windows 本机已用 `evidenceguard-prod15` profile 完成临时 AWS CLI 登录，并实际打开 SSM shell、执行 `whoami` 后正常退出。PowerShell 快捷入口为 `.\scripts\cloud_session.ps1`；`-Action status` 查看状态，`-Action login` 更新过期登录。比赛只读监控入口为 **http://47.131.21.137/dashboard**。部署和权限边界见 [云端 Dashboard](CLOUD-DASHBOARD.md)。
+
 AWS 控制台选择新加坡，打开该实例的“连接 → SSM 会话管理器”。现有 SSM role 是 `EvidenceGuardSSMInstanceRole`，附加 AWS 官方 `AmazonSSMManagedInstanceCore`。它是实例身份，不会自动授予队友访问权限；本轮没有新增成员。
 
 已授权身份也可以使用仓库脚本：
