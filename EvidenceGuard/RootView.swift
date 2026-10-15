@@ -77,38 +77,32 @@ private struct SDKWorkspaceContainer<Content: View>: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var connection: OfficialSDKConnection
     @ObservedObject private var push = PushNotifications.shared
-    @State private var guide = false
     @State private var returningToProduct = false
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: connection.officialDemoController == nil ? "shield.lefthalf.filled" : "wrench.and.screwdriver")
-                Text(connection.officialDemoController == nil ? "EvidenceGuard" : "官方 SDK 原版").font(.subheadline.bold())
-                Spacer()
-                Button { guide = true } label: { Image(systemName: "checklist") }.accessibilityLabel("硬件检查指引")
-                Button(connection.officialDemoController == nil ? "切换官方 SDK" : "返回本项目") {
-                    if connection.officialDemoController == nil {
-                        if connection.canDiscover { Task { await connection.enterOfficialWorkspace() } }
-                        else { guide = true }
-                    } else {
+            // The vendor workspace is an explicit developer destination. Product
+            // pages retain their own navigation without a global mode switch.
+            if connection.officialDemoController != nil {
+                HStack {
+                    Label("摄像头调试", systemImage: "wrench.and.screwdriver").font(.subheadline.bold())
+                    Spacer()
+                    Button("返回设置") {
                         Task {
                             returningToProduct = true
                             await connection.leaveOfficialWorkspace()
-                            // SDK device routes need a fresh account check; keep
-                            // assistant, task and memory navigation intact.
                             store.tabPaths[AppTab.cameraSkills.rawValue] = []
                             store.selectedTab = .profile
-                            store.tabPaths[AppTab.profile.rawValue] = [.officialSDK]
+                            store.tabPaths[AppTab.profile.rawValue] = [.settings]
                             returningToProduct = false
                             routePush()
                             await store.refresh()
                         }
-                    }
-                }.font(.caption.bold()).buttonStyle(.bordered)
-                    .accessibilityIdentifier("workspace.switch")
-            }.padding(.horizontal, 16).padding(.vertical, 7).background(.regularMaterial)
-                .disabled(connection.switchingWorkspace || returningToProduct || store.editor != nil)
+                    }.font(.caption.bold()).buttonStyle(.bordered)
+                        .accessibilityIdentifier("workspace.return")
+                }.padding(.horizontal, 16).padding(.vertical, 7).background(.regularMaterial)
+                    .disabled(connection.switchingWorkspace || returningToProduct)
+            }
             if connection.switchingWorkspace {
                 HStack { ProgressView(); Text(connection.workspaceMessage).font(.caption) }.padding(10)
             }
@@ -133,11 +127,9 @@ private struct SDKWorkspaceContainer<Content: View>: View {
         }
         .onChange(of: push.pending) { _, _ in routePush() }
         .onChange(of: store.editor == nil) { _, _ in routePush() }
-        .onChange(of: guide) { _, _ in routePush() }
         .onChange(of: connection.workspaceError) { _, _ in routePush() }
         .onChange(of: connection.switchingWorkspace) { _, _ in routePush() }
         .onChange(of: connection.officialDemoController == nil) { _, _ in routePush() }
-        .sheet(isPresented: $guide) { OfficialWorkspaceGuide(connection: connection) }
         .alert("暂时无法打开官方页面", isPresented: Binding(
             get: { connection.workspaceError != nil },
             set: { if !$0 { connection.workspaceError = nil } }
@@ -148,7 +140,7 @@ private struct SDKWorkspaceContainer<Content: View>: View {
     private func routePush() {
         PushNavigation.consume(&push.pending, selection: &store.selectedTab, paths: &store.tabPaths,
             productVisible: connection.officialDemoController == nil && !connection.switchingWorkspace && !returningToProduct,
-            presentationBlocked: guide || connection.workspaceError != nil || store.editor != nil || scenePhase != .active)
+            presentationBlocked: connection.workspaceError != nil || store.editor != nil || scenePhase != .active)
     }
 }
 
@@ -158,14 +150,16 @@ private struct OfficialDemoControllerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
-private struct OfficialWorkspaceGuide: View {
+struct OfficialSDKDeveloperView: View {
     @ObservedObject var connection: OfficialSDKConnection
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
-        NavigationStack {
-            List {
-                Section("工作区切换") {
-                    Text(connection.buildStatus)
+        List {
+                Section("开发调试") {
+                    Text("用于核对配网、绑定和设备设置。日常聊天、任务与提醒不需要打开此页面。")
+                    Text(connection.buildStatus).font(.caption).foregroundStyle(Brand.muted)
+                    Button("打开官方设备调试页") { Task { await connection.enterOfficialWorkspace() } }
+                        .disabled(!connection.canDiscover || connection.switchingWorkspace)
+                        .accessibilityIdentifier("settings.openOfficialWorkspace")
                     Text("官方模式加载赛事 Demo 的完整 SampleApp 导航，用于绑定、配网、直播与设备配置。返回后重新查询并同步设备；不会自动恢复直播。")
                     Text("切换的是界面与会话，不会下载或更换底层 SDK 二进制。官方模式采用自己的登录表单与缓存，请核对账号及 PR / QA。")
                 }
@@ -189,8 +183,6 @@ private struct OfficialWorkspaceGuide: View {
                 Section("Web 对照") {
                     Text("Web 也可切换到资料包原版 Demo：鉴权表单、官方直播组件、重连和 AI 裸帧面板。当前交付的 Web Demo 没有手机端的完整配网及设置导航；未露出的项目在此 iOS 原版工作区核验。")
                 }
-            }.navigationTitle("官方 SDK 检查指引").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-        }
+        }.pageStyle("摄像头调试")
     }
 }

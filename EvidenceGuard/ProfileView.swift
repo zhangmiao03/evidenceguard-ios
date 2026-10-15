@@ -15,7 +15,8 @@ struct ProfileView: View {
                 NavigationLink(value: AppRoute.voiceSettings) { Label("语音输入", systemImage: "waveform") }
             }
             Section("设置与帮助") {
-                NavigationLink(value: AppRoute.settings) { Label(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接", systemImage: "network") }
+                NavigationLink(value: AppRoute.settings) { Label("设置", systemImage: "gearshape") }
+                    .accessibilityIdentifier("profile.settings")
                 NavigationLink(value: AppRoute.privacy) { Label("隐私与数据", systemImage: "hand.raised") }
                 NavigationLink(value: AppRoute.help) { Label("使用帮助", systemImage: "questionmark.circle") }
             }
@@ -57,9 +58,16 @@ struct ServiceSettingsView: View {
             } else {
             Section("云端服务") { TextField("服务地址",text: $address).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.url"); SecureField("团队访问令牌", text: $accessToken).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.accessToken"); Text("公网服务使用 HTTPS 和团队访问令牌。令牌保存在当前手机 Keychain；本地未启用鉴权的服务可以留空。").font(.caption).foregroundStyle(Brand.muted); Button { Task { checking = true; let ok = await store.configure(address, accessToken: accessToken); feedback = ok ? "已连接到服务" : (store.errorMessage ?? store.lastError ?? "连接失败，请检查地址及服务状态"); checking = false } } label: { HStack { if checking { ProgressView() }; Text("保存并测试连接") } }.disabled(checking); if let feedback { Text(feedback).font(.caption) } }
             Section("AI 模型") { LabeledContent("配置",value: store.data.agent.provider); LabeledContent("状态",value: store.isConnected ? (store.data.agent.ready ? "服务端配置就绪" : "等待服务端配置") : "等待连接"); Text("API Key 仅存于服务端。模型请求失败会在对话中给出原因，不会回退成假回复。").font(.caption).foregroundStyle(Brand.muted) }
-            Section("摄像头接入") { NavigationLink("配置官方 SDK 与检查设备", value: AppRoute.officialSDK); Text("已收到 ESIotKit v2.2.7，支持 T8171 / T8214。真机连接与画面能力仍需用主办方账号验收。").font(.caption).foregroundStyle(Brand.muted) }
+            Section("摄像头接入") { NavigationLink("连接摄像头", value: AppRoute.officialSDK); Text("已收到 ESIotKit v2.2.7，支持 T8171 / T8214。真机连接与画面能力仍需用主办方账号验收。").font(.caption).foregroundStyle(Brand.muted) }
             }
-        }.pageStyle(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接").onAppear { address = store.client.baseURL.absoluteString; accessToken = store.client.accessToken }.onChange(of: address) { _, value in if let url = URL(string: value) { accessToken = ServiceAccess.token(for: url) } }
+            Section("开发调试") {
+                NavigationLink { OfficialSDKDeveloperView(connection: store.officialSDK) } label: {
+                    Label("摄像头调试", systemImage: "wrench.and.screwdriver")
+                }.accessibilityIdentifier("settings.cameraDebug")
+                Text("检查官方配网和设备能力。日常使用不需要切换工作区。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
+        }.pageStyle("设置").onAppear { address = store.client.baseURL.absoluteString; accessToken = store.client.accessToken }.onChange(of: address) { _, value in if let url = URL(string: value) { accessToken = ServiceAccess.token(for: url) } }
     }
 }
 struct NotificationSettingsView: View {
