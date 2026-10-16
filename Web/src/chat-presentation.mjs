@@ -102,7 +102,7 @@ export function chatText(raw = '', fallback = '处理信息已记录，请查看
   let output = value.replace(/```[\s\S]*?(?:```|$)/g,'').replace(/<(?:tool_call|function_call|analysis)>[\s\S]*?(?:<\/(?:tool_call|function_call|analysis)>|$)/g,'');
   output = output.split(/\r?\n/).filter(line => !/[{}]|^[\[\]]|^[A-Za-z_][A-Za-z0-9_.]*\s*=|^["'].*["'],?$|^["'][A-Za-z_][A-Za-z0-9_]*["']\s*:|^(?:import\s|from\s|def\s|class\s|function\s|const\s|let\s|var\s|return\b|console\.|Traceback|File\s+"|raise\s|Exception|Error:|HTTP\/|curl\s)|=>|\\u[0-9a-fA-F]{4}|<\|[^>]+\|>|\b[A-Za-z_][A-Za-z0-9_]*\([^\n]*\)|\b(?:requestHash|executionState|tool_calls|tool_call_id|executorPlatform|deviceId|operationId)\s*[=:]/.test(line.trim())).join('\n');
   for (const [tool,label] of Object.entries(actions).sort((a,b) => b[0].length-a[0].length)) output = output.replace(new RegExp('\\b'+tool+'\\b','g'),label);
-  output = output.replace(/`[^`]*`/g,'').replace(/\b(?:sdk|run|op|executor|proactive)-[A-Za-z0-9-]+\b|\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b(?:\([^\n)]*\))?/g,'相关记录').trim();
+  output = output.replace(/`[^`]*`/g,'').replace(/\b(?:(?:sdk|run|op|executor|proactive)-[A-Za-z0-9-]+|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|[a-z][a-z0-9]*(?:_[a-z0-9]+)+|[0-9a-fA-F]{32,}|requestHash|executionState|executorPlatform|operationId|deviceId)\b(?:\([^\n)]*\))?/g,'相关记录').trim();
   return output || fallback;
 }
 

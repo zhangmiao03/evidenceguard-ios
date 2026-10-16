@@ -123,13 +123,13 @@ enum ChatPresentation {
         // Hide technical lines in mixed prose too, including unfinished streamed payloads.
         output = output.components(separatedBy: .newlines).filter { line in
             let clean = line.trimmingCharacters(in: .whitespaces)
-            return clean.range(of: #"[{}]|^[\[\]]|^[A-Za-z_][A-Za-z0-9_.]*\s*=|^[\"\'].*[\"\'],?$|^[\"'][A-Za-z_][A-Za-z0-9_]*[\"']\s*:|^(?:import\s|from\s|def\s|class\s|function\s|const\s|let\s|var\s|return\b|console\.|Traceback|File\s+\"|raise\s|Exception|Error:|HTTP/|curl\s)|=>|\\u[0-9a-fA-F]{4}|<\|[^>]+\|>|\b[A-Za-z_][A-Za-z0-9_]*\([^\n]*\)|\b(?:requestHash|executionState|tool_calls|tool_call_id|executorPlatform|deviceId|operationId)\s*[=:]"#, options: .regularExpression) == nil
+            return clean.range(of: #"[{}]|^[\[\]]|^[A-Za-z_][A-Za-z0-9_.]*\s*=|^[\"\'].*[\"\'],?$|^[\"'][A-Za-z_][A-Za-z0-9_]*[\"']\s*:|^(?:import\s|from\s|def\s|class\s|function\s|const\s|let\s|var\s|return\b|console\.|Traceback|File\s+\"|raise\s|Exception|Error:|HTTP/|curl\s)|=>|\\u[0-9a-fA-F]{4}|<\|[^>]+\|>|(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*\([^\n]*\)|(?<![A-Za-z0-9_])(?:requestHash|executionState|tool_calls|tool_call_id|executorPlatform|deviceId|operationId)\s*[=:]"#, options: .regularExpression) == nil
         }.joined(separator: "\n")
         for (tool, label) in actions.sorted(by: { $0.key.count > $1.key.count }) {
-            output = output.replacingOccurrences(of: "\\b" + NSRegularExpression.escapedPattern(for: tool) + "\\b", with: label, options: .regularExpression)
+            output = output.replacingOccurrences(of: "(?<![A-Za-z0-9_])" + NSRegularExpression.escapedPattern(for: tool) + "(?![A-Za-z0-9_])", with: label, options: .regularExpression)
         }
         output = output.replacingOccurrences(of: #"`[^`]*`"#, with: "", options: .regularExpression)
-        output = output.replacingOccurrences(of: #"\b(?:sdk|run|op|executor|proactive)-[A-Za-z0-9-]+\b|\b[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b(?:\([^\n)]*\))?"#, with: "相关记录", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"(?<![A-Za-z0-9_])(?:(?:sdk|run|op|executor|proactive)-[A-Za-z0-9-]+|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|[a-z][a-z0-9]*(?:_[a-z0-9]+)+|[0-9a-fA-F]{32,}|requestHash|executionState|executorPlatform|operationId|deviceId)(?![A-Za-z0-9_])(?:\([^\n)]*\))?"#, with: "相关记录", options: .regularExpression)
         output = output.trimmingCharacters(in: .whitespacesAndNewlines)
         return output.isEmpty ? fallback : output
     }
