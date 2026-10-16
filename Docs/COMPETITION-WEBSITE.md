@@ -1,6 +1,6 @@
 # 比赛网站发布与验证
 
-当前维护状态（2026-10-16 19:28，新加坡时间）：运行版本为 `6b749dfdf54d6830`，保留上一版 `073ca161a4de655e` 供回滚；唯一有效的版本回滚配置是 `/var/backups/evidenceguard-dashboard/20261016T112647276589Z`。文末记录了中间版本清理，前文早期发布路径仅供历史追溯，已清理的目录不能再用于回滚。
+当前维护状态（2026-10-16 22:02 发布后，新加坡时间）：运行版本为 `3c4ff59b93a36a32`，保留上一版 `6b749dfdf54d6830` 供回滚；唯一有效的版本回滚配置是 `/var/backups/evidenceguard-dashboard/20261016T140238368329Z`。文末记录了本轮验收与中间版本清理，前文早期发布路径仅供历史追溯，已清理的目录不能再用于回滚。
 
 ## 页面入口
 
@@ -8,6 +8,8 @@
 | --- | --- |
 | 比赛作品 / iOS 交互展示 | https://demo.47.131.21.137.sslip.io/dashboard?view=showcase |
 | 真实运行监控 | https://demo.47.131.21.137.sslip.io/dashboard |
+| 评委快速总览 | https://demo.47.131.21.137.sslip.io/dashboard?view=overview&environment=demo |
+| 已记录检索任务的 Agent Loop | https://demo.47.131.21.137.sslip.io/dashboard?view=agent&environment=review |
 | 图片分析 | https://demo.47.131.21.137.sslip.io/dashboard?view=images |
 | 视频向量库 | https://demo.47.131.21.137.sslip.io/dashboard?view=vectors |
 | 完整网站 ZIP | https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip |
@@ -38,7 +40,7 @@
 - 豆包输入：`EG_DASHBOARD_CAPTURE_MEDIA=1` 与正文采集一起由部署脚本开启。真实模型 HTTP 请求发出前，在后台线程复制其中的 JPEG/PNG/MP4 data URL，按 SHA-256 记录 `inputMedia`；请求本身不修改、不重试。输入引用与提示词 ID、模型返回保持同一 Trace。旧输入不能追溯恢复，页面明确显示缺失。URL 类型输入不自动下载。
 - Codex 执行器：当前 demo 主后端使用 `codex-app-server-v1`。在 `complete` 的实际 messages 入口保存图片副本，并标记 `executor_input` / `host_to_codex`；展示的是传给执行器的字节，不能声称看到了底层发给豆包的 HTTP 报文。执行器之后可能进一步转换图片。普通 HTTP 模型调用仍标记 `exact_model_input`，两种来源分开说明。包含图片的执行器 Trace 也进入视觉保留范围。
 - 录像：仅复制已入库录像目录的 `playback.mp4`，支持浏览器播放、Range/206 拖动和下载。超过 32 MB 的副本不公开，界面显示不可用；不开放任意文件或原 App 的受保护媒体接口。
-- 检索：观察实际 `VideoService.search`，采集 `vector.search` 的查询文字、参数、范围、候选相似度、视觉复核结果、定位秒数与耗时。不增加检索、不改业务返回或异常。兼容既有 `search_recordings` 工具回执。当前后端查询入口只实现文字搜视频，图片向量输入展示区在没有真实调用时明确为空，不伪造以图搜视频。
+- 检索：观察实际 `VideoService.search`；旧版公开文字检索可查看查询、参数、范围、候选相似度、视觉复核、定位秒数与耗时。不增加检索、不改业务返回或异常，兼容既有 `search_recordings` 回执。已兼容仓库新增的多模态检索 v2，区分视频与关键帧向量，但不代表本次部署替换了业务检索服务。v2 私有查询、参考图、提示词与结果正文不进入匿名投影，只显示诊断元数据；没有真实调用的部分保持空态。
 - 技术信息：列表优先显示设备类型/名称、任务含义和时间。原始 ID、签名、向量摘要保留在详情，供开发核对。
 
 安全与容量：每次调用最多 6 份媒体；图片 8 MB、视频 32 MB；每环境公开媒体最多 160 项 / 160 MB，私有输入目录和公开目录各自容量上限 256 MB。只读采集器按记录引用复制，写入当前允许清单。匿名 HTTP 进程只能从此清单提供媒体，不能访问 App 数据库/环境文件；不在当前清单的旧副本立即不可访问，缓存文件稍后清理。快照导出只含本机同源媒体引用，不嵌入媒体字节；离线主机无法凭引用恢复真实素材。
@@ -108,3 +110,17 @@ python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no
 - 当前版本的回滚命令：`python3 /opt/evidenceguard-dashboard/releases/6b749dfdf54d6830/activate.py --rollback /var/backups/evidenceguard-dashboard/20261016T112647276589Z`。已确认所引用的上一版文件完整；本次没有实际执行回滚。
 - 清理后五个相关服务均为 active，三环境 Dashboard/健康接口、原 App 未鉴权 401、Dashboard 写请求 405、媒体与向量表均通过复核。清理结果保存在服务器 `/var/tmp/evidenceguard-dashboard-cleanup-result.json`；清单在同目录的 `evidenceguard-dashboard-cleanup-plan.json`。
 - 后续部署完成验证后按“实际使用中的版本＋上一可回滚版本”保留；先核对真实引用及回滚依赖再清理。未设置无人值守的定时删除。
+
+## 评委阅读版追加验收（2026-10-16 22:02 部署，新加坡时间）
+
+- 发布源码基准 `d5e00ef1d66c0944a9f314c59172fb7c97a8fdfe`，包含 `d14d588` 的 14 个监控页面改版、`91258eb` 对队友 iOS / 检索更新的合并，以及多模态 v2 私有内容兼容修复。已推送 `dongrunze`。作品演示组件与手机素材没有改动。
+- 评委阅读路径、逐页说明及数据口径见 [DASHBOARD-JUDGE-READING.md](DASHBOARD-JUDGE-READING.md)。任务循环节点可进入相应正文，11 步实际检索回放可逐步查看，最终回复与模型原始结果分开呈现；长 ID 移入详情。
+- 发布目录 `/opt/evidenceguard-dashboard/releases/3c4ff59b93a36a32`；部署包 SHA-256 `3c4ff59b93a36a32494bf464692f999f5569b33f6f6072bb66311c0040c6d089`。网站 ZIP SHA-256 `ef6cbbfdd258fcc5907aa86983e6277fbf7b737c6dd28631b651a11593b3331a`，线上下载与本地发布文件逐字节一致。
+- 发布前发现 demo 业务已更新为 `/opt/evidenceguard-demo/releases/single-camera-build15-20261016/Cloud/server`，本轮保留这个实际 ExecStart；team / review 保留 `/opt/evidenceguard/Cloud/server`。仅更新 Dashboard 和 observer，没有用仓库版本覆盖现有业务服务。
+- 本地 20 项 Web 单元测试、33 项 Python 监控测试通过；48 项四浏览器检查修复选择器后全部完成，合并 v2 后补跑涉及媒体、任务及正文的 32 项并通过。生产构建通过。服务器的两套实际源码 × 元数据/正文两种模式共 4 组兼容检查及 33 项监控测试通过；隔离模型响应的兼容测试不计为真实模型调用。
+- 三环境 HTTPS 页面、匿名快照、网站 ZIP 均正常；App health 200、未鉴权 App API 401、Dashboard 写请求 405，非法环境 422。实际进程身份与采集目标一致。磁盘源码对仓库基准仍存在差异（demo 22 个 Python 文件、team / review 各 48 个），页面如实列出，不能误解为已全量部署仓库。
+- demo 快照恢复显示 8 条模型记录及 1 条最终回复；补充范围为 5 个 Trace / 93 条。team 为 4 条模型记录、2 条最终回复；review 为 4 条模型记录、1 条最终回复。以上是验收时可见的有限快照，不是完整历史总数，后续会随业务与保留策略变化。
+- review 已记录任务仍含 4 次真实模型 HTTP、1 次工具返回和最终“无法确认”回复，最终正文 SHA-256 `79c6e9f8ed7315a9982f8fee2254e9d24ae0814aa2497c8acedbec76b9deb0b1` 与数据库投影一致。本轮核对历史真实任务，没有重新发起模型任务或把合成测试录像标为实拍。
+- demo 的 11 项去重媒体（10 图、1 视频）、review 的 2 项视频副本均通过内容 SHA-256 和 Range/206 验证。内置浏览器已在正式 HTTPS 页面核对 Loop 节点、工具关联及最终回复；截图保存在本地 `Cloud/data/deliverables/judge-agent-loop-live.png`（忽略提交）。
+- 本轮删除旧 `073ca161a4de655e`、本次上传分片以及旧 `20261016T112647276589Z` 回滚配置，共释放 4,657,152 字节（约 4.4 MiB）。保留当前 `3c4ff59b93a36a32`、上一版 `6b749dfdf54d6830` 和新回滚配置；原 TLS 路由备份继续保留。磁盘约 24 GiB 可用、占用 17%。业务源码、数据库和媒体没有进入清理范围。
+- 清理后五个相关服务均 active，三环境公开验证再次通过，回滚所引用的文件完整。当前回滚命令：`python3 /opt/evidenceguard-dashboard/releases/3c4ff59b93a36a32/activate.py --rollback /var/backups/evidenceguard-dashboard/20261016T140238368329Z`。只核对可回滚条件，未实际执行回滚。
