@@ -21,3 +21,6 @@ swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/MobileServi
 
 swiftc EvidenceGuard/AppModels.swift Tests/ChatPresentation/main.swift -o "$check_dir/presentation-check"
 "$check_dir/presentation-check"
+
+swiftc EvidenceGuard/AppModels.swift Tests/VideoSearch/main.swift -o "$check_dir/video-search-check"
+"$check_dir/video-search-check"

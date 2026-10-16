@@ -70,7 +70,7 @@ def instrument(ops, native):
                     data={'executionMode': run.get('executionMode'),
                           'answer': summary(run.get('text')), 'toolReceipts': summary(run.get('toolReceipts', [])),
                           'errorPresent': bool(run.get('error')),
-                          **content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error'))})
+                          **({} if run.get('referenceImageId') else content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error')))})
     runtime.AgentRuntime._execute = execute if native else ops.traced('agent')(execute)
 
     original_tool = tools.ToolRegistry.call
@@ -86,19 +86,20 @@ def instrument(ops, native):
         start = time.monotonic()
         status = 'failed'
         result_info = {}
-        captured = content.details(arguments=kwargs, positionalArguments=args[1:])
+        private_search=name=='search_recordings'
+        captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:])
         recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs), **captured})
         try:
             result = await original_tool(self, *args, **kwargs)
             result_info = summary(result)
-            captured = content.details(arguments=kwargs, positionalArguments=args[1:], result=result)
+            captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:], result=result)
             status = 'failed' if isinstance(result, dict) and (result.get('error') or result.get('status') in {'failed', 'error', 'unsupported'}) else 'completed'
             return result
         except asyncio.CancelledError:
             status = 'cancelled'
             raise
         except Exception as error:
-            captured = content.details(arguments=kwargs, positionalArguments=args[1:], error=str(error))
+            captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:], error=str(error))
             raise
         finally:
             recorder.emit('tool.finished', status=status,
@@ -210,7 +211,7 @@ def attach(app, ops, native):
              'contentCapture': content.enabled(),
              'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
-             'embeddingSignature': getattr(getattr(video_service, 'embedding', None), 'signature', None),
+             'embeddingSignature': getattr(video_service, 'index_signature', getattr(getattr(video_service, 'embedding', None), 'signature', None)),
              'videoRoot': str(getattr(video_service, 'root', '')),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
              'tools': ops.safe(app.state.tools.schemas)}

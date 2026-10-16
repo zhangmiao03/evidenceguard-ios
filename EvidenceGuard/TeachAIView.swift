@@ -24,11 +24,17 @@ struct ConversationView: View {
     let skillID: String?
     let historyEvidenceID: String?
     let allowsConversationSwitching: Bool
-    init(conversationID: String, skillID: String?, historyEvidenceID: String? = nil, allowsConversationSwitching: Bool = false, initialMode: String = "live") {
+    let videoSearchContext: VideoSearchResult?
+    init(conversationID: String, skillID: String?, historyEvidenceID: String? = nil, allowsConversationSwitching: Bool = false, initialMode: String = "live", videoSearchContext: VideoSearchResult? = nil) {
         self.conversationID = conversationID; self.skillID = skillID; self.historyEvidenceID = historyEvidenceID
         self.allowsConversationSwitching = allowsConversationSwitching
+        self.videoSearchContext = videoSearchContext
+        _referenceImageID = State(initialValue: videoSearchContext?.query.image_ref)
+        _historyFilter = State(initialValue: videoSearchContext.map { value in
+            HistoryFilter(period: value.scope.startAt == nil ? "all" : "custom", startAt: value.scope.startAt, endAt: value.scope.endAt)
+        })
         _executionMode = State(initialValue: historyEvidenceID == nil ? initialMode : "history")
-        _cameraID = State(initialValue: historyEvidenceID == nil ? "" : "all")
+        _cameraID = State(initialValue: videoSearchContext.map { $0.query.camera_ids.first ?? "all" } ?? (historyEvidenceID == nil ? "" : "all"))
     }
     @State private var input = ""
     @State private var runs: [AgentRun] = []
@@ -41,6 +47,7 @@ struct ConversationView: View {
     @State private var showCamera = false
     @State private var cameraID = ""
     @State private var historyFilter: HistoryFilter?
+    @State private var referenceImageID: String?
     @State private var rangeSheet = false
     @State private var executionMode = "live"
     @State private var creatingDraft = false
@@ -197,9 +204,10 @@ struct ConversationView: View {
             }
         }
         .task(id: effectiveConversationID) {
-            input = store.conversationDrafts[effectiveConversationID] ?? historyEvidenceID.map { "请读取这条已保存的证据，解释可见内容和不确定之处：\($0)" } ?? ""
+            input = store.conversationDrafts[effectiveConversationID] ?? videoSearchContext.map { $0.query.text ?? "请查找录像中与参考图片主体外观相似的目标，只比较可见外观。" } ?? historyEvidenceID.map { "请读取这条已保存的证据，解释可见内容和不确定之处：\($0)" } ?? ""
             if let pending = store.pendingChatRequests[effectiveConversationID], pending.message == input.trimmingCharacters(in: .whitespacesAndNewlines) {
                 cameraID = pending.camera ?? "all"; historyFilter = pending.filter
+                referenceImageID = pending.referenceImageID
                 replyingTo = store.assistantMessages.first { $0.id == pending.replyID }
                 error = "上次发送尚未确认，内容已保留。重试会核对同一请求，避免重复发送。"
             }
@@ -271,6 +279,14 @@ struct ConversationView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 9) {
+            if executionMode == "history", let referenceImageID {
+                HStack {
+                    VideoSearchThumbnail(path: "/api/video-search-images/\(referenceImageID)").frame(width: 48, height: 48).clipShape(RoundedRectangle(cornerRadius: 8))
+                    Text("本轮将使用原参考图检索并核验录像").font(.caption)
+                    Spacer()
+                    Button("移除") { self.referenceImageID = nil }.disabled(sending || activeRun != nil)
+                }
+            }
             if let message = replyingTo, executionMode == "live" {
                 HStack {
                     Label("回复：" + ChatPresentation.text(message.title, fallback: "这条提醒"), systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(1)
@@ -303,6 +319,7 @@ struct ConversationView: View {
                         Button("新建守护并圈选", systemImage: "square.dashed") { Task { await createDraft(camera: selectedCamera?.id) } }
                             .disabled(creatingDraft || selectedCamera == nil || !store.isConnected)
                     } else {
+                        NavigationLink { VideoSearchView() } label: { Label("文字 / 图片检索录像", systemImage: "photo.on.rectangle") }
                         Button("查录像", systemImage: "magnifyingglass") { input = "查录像：包裹什么时候被拿走？找到正确片段并定位时间点。"; inputFocused = true }.accessibilityIdentifier("chat.findVideo")
                         NavigationLink(value: AppRoute.recordings) { Label("录像库", systemImage: "film") }
                     }
@@ -483,6 +500,7 @@ struct ConversationView: View {
         if executionMode == "history" {
             historyFilter = run.historyFilter
             cameraID = run.cameraId ?? "all"
+            referenceImageID = run.referenceImageId
         }
         inputFocused = true
     }
@@ -524,17 +542,18 @@ struct ConversationView: View {
         let client = store.client
         let filter = executionMode == "history" ? historyFilter : nil
         let replyID = executionMode == "live" ? replyingTo?.id : nil
+        let imageID = executionMode == "history" ? referenceImageID : nil
         let saved = store.pendingChatRequests[requestConversation]
-        let reuse = saved?.matches(message: message, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID) == true
+        let reuse = saved?.matches(message: message, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID, referenceImageID: imageID) == true
         let id = reuse ? saved!.id : "run-\(UUID().uuidString)"
-        store.pendingChatRequests[requestConversation] = PendingChatRequest(id: id, message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID)
+        store.pendingChatRequests[requestConversation] = PendingChatRequest(id: id, message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID, referenceImageID: imageID)
         do {
             if requestMode == "live", let cameraID = selectedCameraID,
                CameraQuestion.needsLiveFrame(message) {
                 try await store.officialSDK.prepareAssistantCamera(cameraID, client: client)
                 await store.refresh()
             }
-            let run = try await client.start(message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, requestID: id, executionMode: requestMode, historyFilter: filter, replyToMessageID: replyID)
+            let run = try await client.start(message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, requestID: id, executionMode: requestMode, historyFilter: filter, replyToMessageID: replyID, referenceImageID: imageID)
             events = []
             if !runs.contains(where: { $0.id == run.id }) { runs.append(run) }
             store.pendingChatRequests.removeValue(forKey: requestConversation)

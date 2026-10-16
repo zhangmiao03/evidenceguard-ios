@@ -22,7 +22,8 @@ class StoredImage(Arguments): evidence_id: str
 class CameraEvents(Arguments):
     period: Literal['today','yesterday','last_24_hours'] | None = None
 class RecordingQuery(Arguments):
-    query: str = Field(min_length=2,max_length=1000)
+    query: str | None = Field(default=None,max_length=1000)
+    image_ref: str | None = Field(default=None,description='只可使用本轮用户提供的授权参考图引用；省略时宿主自动附带本轮参考图。不能猜测引用。')
     period: Literal['today','yesterday','last_24_hours'] | None = Field(default=None, description='仅本轮用户明确限定日期时填写。只问什么时候不代表今天，默认 null 查询所有已存录像。')
 class CaptureArguments(Arguments):
     device_id: str | None = Field(default=None, description='使用设备能力或任务回执中的实际 ID；省略时使用当前选定摄像头，不按型号或角色猜测 ID。')
@@ -185,8 +186,14 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
         store.event(s['id'],'recheck_requested',{'notBefore':s['notBefore']})
         # Worker schedules fresh captures; replying to the user does not wait on two devices.
         return dict(skill=s,status='queued',reason='已请求复核，等待当前任务的新画面与连续观察')
-    async def search_recordings(query,period=None):
-        return await video_service.search(query,camera_id,skill_id,period,history_scope=history_scope,progress=progress)
+    async def search_recordings(query=None,period=None,image_ref=None):
+        reference=(run or {}).get('referenceImageId')
+        if image_ref and image_ref!=reference: raise ValueError('只能使用本轮用户附加的参考图片')
+        if reference: query=(run or {}).get('message') or query
+        if not query and not reference: raise ValueError('录像查询需要文字或参考图片')
+        options=dict(history_scope=history_scope,progress=progress)
+        if reference: options.update(image_ref=reference,owner=(run or {}).get('clientId'))
+        return await video_service.search(query,camera_id,skill_id,period,**options)
     personal=getattr(cameras,'personal',None)
     if execution_mode=='live' and personal and run and run.get('clientId'):
         async def save_personal_task(title,event_type=None,period='ongoing'):
@@ -222,7 +229,7 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
                                  continuousCoverage=False,delivery='preview_only',changesPreferences=False)
         registry.register('read_home_report',read_home_report,Empty,'只读汇总最近24小时的真实来源记录、设备数据缺口和当前待确认任务。用户要求家庭概况时使用；无数据不能报平安。此工具只返回预览，不发送报告、不设置订阅、不操作摄像头。')
     if video_service:
-        registry.register('search_recordings',search_recordings,RecordingQuery,'仅查询已经发生的录像或动作时间点时调用。未来“来了提醒我”等交代事项用 save_personal_task，不检索历史。视频 Embedding 检索候选，然后配置的视觉模型观看原视频片段复核，返回可播放证据。只读已导入录像，不调用摄像头。matched 为模型确认，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
+        registry.register('search_recordings',search_recordings,RecordingQuery,'仅查询已经发生的录像或动作时间点时调用。未来“来了提醒我”等交代事项用 save_personal_task，不检索历史。使用同一个视频/关键帧检索服务；本轮附有参考图时自动保留原图，图文联合召回，再把原图与原始文字一起交给视频核验。返回可播放证据，仅比较外观，不确认身份。只读已导入录像，不调用摄像头。matched 为模型复核支持；candidate 尚未核验，verification_failed 为服务失败，uncertain/not_matched 不可声称事件发生。日期未知时只能回答录像内的秒数；今天/昨天传 period。')
     from ..hardware_tools.gateway import HardwareGateway
     if execution_mode=='live' and isinstance(getattr(cameras,'hardware',None), HardwareGateway):
         cameras.hardware.attach_tools(registry,skill_id,camera_id,run)

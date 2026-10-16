@@ -246,8 +246,9 @@ struct PendingChatRequest: Codable {
     var id: String; var message: String; var conversation: String
     var skill: String?; var camera: String?; var mode: String
     var filter: HistoryFilter?; var replyID: String?
-    func matches(message: String, camera: String?, mode: String, filter: HistoryFilter?, replyID: String?) -> Bool {
-        self.message == message && self.camera == camera && self.mode == mode && self.filter == filter && self.replyID == replyID
+    var referenceImageID: String? = nil
+    func matches(message: String, camera: String?, mode: String, filter: HistoryFilter?, replyID: String?, referenceImageID: String? = nil) -> Bool {
+        self.message == message && self.camera == camera && self.mode == mode && self.filter == filter && self.replyID == replyID && self.referenceImageID == referenceImageID
     }
 }
 struct LocalChatState: Codable {
@@ -267,6 +268,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var historyFilter: HistoryFilter?
     var historyScope: HistoryFilter?
     var completedAt: Double?
+    var referenceImageId: String?
     var isRunning: Bool { status == "queued" || status == "running" }
 }
 
@@ -357,6 +359,7 @@ struct DemoScene: Decodable, Identifiable {
 struct DemoSceneSample: Decodable, Identifiable { var id: String; var imageUrl: String; var relativeSeconds: Int }
 struct VideoModelInfo: Codable, Equatable {
     var visionModel: String; var embeddingModel: String; var embeddingReady: Bool
+    var retrievalVersion: Int?
 }
 struct VideoRecording: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var title: String; var recordedAt: Double?; var sourceType: String
@@ -370,8 +373,46 @@ struct VideoHit: Codable, Identifiable, Equatable {
     var segmentStart: Double; var segmentEnd: Double; var seekSeconds: Double; var recordedAt: Double?
     var sourceType: String; var verdict: String; var summary: String; var limitation: String
     var verificationStatus: String?
-    var verdictLabel: String { if verificationStatus == "failed" { return "视频复核失败 · 可重试" }; return ["matched":"模型判断匹配 · 请核验", "not_matched":"模型未发现所问动作", "uncertain":"候选片段 · 无法确认"][verdict] ?? "待核验" }
+    var thumbnailUrl: String?
+    var verdictLabel: String { if verificationStatus == "failed" { return "视频复核失败 · 可重试" }; if verificationStatus == "verifying" { return "正在核对原录像" }; return ["candidate":"相关候选 · 尚未核验", "verification_failed":"复核失败 · 可重试", "matched":"模型判断匹配 · 请核验", "not_matched":"模型未发现所问动作", "uncertain":"候选片段 · 无法确认"][verdict] ?? "待核验" }
 }
+
+struct VideoSearchInput: Codable, Equatable {
+    var text: String?
+    var image_ref: String?
+    var camera_ids: [String]
+    var time_range: HistoryFilter
+    var timezone: String = TimeZone.current.identifier
+    var limit = 10
+    var verify_limit = 3
+}
+struct VideoSearchScope: Decodable {
+    var cameraIds: [String]
+    var period: String
+    var startAt: Double?
+    var endAt: Double?
+    var timezone: String
+    var coverage: String
+}
+struct VideoSearchResult: Decodable, Identifiable {
+    var id: String
+    var status: String
+    var query: VideoSearchInput
+    var scope: VideoSearchScope
+    var videos: [VideoHit]
+    var reason: String
+    var candidateCount: Int
+    var verifiedCount: Int
+    var indexChanged: Bool
+    var removedCandidates: Int
+    var isRunning: Bool { status == "searching" || status == "verifying" }
+    var stateLabel: String {
+        ["searching":"正在检索相关片段", "verifying":"找到相关片段，正在核对", "completed":"本次检索已完成",
+         "no_recordings":"还没有导入录像", "no_indexed_recordings":"当前范围没有可检索录像",
+         "no_candidates":"没有找到可用候选", "failed":"检索未完成", "interrupted":"检索已中断"][status] ?? "检索状态更新中"
+    }
+}
+struct VideoSearchImage: Decodable { var id: String; var image_ref: String; var url: String }
 func videoTime(_ seconds: Double) -> String {
     let t = max(0, Int(seconds)); return String(format: "%02d:%02d", t / 60, t % 60)
 }

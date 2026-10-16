@@ -112,7 +112,8 @@ def test_history_video_tool_does_not_reach_any_camera(env):
     asyncio.run(check())
 
 
-def test_range_playback_and_path_traversal(tmp_path):
+def test_range_playback_and_path_traversal(tmp_path,monkeypatch):
+    monkeypatch.setenv("EG_CAMERA_SOURCE","fixture_lab")
     app=create_app(tmp_path/'db.sqlite',start_worker=False,provider=type('Off',(),{'ready':False,'name':'off'})())
     with TestClient(app) as client:
         recording(app.state.videos,'video-range')

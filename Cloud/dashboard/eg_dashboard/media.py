@@ -2,6 +2,7 @@
 import hashlib
 import json
 import math
+import struct
 
 
 def read_media(path, now, signature=None, assets=None, video_root=None):
@@ -97,6 +98,27 @@ def read_media(path, now, signature=None, assets=None, video_root=None):
                              snapshotOnly=True)
                 rows.append(resource('media_video_segments',value,now))
             summary['invalidVectorsInSample']=invalid
+        # v2 is a separate index. Project only atomically published vectors and
+        # metadata; never export private query images, local paths or jobs.
+        if {'retrieval_embeddings','retrieval_units','retrieval_clips','retrieval_recordings'} <= tables:
+            join=''' FROM retrieval_embeddings e JOIN retrieval_units u ON u.id=e.unit_id AND u.signature=e.signature
+                JOIN retrieval_clips c ON c.id=e.clip_id AND c.signature=e.signature
+                JOIN retrieval_recordings r ON r.id=c.recording_id AND r.active_signature=c.signature'''
+            total=db.execute('SELECT count(*)'+join).fetchone()[0]
+            matching=db.execute('SELECT count(*)'+join+' WHERE e.signature=?',(signature,)).fetchone()[0] if signature else None
+            summary['tables']['retrieval_embeddings']={'available':True,'total':total,'matchingSignature':matching,'truncated':total>120}
+            for clip_id,rid,sig,kind,offset,start,end,dimensions,raw in db.execute(
+                'SELECT c.id,r.id,e.signature,e.kind,e.offset_ms,c.start,c.end,u.dimensions,CASE WHEN length(u.vector)=4096 THEN u.vector ELSE NULL END'+join+' ORDER BY e.rowid DESC LIMIT 120'):
+                vector=struct.unpack('<1024f',raw) if raw is not None and dimensions==1024 else ()
+                norm=math.hypot(*vector) if vector and all(math.isfinite(x) for x in vector) else None
+                valid=norm is not None and math.isfinite(norm) and norm>0
+                value=dict(id=f'{clip_id}-{kind}-{offset}',clipId=clip_id,recordingId=rid,signature=sig,kind=kind,
+                    frameOffsetSeconds=offset/1000 if kind=='frame' else None,start=start,end=end,dimensions=dimensions,
+                    norm=round(norm,8) if valid else None,normalized=abs(norm-1)<1e-5 if valid else False,
+                    vectorPreview=list(vector[:16]) if valid else [],vectorHash=hashlib.sha256(raw).hexdigest() if raw else None,
+                    signatureCompatible=sig==signature if signature else None,status='valid' if valid else 'invalid',snapshotOnly=True,indexVersion=2)
+                rows.append(resource('media_video_segments',value,now))
+        else: summary['tables']['retrieval_embeddings']={'available':False,'total':None}
     return rows,summary
 
 
@@ -115,7 +137,7 @@ def visual_traces(db):
     """
     traces=[r[0] for r in db.execute("""SELECT json_extract(payload,'$.traceId') FROM records
         WHERE (json_extract(payload,'$.kind')='model'
-        AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding'))
+        AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding','embedding_v2'))
         OR json_extract(payload,'$.name')='vector.search'
         OR (json_extract(payload,'$.kind')='prompt' AND json_array_length(payload,'$.data.inputMedia')>0)
         GROUP BY json_extract(payload,'$.traceId') ORDER BY MAX(at) DESC LIMIT 20""")]

@@ -31,6 +31,16 @@ MAX_RECORDS = 10_000
 CTX = contextvars.ContextVar('eg_trace', default={})
 RECORDER = contextvars.ContextVar('eg_recorder', default=None)
 OPERATION = contextvars.ContextVar('eg_operation', default='model')
+PRIVATE_CONTENT = contextvars.ContextVar('eg_private_content', default=False)
+
+
+def private_content(fn):
+    @functools.wraps(fn)
+    async def wrapped(*args,**kwargs):
+        token=PRIVATE_CONTENT.set(True)
+        try: return await fn(*args,**kwargs)
+        finally: PRIVATE_CONTENT.reset(token)
+    return wrapped
 SECRET = re.compile(r'authorization|api.?key|secret|password|credential|tokenhash|imagebase64|token$|^sn$|devicesn|serialnumber|accountid|clientid|importedby', re.I)
 IDENTIFIER = re.compile(r'^[A-Za-z0-9_.:-]{1,120}$')
 
@@ -114,6 +124,11 @@ class Recorder:
     def emit(self, name, *, kind='event', status='observed', data=None, duration=None, trace=None, platform='backend', source='local', record_id=None):
         if self.closed: return
         try:
+            if PRIVATE_CONTENT.get():
+                # Private image searches retain timing/status diagnostics, never
+                # prompt bodies, reference media or generated personal content.
+                allowed={'model','operation','endpointHost','promptId','usage','stream','transport','httpStatus','providerRequestId','errorType','completed','total','candidateCount','verifiedCount','sha256'}
+                data={k:v for k,v in (data or {}).items() if k in allowed} | {'privateContent':True}
             ctx = trace if trace is not None else CTX.get()
             record = dict(id=record_id or uuid.uuid4().hex, kind=kind, name=name, at=time.time(),
                 traceId=identifier(ctx.get('traceId') or 'unlinked-'+uuid.uuid4().hex),
@@ -266,7 +281,7 @@ async def model_post(client, url, *, headers, json):
     if not recorder: return await client.post(url,headers=headers,json=json)
     context=CTX.get(); span=uuid.uuid4().hex
     trace=dict(context,spanId=span,parentSpanId=context.get('spanId'))
-    try: snapshot=prompt_snapshot(json,recorder.capture)
+    try: snapshot=prompt_snapshot(json,recorder.capture and not PRIVATE_CONTENT.get())
     except Exception:
         recorder.write_errors+=1
         return await client.post(url,headers=headers,json=json)
