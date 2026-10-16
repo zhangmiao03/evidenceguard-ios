@@ -13,7 +13,7 @@ def read_media(path, now, signature=None):
                'definition': 'Database snapshot; vector values are a preview, not model confidence. No media bytes or URLs.'}
     fields = {
         'recordings': {'id','cameraId','title','recordedAt','sourceType','createdAt','status','duration','segmentCount','indexedSegments','embeddingModel','embeddingSignature','error'},
-        'sdk_episodes': {'id','cameraId','deviceName','kind','status','revision','reason','review','reviewedEvidenceIds','attempts','updatedAt'},
+        'sdk_episodes': {'id','cameraId','kind','status','revision','reason','review','reviewedEvidenceIds','attempts','updatedAt'},
         'visual_cache': {'status','review','cached','limitation'},
         'evidence': {'id','cameraId','skillId','capturedAt','sampledAt','receivedAt','observedAt','sourceType','reviewStatus','reason','visualReview','limitation','timestampMeaning'},
     }
@@ -82,3 +82,21 @@ def review_projection(value):
     result={k:v for k,v in value.items() if k in allowed and isinstance(v,(str,bool,int,float))}
     if isinstance(value.get('review'),dict):result['review']=review_projection(value['review'])
     return result
+
+
+def visual_traces(db):
+    """Keep recent visual calls inspectable despite a burst of client polling.
+
+    Read a bounded supplement of real rows, never recreate missing content.
+    """
+    traces=[r[0] for r in db.execute("""SELECT json_extract(payload,'$.traceId') FROM records
+        WHERE json_extract(payload,'$.kind')='model'
+        AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding')
+        GROUP BY json_extract(payload,'$.traceId') ORDER BY MAX(at) DESC LIMIT 20""")]
+    if not traces:return [],{'traces':0,'returned':0,'truncated':False,'traceLimit':20,'recordLimit':120,'byteLimit':1000000}
+    placeholders=','.join('?' for _ in traces)
+    values=[];size=0;cut=False
+    for (raw,) in db.execute(f"SELECT payload FROM records WHERE json_extract(payload,'$.traceId') IN ({placeholders}) ORDER BY at DESC LIMIT 121",traces):
+        if len(values)>=120 or size+len(raw.encode())>1000000:cut=True;break
+        size+=len(raw.encode());values.append(json.loads(raw))
+    return values,{'traces':len(traces),'returned':len(values),'truncated':cut,'traceLimit':20,'recordLimit':120,'byteLimit':1000000}

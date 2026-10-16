@@ -6,10 +6,21 @@ import tempfile
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from eg_dashboard.media import read_media
+from eg_dashboard.media import read_media, visual_traces
 
 
 class MediaProjectionTests(unittest.TestCase):
+    def test_old_visual_trace_survives_client_polling_without_fabricating_rows(self):
+        with sqlite3.connect(':memory:') as db:
+            db.execute('CREATE TABLE records(id TEXT PRIMARY KEY,at REAL,payload TEXT)')
+            source=[{'id':'prompt','at':1,'traceId':'image-task','kind':'prompt','name':'request.snapshot'},
+                    {'id':'model','at':2,'traceId':'image-task','kind':'model','name':'image_review'},
+                    {'id':'poll','at':10000,'traceId':'client-poll','kind':'event','name':'api.completed'}]
+            db.executemany('INSERT INTO records VALUES (?,?,?)',[(r['id'],r['at'],json.dumps(r)) for r in source])
+            rows,coverage=visual_traces(db)
+            self.assertEqual({r['id'] for r in rows},{'prompt','model'})
+            self.assertEqual(coverage['traces'],1);self.assertFalse(coverage['truncated'])
+
     def test_snapshot_has_actual_dimensions_signature_and_no_source_media(self):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'media.db'

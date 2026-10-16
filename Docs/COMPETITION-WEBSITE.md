@@ -20,6 +20,8 @@
 
 前端同源匿名读取，不转发 App 密钥。401/403、HTML fallback、超时均明确显示；自动重试从 3 秒递增至 30 秒，连上后每 5 秒取快照。环境切换清空筛选；筛选后无记录可一键恢复。失败保留旧数据并标记过期，不显示成新的正常结果。
 
+另发现客户端轮询高峰会将旧视觉调用挤出最近 3,000 条快照。现在额外读取最近 20 组图片/视频/嵌入 Trace（最多 120 条、1 MB），按原 ID 去重并保留真实时间；总导出仍受 6 MB 上限约束。`coverage.visualTraceSupplement` 明示采集范围与截断，不补造未记录的调用。
+
 ## 数据来源与边界
 
 图片页读取 `sdk_episodes` 的结构化 `review`、`evidence.reviewStatus/reason`、`visual_cache`，并列出已观测的 `image_review`、`frame_presence`、`video_verify` 模型记录。状态以数据库当前状态列为准，避免 payload 中旧 pending 状态覆盖实际 completed。核验文字与未知项可展开；库中结果可能早于采集启用，不能补造历史提示词。模型详情继续使用已有完整正文查看器。

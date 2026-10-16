@@ -20,7 +20,7 @@ export function ImageAnalysis({rows,coverage,onSelect}:{rows:RecordRow[];coverag
       const d=r.data, wrapper=d.review||d.visualReview||{}, review=wrapper.review||wrapper;
       return <article className="eg-ops-panel" key={r.id}><div className="eg-media-cardhead"><span className="eg-media-icon">▧</span><div><h3>{d.deviceName||d.cameraId||'视觉核验记录'}</h3><small>{origin(d.sourceType || (group==='episodes'?'official_sdk':null))}</small></div><span className="eg-ops-badge">{d.reviewStatus||d.status||r.status}</span></div>
         <dl className="eg-media-observation"><dt>可见事实 / 已保存结论</dt><dd>{text(review.visible||review.summary||d.reason||wrapper.reason)||'尚无可用的核验正文'}</dd><dt>未知与限制</dt><dd>{text(review.uncertainties||wrapper.limitation||d.limitation)||'仅适用于本条已采集证据；不能据此保证当前现场状态。'}</dd></dl>
-        <small>观察时间：{time(d.capturedAt||d.observedAt||d.sampledAt||d.updatedAt)} · 读取时间：{time(r.at)}</small>
+        <small>{d.updatedAt?'业务更新时间':'记录的观察 / 取样时间'}：{time(d.updatedAt||d.capturedAt||d.observedAt||d.sampledAt)} · 读取时间：{time(r.at)}</small>
         <button onClick={()=>onSelect(r)}>查看完整结果与来源</button></article>;
     })}</div>
     {!items.length && <div className="eg-ops-panel eg-media-empty"><h3>当前范围没有这类图片分析记录</h3><p>检查环境与筛选。未采集与未调用不代表识别成功；设备事件导入并完成视觉核验后，这里会自动更新。</p></div>}

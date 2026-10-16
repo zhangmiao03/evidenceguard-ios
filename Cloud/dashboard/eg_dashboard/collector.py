@@ -225,6 +225,11 @@ class Collector:
                     if read_bytes>MAX_BYTES:break
                     records.append(public_record(json.loads(row[0])))
                 records.reverse()
+                from .media import visual_traces
+                extra,supplement=visual_traces(db)
+                ids={r['id'] for r in records}
+                records.extend(public_record(r) for r in extra if r['id'] not in ids)
+                coverage['visualTraceSupplement']=supplement
             coverage['observability']='connected' if same_process else 'stale_process'
         except (OSError,ValueError,sqlite3.Error) as exc:
             coverage.update(observability='unavailable',errorType=type(exc).__name__,totalStored=None)
@@ -253,6 +258,7 @@ class Collector:
             if size>MAX_BYTES:break
             selected.append(row)
         selected.reverse()
+        selected.sort(key=lambda r:r['at'])
         count=sum(r['kind']!='resource' for r in selected)
         coverage['contentRecords']=sum(r['data'].get('capture',{}).get('mode') in {'full_redacted','truncated'} for r in selected)
         coverage.update(returned=len(selected),truncated=coverage.get('totalStored',0) is not None and coverage.get('totalStored',0)>count,
