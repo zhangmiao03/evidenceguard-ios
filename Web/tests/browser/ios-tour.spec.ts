@@ -41,6 +41,11 @@ test('new iOS guard requires a fresh frame, ROI, confirmation and baseline; paus
   await states.getByRole('button',{name:'建立基线'}).click();
   await states.getByRole('button',{name:'条件触发'}).click();
   await expect(result).toContainText('需关注');
+  await p.getByRole('button',{name:'对照参考图与最近采样',exact:true}).click();
+  await expect(p.locator('.ios-endpoint-analysis')).toContainText('没有调用 SeedLite 模型');
+  await p.getByRole('button',{name:'对照参考图与最近采样',exact:true}).click();
+  await expect(p.locator('.ios-endpoint-analysis')).toContainText('复用相同证据');
+  await expect(result).toContainText('需关注');
   await p.getByRole('button',{name:'查看提醒画面',exact:true}).click();
   await expect(p).toContainText('非真实设备记录');
   await p.getByRole('button',{name:'带着证据继续问',exact:true}).click();
@@ -123,4 +128,31 @@ test('devices, confirmed temporary memory and SDK debug follow the latest native
   await expect(p.getByRole('status')).toContainText('我的 → 设置 → 摄像头调试');
   expect(writes).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('one guard per camera and condition edits require a new selection',async({page})=>{
+  const writes=await start(page),p=phone(page);
+  await page.locator('.eg-showcase-scenes').getByRole('button',{name:/室内宠物/}).click();
+  await draft(page);
+  await p.getByRole('button',{name:'获取摄像头新画面',exact:true}).click();
+  await p.getByRole('button',{name:'使用示例选区',exact:true}).click();
+  await p.getByText('用一句话修改条件',{exact:true}).click();
+  await p.getByLabel('修改守护条件').fill('改为一分钟，只提醒一次');
+  await p.getByRole('button',{name:'更新这份草稿',exact:true}).click();
+  await expect(p.getByRole('button',{name:'完成框选，查看条件',exact:true})).toBeDisabled();
+  await expect(p.locator('.ios-selection')).toHaveCount(0);
+  await p.getByRole('button',{name:'获取摄像头新画面',exact:true}).click();
+  await p.getByRole('button',{name:'使用示例选区',exact:true}).click();
+  await p.getByRole('button',{name:'完成框选，查看条件',exact:true}).click();
+  await expect(p.locator('.ios-plan-summary')).toContainText('60 秒');
+  await expect(p.locator('.ios-plan-summary')).toContainText('只提醒一次');
+  await p.getByRole('button',{name:'确认并开启',exact:true}).click();
+  await page.locator('.eg-showcase-scenes').getByRole('button',{name:/工作室物品/}).click();
+  await draft(page);
+  await p.getByRole('button',{name:'获取摄像头新画面',exact:true}).click();
+  await p.getByRole('button',{name:'使用示例选区',exact:true}).click();
+  await p.getByRole('button',{name:'完成框选，查看条件',exact:true}).click();
+  await p.getByRole('button',{name:'确认并开启',exact:true}).click();
+  await expect(p.getByRole('alert')).toContainText('这台摄像头已有运行中的守护');
+  expect(writes).toEqual([]);
 });

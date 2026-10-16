@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import {tourScenarios, type TourBox, type TourCondition, type TourScene} from './tourData';
 
-export type TourGuard = {id:string;sceneId:string;prompt:string;stage:0|1|2;status:'draft'|'active'|'completed';frame:boolean;box:TourBox|null;seconds:number;once:boolean;result:'pending'|'checking'|'confirmed'|'issue'|'unknown';reason:string;baseline:boolean;evidence:boolean};
+export type TourGuard = {id:string;sceneId:string;prompt:string;stage:0|1|2;status:'draft'|'active'|'completed';frame:boolean;box:TourBox|null;seconds:number;once:boolean;result:'pending'|'checking'|'confirmed'|'issue'|'unknown';reason:string;baseline:boolean;evidence:boolean;analysis?:{text:string;sample:TourCondition;cached:boolean}};
 type Message = {role:'user'|'assistant';text:string;mode:'live'|'history';kind?:'frame'|'guard'|'history'|'reminder';sceneId:string;condition:TourCondition};
 type Topic = {id:string;title:string;messages:Message[]};
 type Memory = {id:number;content:string;temporary:boolean;source:string};
@@ -52,9 +52,14 @@ export function useIOSTour() {
   function activate(){
     if(!editor?.frame||!editor.box||editor.stage!==2)return;
     if(guards.some(g=>g.id!==editor.id&&g.status==='active'&&tourScenarios.find(s=>s.id===g.sceneId)?.device===editorScene.device)){setError('这台摄像头已有运行中的守护，请先暂停原守护。');return;}
-    patchGuard({status:'active',result:'checking',baseline:false,reason:'正在等待新的有效观察',evidence:false});setToast('演示守护已开启，等待有效检查');
+    patchGuard({status:'active',result:'checking',baseline:false,reason:'正在等待新的有效观察',evidence:false,analysis:undefined});setToast('演示守护已开启，等待有效检查');
   }
-  function pause(){patchGuard({status:'draft',stage:1,box:null,frame:false,baseline:false,result:'pending',reason:'已暂停，需要获取新画面并重新框选'});setToast('已暂停，旧选框已清除');}
+  function pause(){patchGuard({status:'draft',stage:1,box:null,frame:false,baseline:false,result:'pending',reason:'已暂停，需要获取新画面并重新框选',analysis:undefined});setToast('已暂停，旧选框已清除');}
+  function compareEndpoints(){
+    if(!editor||editor.status==='draft')return;
+    const text=editor.result==='checking'?'示例：尚无最近的有效采样，无法进行首尾核对。':editor.result==='unknown'?'示例：最近采样不可用或缺少基线，不能确认变化。':`示例核对：${editor.reason}。这只是两张保存图片的对照，不代表中间过程持续可见。`;
+    patchGuard({analysis:{text,sample:condition,cached:editor.analysis?.text===text&&editor.analysis?.sample===condition}});
+  }
   function observe(next:TourCondition){
     setCondition(next);if(!currentGuard||currentGuard.status!=='active')return;
     const baseline=next==='baseline',unknown=next==='unknown'||(!currentGuard.baseline&&next==='changed');
@@ -83,7 +88,7 @@ export function useIOSTour() {
   const outcome=currentGuard?guardLabels[currentGuard.result]:'尚未创建守护';
   return {sceneId,scene,condition,tab,route,stack,root,go,back,chooseScene,observe,outcome,toolsOpen,setToolsOpen,showFrame,setShowFrame,
     camera,selectCamera,mode,setMode,topic,topicId,topics,input,setInput,ask,newTopic,selectTopic,
-    guards,editor,editorScene,currentGuard,beginGuard,patchGuard,generate,revise,revision,setRevision,activate,pause,error,
+    guards,editor,editorScene,currentGuard,beginGuard,patchGuard,generate,revise,revision,setRevision,activate,pause,compareEndpoints,error,
     automaticMemory,setAutomaticMemory,memoryFilter,setMemoryFilter,memories,setMemories,memoryText,setMemoryText,temporary,setTemporary,removing,setRemoving,remember,openMemory,
     nearby,setNearby,deviceName,setDeviceName,deviceKind,setDeviceKind,bluetooth,setBluetooth,connectBluetooth,
     nickname,setNickname,toast,setToast,preferences,toggle,morningHour,setMorningHour,eveningHour,setEveningHour,

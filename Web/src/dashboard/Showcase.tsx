@@ -19,7 +19,7 @@ export function Showcase({onMonitor}:{onMonitor:()=>void}) {
         <div className="eg-showcase-states">{([['baseline','建立基线'],['changed','条件触发'],['unknown','画面遮挡']] as [TourCondition,string][]).map(([id,label])=><button key={id} aria-pressed={tour.condition===id} onClick={()=>tour.observe(id)}><span className={'eg-tour-dot '+id}/>{label}<span>{tour.condition===id?'✓':'○'}</span></button>)}</div>
         <div className="eg-showcase-observation" aria-live="polite"><small>当前示例结果</small><strong>{tour.outcome}</strong><p>{tour.currentGuard?.reason||'还没有开启守护。先完成需求与选框确认。'}</p><span>状态为脚本示例；参考图片不代表真实检查结果。</span></div>
         <dl><dt>新版五个入口</dt><dd>助手 / 摄像头守护 / 设备 / 记忆 / 我的</dd><dt>现场与历史</dt><dd>现场可讨论守护；历史只检索已保存资料。</dd><dt>连接与硬件</dt><dd>手机 App 前台单路取样；官方 SDK 调试位于“我的 → 设置”。Web 只展示流程。</dd></dl>
-        <button onClick={async()=>{try{await navigator.clipboard.writeText(location.origin+'/dashboard?view=showcase');setCopied(true);}catch{setCopied(false);}}}>{copied?'作品入口已复制':'复制作品入口'}</button><small>依据 GitHub main 的 iOS 1.0(17) 页面与交互实现；复用 App 的 anker 头像。网页预览不是原生 iOS 模拟器。</small>
+        <button onClick={async()=>{try{await navigator.clipboard.writeText(location.origin+'/dashboard?view=showcase');setCopied(true);}catch{setCopied(false);}}}>{copied?'作品入口已复制':'复制作品入口'}</button><small>依据最新 iOS 源码，导航基线为 1.0(17)；含新增首尾图分析流程示例。网页预览不是原生 iOS 模拟器。</small>
       </aside>
     </div>
   </section>;
