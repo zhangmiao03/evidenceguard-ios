@@ -20,7 +20,7 @@ import tarfile
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def upload(path, base_archive=None, base_release=None):
+def upload(path, base_archive=None, base_release=None, no_system_proxy=False):
     raw=path.read_bytes(); full_digest=hashlib.sha256(raw).hexdigest()
     if bool(base_archive) != bool(base_release): raise ValueError('Both base archive and release are required')
     if base_release:
@@ -43,7 +43,9 @@ def upload(path, base_archive=None, base_release=None):
     with tempfile.TemporaryDirectory(prefix='eg-demo-upload-') as temp:
         def run(name,script):
             file=Path(temp)/(name+'.sh');file.write_text(script,encoding='utf-8',newline='\n')
-            result=subprocess.run([sys.executable,str(ROOT/'scripts/cloud_command.py'),'--file',str(file),'--timeout','180'],cwd=ROOT,capture_output=True,text=True,encoding='utf-8')
+            command=[sys.executable,str(ROOT/'scripts/cloud_command.py'),'--file',str(file),'--timeout','180']
+            if no_system_proxy: command.append('--no-system-proxy')
+            result=subprocess.run(command,cwd=ROOT,capture_output=True,text=True,encoding='utf-8')
             if result.returncode: raise RuntimeError(result.stderr+'\n'+result.stdout)
             return result.stdout.strip()
         run('prepare',f'set -eu\ninstall -d -m 700 {staging}\n')
@@ -95,4 +97,5 @@ PY
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('archive',type=Path);p.add_argument('--base-archive',type=Path);p.add_argument('--base-release')
-    args=p.parse_args();upload(args.archive,args.base_archive,args.base_release)
+    p.add_argument('--no-system-proxy',action='store_true',help='Pass through to cloud_command; TLS verification stays enabled')
+    args=p.parse_args();upload(args.archive,args.base_archive,args.base_release,args.no_system_proxy)

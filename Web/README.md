@@ -66,6 +66,8 @@ npm run dev
 
 demo 产品入口为 https://demo.47.131.21.137.sslip.io/ ，沿用该环境的团队令牌。产品五栏与官方 SDK 切换同源托管。
 
+10 月 16 日 13:23（新加坡时间）最终发布为 `tools-78f9a46242aedff8/web`，入口资源 `index-3ay3CKUw.js`。服务端继续使用已部署的 Codex/早晚报告版本，iOS 与 Web 请求契约均完成真实只读工具联调。后续诊断采集更新独立进行，不能将提示词记录数量视为 Codex 模型调用次数。
+
 新增可选自动记忆设置和来源原话，旧后端无 `automaticMemory` 时不显示；`metadata_only` 事件明确标为仅设备报告。服务器已支持早晚两份报告，本版 Web 仍展示原每日概况控件，因此保存时显式只发送旧字段，不能回传未显示的 `morningReport/eveningReport/morningHour/eveningHour`。关闭概况按服务端兼容规则关闭订阅；本轮没有替换为另一个分支的新版设置 UI。
 
 完整后端/部署差异与测试见 [demo 联调记录](../Docs/DEMO-TOOLCHAIN-DEPLOYMENT.md)。浏览器测试中的设备与回执替身不是物理设备验证。

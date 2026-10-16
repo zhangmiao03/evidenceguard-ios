@@ -166,4 +166,25 @@ Web 新发现的兼容问题已修复：JSON 解码会保留新服务返回的�
 /opt/evidenceguard-demo/venv-build10/bin/python RELEASE/web_release.py --rollback BACKUP
 ```
 
-另一独立会话正在更新 Dashboard 观察器，可能随后重启服务并改变 observer 配置；上述 PID/指纹是本次 Web 发布时点的证据。当前 Codex 的真实 iOS/Web 契约联调将在该次维护结束后进行，避免把重启中断误判成模型或工具失败。
+另一独立会话随后更新了 Dashboard 观察器，独立重启服务；上述 PID/指纹是本次 Web 发布时点的证据。实际复核确认该次维护保留了全部业务源文件及本轮 `EG_WEB_ROOT`。旧的 Web 回滚备份因 observer 配置变化不应直接使用，后续发布重新记录配置。
+
+### 最终同步发布与当前 Codex 联调
+
+已合入同分支的 AWS 连接修复 `5ab4ec2` 和 Dashboard 正文查看 `1a2f7d8`，未强推。合并后重新通过 13 项 Web 单元、14 项监控测试、监控与当前后端的兼容脚本，以及 8 项受影响的桌面/手机 Dashboard 浏览器测试，TypeScript/Vite 生产构建成功。最终包内全部 94 个后端应用、依赖、测试及素材文件与 Linux 306 项通过的预检包完全同哈希，没有重复运行未变的后端测试。
+
+- **当前 Web**：`/opt/evidenceguard-demo/releases/tools-78f9a46242aedff8/web`；入口 `/assets/index-3ay3CKUw.js`；最终四浏览器公网入口和官方切换复验均通过。
+- **后端**：仍为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`。此次 Web 发布同时保留已上线的 observer `/opt/evidenceguard-dashboard/releases/51356eded710c92d`。
+- **包**：119 文件，基准提交 `0c2153e`；archive SHA-256 `78f9a46242aedff813f667c252825e2361d57511d49aa03ccb01a7d06a07f2f9`；manifest 内容摘要 `00741bd4aee61b6ddd6be7c3ece44a7221ce2cd539fb205fcd6b8d570d596933`。
+- **实际发布时间**：2026-10-16 13:23（新加坡时间），SSM `68e2d85e-2650-48a8-a3cd-41512114d2bc` 返回 Success；仅 demo 重启，team/review PID 在本次操作前后不变，业务数据保留。
+- **对应回滚备份**：`/var/backups/evidenceguard-demo-web/20261016T052331630965Z`；使用同包 `web_release.py --rollback`。如观察器或后台配置此后再次变更，脚本会拒绝直接恢复，须先重新核对，不能绕过检查或回退数据库。
+
+当前真实模型联调 SSM `f7751cbf-e261-4eac-9da0-e8ca6da5d061` 返回 Success：
+
+| 请求契约 | run ID | 实际执行器 | 结果 |
+|---|---|---|---|
+| iOS | `demo-toolchain-ios-8d8f21d53ed648d7bd7266dbd0662b8f` | `codex-app-server-v1` | completed；两个指定只读工具均 completed |
+| Web | `demo-toolchain-web-075172e3cb4b4c989af706f1c13155c1` | `codex-app-server-v1` | completed；两个指定只读工具均 completed |
+
+两轮都核对了服务端冻结契约、`executor_started/executor_completed`、最终响应、API 工具回执和 observer 工具记录，工具为 `list_camera_capabilities` 与 `list_tasks`。测试安装关闭自动记忆，没有硬件操作或推送。当前登记设备和执行器设备均为 0，结果仅证明 HTTP/Agent/工具契约连通，不是 iPhone 二进制或物理摄像头验收。
+
+当时 observer 尚未直接采集 Codex 子进程的模型 HTTP/提示词；`realModelCalls=null`、`promptSnapshots=0` 是明确的观测缺口，不能解读为未调用模型，也不填造 HTTP 200 次数。Dashboard 会话另行补充这部分采集，不影响本轮已核验的 Codex 生命周期与工具回执。

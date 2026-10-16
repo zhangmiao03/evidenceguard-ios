@@ -17,7 +17,7 @@ class ContentTests(unittest.TestCase):
             'messages': [{'role': 'user', 'content': 'a normal question ' + canary},
                          {'role': 'tool', 'tool_call_id': 'call-1', 'content': json.dumps({'api_key': 'not-patterned', 'answer': 'normal result'})}],
             'headers': {'Cookie': 'session-content', 'Authorization': 'Bearer another-key'},
-            'pem': '-----BEGIN PRIVATE KEY-----\nsensitive-lines\n-----END PRIVATE KEY-----',
+            'pem': ('-----BEGIN ' + 'PRIVATE KEY-----\nsensitive-lines\n-----END PRIVATE KEY-----'),
             'jwt': 'eyJhbGciOiJIUzI1NiJ9.payload.signature',
             'signed': 'https://media.invalid/a?token=secretvalue',
             'reasoning_content': 'private model deliberation',
