@@ -165,7 +165,11 @@ def test_live_challenge_becomes_product_evidence_and_scoped_observation(env):
         time.sleep(.01)
     assert len(commands)==1
     c.post('/api/media-sessions/'+media['id']+'/heartbeat',json=dict(state='streaming',sequence=2,frameAgeMs=0),headers=mh)
-    r=c.post('/api/media-sessions/'+media['id']+'/frames',json=picture(commands[0]['requestId']),headers=mh)
+    sample=picture(commands[0]['requestId'])
+    sample['decoderFrame']=dict(sourceKind='decoded_live_frame',deviceId=d['id'],sessionId=media['id'],
+        sequence=10,previousSequence=9,playState='playing',progressSource='decoder_callback',
+        dimensions=[sample['width'],sample['height']],lastFrameAt=time.time()*1000-10,capturedAt=time.time()*1000)
+    r=c.post('/api/media-sessions/'+media['id']+'/frames',json=sample,headers=mh)
     assert r.status_code==200,r.text
     result=future.result(timeout=4); assert duplicate.result(timeout=4)==result
     assert result['executionState']=='completed',result
@@ -265,7 +269,7 @@ def test_agent_control_waits_for_human_then_updates_the_same_run(env):
     from test_harness import ScriptedProvider, tool, settle
     app,c=env; d,_,h,headers=host(c)
     revision=c.get('/api/hardware/snapshot').json()['devices'][0]['capabilityRevision']
-    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',capabilityRevision=revision,
+    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',variant='statusLED',capabilityRevision=revision,
         status='passed',evidence='测试替身检查接口；不代表真实设备验收'))
     app.state.agent.model_provider=ScriptedProvider([tool('device_settings_set',dict(deviceId=d['id'],field='statusLED',value=True,expectedSettingsRevision=0))])
     async def start():
@@ -287,7 +291,7 @@ def test_cancel_agent_run_cancels_its_pending_hardware_without_granting_other_ta
     from test_harness import ScriptedProvider, tool, settle
     app,c=env; d,_,h,headers=host(c)
     revision=c.get('/api/hardware/snapshot').json()['devices'][0]['capabilityRevision']
-    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',capabilityRevision=revision,
+    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',variant='statusLED',capabilityRevision=revision,
         status='passed',evidence='测试替身检查接口；不代表真实设备验收'))
     app.state.agent.model_provider=ScriptedProvider([tool('device_settings_set',dict(deviceId=d['id'],field='statusLED',value=True,expectedSettingsRevision=0))])
     async def start(): return await settle(app.state.agent,app.state.agent.start('打开指示灯','cancel-chat',camera_id=d['id']))

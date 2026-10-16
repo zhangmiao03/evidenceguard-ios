@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "tools": [
     {
       "name": "devices_list",
@@ -112,7 +112,7 @@
     },
     {
       "name": "camera_ptz_step",
-      "description": "有限方向单步；移动后旧观察失效",
+      "description": "默认方向单步；可显式申请 100–1100ms 有界连续动作并配对停止，不接受角度/轨迹",
       "capabilities": [
         "C16"
       ],
@@ -134,6 +134,18 @@
               "UP",
               "DOWN"
             ]
+          },
+          "motionMode": {
+            "type": "string",
+            "enum": [
+              "step",
+              "continuous"
+            ]
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 1100
           },
           "referenceObservationId": {
             "type": "string",
@@ -285,7 +297,7 @@
     },
     {
       "name": "camera_record_clip",
-      "description": "有限客户端录制；严格检查采集音轨策略",
+      "description": "有限客户端录制；不是设备卡录像/历史下载/云同步；严格检查采集音轨策略",
       "capabilities": [
         "C13"
       ],
@@ -310,6 +322,12 @@
               "required",
               "forbidden",
               "allowIfPresent"
+            ]
+          },
+          "storageScope": {
+            "type": "string",
+            "enum": [
+              "client_local"
             ]
           }
         },
@@ -733,7 +751,7 @@
     },
     {
       "name": "camera_dual_mode_set",
-      "description": "切换已验证的双摄布局，更新视图版本",
+      "description": "从运行时目录切换双摄模式；ACK 不等于布局通过，旧 ROI 失效，重连策略由宿主复核",
       "capabilities": [
         "C27"
       ],

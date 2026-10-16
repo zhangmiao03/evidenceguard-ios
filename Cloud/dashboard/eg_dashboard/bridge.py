@@ -75,7 +75,7 @@ def instrument(ops, native):
                     data={'executionMode': run.get('executionMode'),
                           'answer': summary(run.get('text')), 'toolReceipts': summary(run.get('toolReceipts', [])),
                           'errorPresent': bool(run.get('error')),
-                          **({} if run.get('referenceImageId') else content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error')))})
+                          **({} if run.get('referenceImageId') or run.get('privateContent') or run.get('endpointAnalyses') else content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error')))})
     runtime.AgentRuntime._execute = execute if native else ops.traced('agent')(execute)
 
     original_tool = tools.ToolRegistry.call
@@ -91,7 +91,7 @@ def instrument(ops, native):
         start = time.monotonic()
         status = 'failed'
         result_info = {}
-        private_search=name=='search_recordings'
+        private_search=name in {'search_recordings','analyze_visual_endpoints'}
         captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:])
         recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs), **captured})
         try:
@@ -214,6 +214,9 @@ def attach(app, ops, native):
         'image': getattr(getattr(video_service, 'vision', None), 'model', None) or os.getenv('EG_VIDEO_MODEL_ID') or os.getenv('EG_MODEL_ID') or None,
         'embedding': getattr(getattr(video_service, 'embedding', None), 'model', None) or os.getenv('EG_EMBED_MODEL_ID') or None,
     }
+    endpoint_vision = getattr(app.state,'endpoint_vision',None)
+    if endpoint_vision:
+        configured_models['endpoint_vision'] = endpoint_vision.configuration().get('model')
     state = {'startedAt': time.time(), 'pid': os.getpid(), 'appVersion': app.version,
              'environment': os.getenv('EG_DASHBOARD_ENVIRONMENT','local'),
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
@@ -224,6 +227,7 @@ def attach(app, ops, native):
              'embeddingSignature': getattr(video_service, 'index_signature', getattr(getattr(video_service, 'embedding', None), 'signature', None)),
              'videoRoot': str(getattr(video_service, 'root', '')),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
+             'promptCatalog': [ops.safe(endpoint_vision.prompt_catalog())] if endpoint_vision else [],
              'tools': ops.safe(app.state.tools.schemas)}
     target = Path(recorder.path).with_name('observer-state.json')
     target.write_text(json.dumps(state, ensure_ascii=False),encoding='utf-8')

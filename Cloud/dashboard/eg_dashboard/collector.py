@@ -255,6 +255,8 @@ class Collector:
         if state.get('systemPrompt'):
             records.append(resource('deployed_prompt',{'systemPrompt':state['systemPrompt'],
                 'tools':state.get('tools',[]),'status':'loaded_at_startup'},state.get('startedAt',now)))
+        for prompt in state.get('promptCatalog',[]):
+            records.append(resource('deployed_prompt',prompt,state.get('startedAt',now)))
         size=0;selected=[]
         for row in reversed(records):
             size+=len(json.dumps(row,ensure_ascii=False).encode())

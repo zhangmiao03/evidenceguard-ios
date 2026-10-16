@@ -1,74 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import {useState} from 'react';
 import './showcase.css';
 import './phone.css';
-import {PhoneIcon} from './PhoneIcon';
-import doorPhoto from './assets/DoorScene.jpg';
-import petPhoto from './assets/PetThumb.jpg';
-import studioPhoto from './assets/BoxThumb.jpg';
-import homePhoto from './assets/HomeHero.jpg';
-import avatarPhoto from './assets/DogAvatar.jpg';
-import takenPhoto from './assets/EvidenceScene.jpg';
-
-const scenes = [
-  {id:'door',label:'门口包裹',camera:'前门门铃',name:'包裹离区提醒',prompt:'帮我看住门口的包裹，离开地垫时提醒我；看不清时不要判断。',area:'门口地垫',present:'包裹仍在地垫内',absent:'包裹已不在关注区域',unknown:'画面被遮挡，无法确认包裹状态',memory:'只在包裹离区时提醒；遮挡时保持未知。'},
-  {id:'pet',label:'室内宠物',camera:'客厅云台',name:'宠物区域记录',prompt:'记录宠物在客厅活动的片段，帮我回顾它今天的活动。',area:'客厅活动区',present:'宠物正在客厅休息',absent:'本次画面没有看到宠物',unknown:'客厅被遮挡，无法确认宠物位置',memory:'优先记录客厅的宠物活动，不推断健康状态。'},
-  {id:'studio',label:'工作室',camera:'工作室摄像头',name:'工作台物品看护',prompt:'帮我关注工作台上的相机，物品离开区域时提醒我。',area:'工作台',present:'相机仍在工作台上',absent:'相机已不在工作台区域',unknown:'工作台画面不清楚，暂不能判断',memory:'工作台物品变化需要附上证据，不推断拿取者身份。'},
-];
-type Scene=typeof scenes[number];
-type Status='present'|'absent'|'unknown';
-const icons=['chat','camera','tasks','memory','profile'];
-const tabs=['助手','摄像头Skill','任务','记忆','我的'];
-
-function CameraScene({scene,status,roi}:{scene:Scene;status:Status;roi:boolean}) {
-  const photo=scene.id==='door'?(status==='absent'?takenPhoto:doorPhoto):scene.id==='pet'?petPhoto:studioPhoto;
-  return <div className={`eg-phone-scene ${status}`}>
-    <img src={photo} alt={`${scene.label}场景参考图，非摄像头实时画面`}/>
-    <span className="eg-phone-camera-label"><i/>{scene.camera}</span>
-    <span className="eg-phone-scene-time">场景参考</span>
-    {roi&&status==='present'&&<div className={`eg-phone-roi ${scene.id}`}><span>{scene.area}</span><i/><i/><i/><i/></div>}
-    {status==='unknown'&&<div className="eg-phone-frame-cover"><PhoneIcon name="camera"/><b>画面不可用</b><small>示例遮挡状态 · 等待新的证据</small></div>}
-    {status==='absent'&&<div className="eg-phone-event-caption">示例事件 · {scene.id==='pet'?'宠物离开区域':'关注物品离开区域'}</div>}
-    <span className="eg-phone-scene-bottom">● 场景演示 <span>高清</span></span>
-  </div>;
-}
+import {IOSPreview} from './IOSPreview';
+import {useIOSTour} from './useIOSTour';
+import {tourScenarios,type TourCondition} from './tourData';
 
 export function Showcase({onMonitor}:{onMonitor:()=>void}) {
-  const [sceneId,setSceneId]=useState('door'),[tab,setTab]=useState(0),[status,setStatus]=useState<Status>('present');
-  const [draft,setDraft]=useState(false),[created,setCreated]=useState<string[]>([]),[paused,setPaused]=useState<string[]>([]),[roi,setRoi]=useState(true);
-  const [message,setMessage]=useState(''),[answer,setAnswer]=useState(''),[eventOpen,setEventOpen]=useState(false),[sdk,setSdk]=useState(false);
-  const [memories,setMemories]=useState<string[]>(['遮挡时保持未知，不把没有看见当作安全。']);
-  const [notify,setNotify]=useState(true),[copied,setCopied]=useState(false);
-  const phoneScroll=useRef<HTMLDivElement>(null);
-  useEffect(()=>{if(phoneScroll.current)phoneScroll.current.scrollTop=0;},[tab,sceneId]);
-  const scene=scenes.find(s=>s.id===sceneId)!;
-  const enabled=created.includes(scene.id),isPaused=paused.includes(scene.id);
-  function choose(id:string){setSceneId(id);setStatus('present');setDraft(false);setAnswer('');setEventOpen(false);setSdk(false);setTab(0);}
-  function teach(){setTab(0);setDraft(true);setAnswer('我理解了：关注指定对象与区域，先核验画面，再判断状态。请确认下面的配置。');}
-  function ask(){if(!message.trim())return;setAnswer(`演示脚本回应「${message.trim()}」：${scene[status]}。${status==='unknown'?'证据不足，保持 UNKNOWN，不发送确定性结论。':'这是该场景的示例观察，不代表真实设备状态。'} 可继续创建 Skill 或查看证据。`);setMessage('');}
-  function saveSkill(){setCreated(v=>[...new Set([...v,scene.id])]);setDraft(false);setAnswer('已在本次演示中启用 Skill。可以切换“物品离区”或“画面遮挡”，查看任务和证据如何变化。');}
-  const outcome=status==='unknown'?'无法确认':status==='absent'?'需要关注':'已确认';
+  const tour=useIOSTour(),[copied,setCopied]=useState(false);
   return <section className="eg-showcase">
-    <div className="eg-showcase-heading"><div><span className="eg-showcase-kicker">EVIDENCEGUARD / INTERACTIVE PRODUCT TOUR</span><h2>把你关心的事，<br/><em>交给看得见的助手。</em></h2><p>自然语言教会摄像头新技能。每一个结论，都回到可核验的证据。</p></div><span className="eg-showcase-demo-tag">iOS 交互演示 · 示例数据 · 不连接硬件</span></div>
-    <div className="eg-showcase-stage"><aside className="eg-showcase-guide"><small>01 / 选择生活场景</small><div className="eg-showcase-scenes">{scenes.map((s,i)=><button key={s.id} aria-pressed={s.id===sceneId} onClick={()=>choose(s.id)}><span>0{i+1}</span><strong>{s.label}<small>{s.camera}</small></strong><b>↗</b></button>)}</div>
-      <div className="eg-showcase-guidecard"><small>02 / 体验一次完整闭环</small><ol><li>用一句话描述关注对象</li><li>检查范围，确认创建 Skill</li><li>切换画面状态，查看任务结果</li><li>回到证据，追问并保存记忆</li></ol><button className="eg-showcase-primary" onClick={teach}>开始体验：教 AI 新技能 →</button></div>
-      <div className="eg-showcase-proof"><span>真实运行在哪里？</span><p>摄像头控制统一在手机 App 的官方 SDK 中完成。Dashboard 查看 App 上传后的画面、Agent 分析与执行回执；此手机预览仅演示交互。</p><button onClick={onMonitor}>查看真实后端 Trace ↗</button><a href="https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip" download>下载完整网站 ZIP ↓</a></div>
-    </aside>
-    <div className="eg-phone" aria-label="iOS 交互演示"><div className="eg-phone-statusbar"><b>9:41</b><span className="eg-phone-island"/><span className="eg-phone-systemicons"><PhoneIcon name="signal"/><PhoneIcon name="wifi"/><PhoneIcon name="battery"/></span></div><div className="eg-phone-scroll" ref={phoneScroll}>
-      <div className="eg-phone-hero" style={{backgroundImage:`linear-gradient(180deg,rgba(247,250,255,.95),rgba(247,250,255,.28)),url(${homePhoto})`}}><div className="eg-phone-brand"><div><strong>EvidenceGuard</strong><small>用 AI 守护你在乎的每一刻</small></div><span className="eg-phone-brandicon"><PhoneIcon name="bell"/></span></div><p className="eg-phone-editorial">更安心的生活，<br/>从看见开始。</p></div>
-      <div className="eg-phone-context"><span><PhoneIcon name="shield"/> 我的家 · {scene.label}</span><button onClick={()=>setSdk(!sdk)}>手机 SDK 说明</button></div>
-      {sdk&&<div className="eg-phone-card eg-phone-sdk"><b>硬件操作请在手机 App 完成</b><p>配网、绑定、实时取流及摄像头控制统一使用手机 App 的官方 SDK。门铃与云台分别以该 SDK 实际开放的能力和设备回执为准。</p><p>Web 没有这些硬件控制接口。本页不加载 SDK，也不能通过模拟手机界面来控制摄像头、云台、麦克风或扬声器。</p><p>Dashboard 负责查看上传的图片与录像、Agent 分析、检索记录和执行回执。</p><button onClick={()=>setSdk(false)}>返回产品演示</button></div>}
-      {tab===0&&<><div className="eg-phone-greeting"><span>你的视觉助手</span><h3>我关心的事</h3><span className="eg-phone-greeting-mark"><PhoneIcon name="sparkle"/></span></div><CameraScene scene={scene} status={status} roi={roi}/><div className="eg-phone-result"><span className={`eg-phone-dot ${status}`}/><div><b>{outcome} · {scene[status]}</b><small>{status==='unknown'?'保持未知，等待新的可用证据':'基于当前场景的示例观察'}</small></div></div><button className="eg-phone-suggestion" onClick={teach}>{scene.prompt} <b>↗</b></button>
-        {answer&&<div className="eg-phone-card eg-phone-answer" role="status"><b><PhoneIcon name="sparkle"/> EvidenceGuard</b><p>{answer}</p></div>}
-        {draft&&<div className="eg-phone-card"><b>{scene.name}</b><dl><dt>关注区域</dt><dd>{scene.area}</dd><dt>触发条件</dt><dd>{scene.id==='pet'?'进入区域时记录':'物品离开区域时提醒'}</dd><dt>无法确认</dt><dd>遮挡 / 无新画面 → UNKNOWN</dd><dt>执行设备</dt><dd>{scene.camera}（演示）</dd></dl><button className="eg-phone-primary" onClick={saveSkill}>确认创建 Skill</button><button onClick={()=>setDraft(false)}>取消本次创建</button></div>}
-        <form className="eg-phone-compose" onSubmit={e=>{e.preventDefault();ask();}}><input aria-label="演示对话输入" placeholder="试着问：刚才发生了什么？" value={message} maxLength={200} onChange={e=>setMessage(e.target.value)}/><button type="submit" aria-label="发送演示消息" disabled={!message.trim()}><PhoneIcon name="arrow"/></button></form><small className="eg-phone-caption">本页使用离线脚本，不调用云端模型</small></>}
-      {tab===1&&<><div className="eg-phone-title"><h3>摄像头 Skill</h3><button onClick={teach}>＋ 新建</button></div><CameraScene scene={scene} status={status} roi={roi}/><div className="eg-phone-card"><div className="eg-phone-cardrow"><b>{scene.name}</b><span className="eg-phone-pill">{enabled?isPaused?'已暂停':'运行中':'待创建'}</span></div><p>让摄像头理解具体任务，持续更新可核验状态。</p><button aria-pressed={roi} onClick={()=>setRoi(!roi)}>{roi?'隐藏':'显示'}关注区域</button><dl><dt>区域</dt><dd>{scene.area}</dd><dt>状态规则</dt><dd>已确认 / 需要关注 / 无法确认</dd><dt>权限</dt><dd>交互示例；设备控制在手机 App</dd></dl>{enabled?<button onClick={()=>setPaused(v=>isPaused?v.filter(x=>x!==scene.id):[...v,scene.id])}>{isPaused?'继续任务':'暂停任务'}</button>:<button className="eg-phone-primary" onClick={teach}>教 AI 这个技能</button>}</div><div className="eg-phone-note">本页仅展示 Skill 流程。真实配网、取流和设备操作由手机 App 的官方 SDK 执行。</div></>}
-      {tab===2&&<><div className="eg-phone-title"><h3>我关心的事</h3><span>{created.length} 个任务</span></div>{!created.length?<div className="eg-phone-card"><h3>让第一件小事，有人帮你记着。</h3><p>从包裹、宠物或工作台开始，创建一个可解释的任务。</p><button className="eg-phone-primary" onClick={teach}>创建第一个任务</button></div>:created.map(id=>{const s=scenes.find(x=>x.id===id)!;return <button key={id} className="eg-phone-task" onClick={()=>{setSceneId(id);setEventOpen(true);}}><span className={`eg-phone-dot ${id===scene.id?status:'present'}`}/><span><b>{s.name}</b><small>{paused.includes(id)?'已暂停':id===scene.id?outcome:'等待本场景观察'}</small></span><b>›</b></button>})}
-        {eventOpen&&enabled&&<div className="eg-phone-card"><h3>{outcome}</h3><CameraScene scene={scene} status={status} roi={roi}/><p>{scene[status]}。{status==='unknown'?'新画面恢复前不做确定性判断。':'结论仅对应当前示例帧，不推断人物身份或意图。'}</p><small>证据类型：演示关键帧 / 无真实拍摄时间</small><button onClick={()=>{setTab(0);setAnswer(`证据回顾：${scene[status]}。这条示例任务保留了来源、状态和判断限制。`);}}>带着证据继续问</button></div>}
-        {enabled&&!eventOpen&&<button className="eg-phone-primary" onClick={()=>setEventOpen(true)}>查看当前任务证据</button>}</>}
-      {tab===3&&<><div className="eg-phone-title"><h3>记忆</h3><span>本次演示</span></div><div className="eg-phone-card eg-phone-answer"><b>记住偏好，不替你猜测。</b><p>可以查看、添加或移除偏好。这里的变化只保留在当前页面，不写入后端。</p></div>{memories.map((m,i)=><div className="eg-phone-card" key={m}><small>偏好 · 用户确认</small><p>{m}</p><button onClick={()=>setMemories(v=>v.filter((_,j)=>i!==j))}>移除这条记忆</button></div>)}<button className="eg-phone-primary" disabled={memories.includes(scene.memory)} onClick={()=>setMemories(v=>[...v,scene.memory])}>{memories.includes(scene.memory)?'当前场景偏好已保存':'记住当前场景的偏好'}</button></>}
-      {tab===4&&<><div className="eg-phone-profile"><img src={avatarPhoto} alt="小安的头像"/><div><h3>小安</h3><p>让生活更安心</p></div></div><div className="eg-phone-summary"><div><b>{created.length}</b><small>演示任务</small></div><div><b>{memories.length}</b><small>本地记忆</small></div><div><b>0</b><small>已连接硬件</small></div></div><div className="eg-phone-card"><div className="eg-phone-cardrow"><b>通知与提醒</b><button role="switch" aria-checked={notify} aria-label="演示通知" onClick={()=>setNotify(!notify)}>{notify?'开启':'关闭'}</button></div><small>仅改变演示偏好，不申请系统权限。</small><button onClick={()=>setSdk(!sdk)}>手机 SDK 与硬件边界说明 ›</button><button onClick={()=>setAnswer('数据仅保存在页面内存。刷新页面即可恢复初始演示；不会清理真实账户数据。')}>隐私与数据说明 ›</button><button onClick={()=>{setCreated([]);setPaused([]);setMemories(['遮挡时保持未知，不把没有看见当作安全。']);setAnswer('本地演示已重置。');setDraft(false);setEventOpen(false);}}>重置本次演示</button>{answer&&<p role="status">{answer}</p>}</div></>}
-    </div><nav className="eg-phone-tabbar" aria-label="iOS 功能导航">{tabs.map((label,i)=><button key={label} aria-current={tab===i?'page':undefined} onClick={()=>{setTab(i);setSdk(false);}}><span><PhoneIcon name={icons[i]}/></span>{label}<i/></button>)}</nav><div className="eg-phone-homebar"/></div>
-    <aside className="eg-showcase-inspector"><small>03 / 改变观察条件</small><h3>可靠的判断，<br/>也包括「不知道」。</h3><p>用以下按钮切换示例状态，观察任务结果如何变化。</p><div className="eg-showcase-states">{[['present','对象可见'],['absent',scene.id==='pet'?'宠物离开':'物品离区'],['unknown','画面遮挡']].map(([id,label])=><button key={id} aria-pressed={status===id} onClick={()=>{setStatus(id as Status);setAnswer('');}}><span className={`eg-phone-dot ${id}`}/>{label}<span>{status===id?'✓':'○'}</span></button>)}</div><div className="eg-showcase-observation"><small>当前示例结果</small><strong>{outcome}</strong><p>{scene[status]}</p><span>{status==='unknown'?'UNKNOWN → 等待有效证据':status==='absent'?'事实变化 → 证据 → 提醒':'区域观察 → 状态确认'}</span></div><dl><dt>自然语言</dt><dd>需求 → 结构化 Skill → 用户确认</dd><dt>任务运行</dt><dd>取样 → 视觉核验 → 状态 → 证据</dd><dt>回顾记忆</dt><dd>检索 → 候选片段 → 视觉复核</dd></dl><button onClick={async()=>{try{await navigator.clipboard.writeText(location.origin+'/dashboard?view=showcase');setCopied(true);}catch{setCopied(false);}}}>{copied?'作品入口已复制':'复制作品入口'}</button><small>当前版本：复用 iOS 工程的视觉素材与五个功能分区；此处为网页交互预览，非原生模拟器。</small></aside>
+    <header className="eg-showcase-heading"><div><span className="eg-showcase-kicker">EVIDENCEGUARD / APP WALKTHROUGH</span><h2>和 anker 说一件事，<br/><em>让摄像头持续关注。</em></h2><p>跟随新版 App：聊需求、框选画面、确认守护，收到提醒后继续追问。</p></div><span className="eg-showcase-demo-tag">iOS 交互演示 · 示例数据 · 不连接硬件</span></header>
+    <div className="eg-showcase-stage">
+      <aside className="eg-showcase-guide"><small>选择一段体验</small><div className="eg-showcase-scenes">{tourScenarios.map((s,i)=><button key={s.id} aria-pressed={tour.sceneId===s.id} onClick={()=>tour.chooseScene(s.id)}><span>0{i+1}</span><strong>{s.label}<small>{s.camera} · {s.model}</small></strong><b>›</b></button>)}</div>
+        <div className="eg-showcase-guidecard"><small>从需求到提醒</small><ol><li>说出要关注的对象与条件</li><li>获取画面，框选关注区域</li><li>确认开启，再检查基线与变化</li><li>在主对话查看提醒并追问</li></ol><button className="eg-showcase-primary" onClick={()=>tour.beginGuard()}>体验创建守护</button><p>也可以直接操作手机中的五个页面，体验历史检索、设备连接步骤和记忆管理。</p></div>
+        <div className="eg-showcase-proof"><span>从交互走到真实运行</span><p>手机内是固定脚本示例。模型的真实提示词、工具调用、图片与最终回复，在监控页面逐条查看。</p><button onClick={onMonitor}>查看真实 Agent 链路 ↗</button><a href="https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip" download>下载可部署的完整网站 ZIP ↓</a></div>
+      </aside>
+      <IOSPreview tour={tour}/>
+      <aside className="eg-showcase-inspector"><small>推进一次示例检查</small><h3>先看到基线，<br/>再判断变化。</h3><p>确认开启守护后，使用以下按钮模拟一次有效检查或断流。无需真实硬件。</p>
+        <div className="eg-showcase-states">{([['baseline','建立基线'],['changed','条件触发'],['unknown','画面遮挡']] as [TourCondition,string][]).map(([id,label])=><button key={id} aria-pressed={tour.condition===id} onClick={()=>tour.observe(id)}><span className={'eg-tour-dot '+id}/>{label}<span>{tour.condition===id?'✓':'○'}</span></button>)}</div>
+        <div className="eg-showcase-observation" aria-live="polite"><small>当前示例结果</small><strong>{tour.outcome}</strong><p>{tour.currentGuard?.reason||'还没有开启守护。先完成需求与选框确认。'}</p><span>状态为脚本示例；参考图片不代表真实检查结果。</span></div>
+        <dl><dt>新版五个入口</dt><dd>助手 / 摄像头守护 / 设备 / 记忆 / 我的</dd><dt>现场与历史</dt><dd>现场可讨论守护；历史只检索已保存资料。</dd><dt>连接与硬件</dt><dd>手机 App 前台单路取样；官方 SDK 调试位于“我的 → 设置”。Web 只展示流程。</dd></dl>
+        <button onClick={async()=>{try{await navigator.clipboard.writeText(location.origin+'/dashboard?view=showcase');setCopied(true);}catch{setCopied(false);}}}>{copied?'作品入口已复制':'复制作品入口'}</button><small>依据最新 iOS 源码，导航基线为 1.0(17)；含新增首尾图分析流程示例。网页预览不是原生 iOS 模拟器。</small>
+      </aside>
     </div>
   </section>;
 }

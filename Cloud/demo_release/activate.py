@@ -33,6 +33,10 @@ def state(name, key): return subprocess.check_output(['systemctl','show',name,'-
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def runtime_prompt(relative):
+    return relative.suffix == '.md' and relative.parts[:3] == ('evidenceguard','vision','prompts')
+
+
 def verify_release(release):
     release=Path(release).resolve()
     if release.parent!=BASE or not release.name.startswith('tools-'): raise ValueError('Only demo releases are accepted')
@@ -49,7 +53,7 @@ def audit_source(root, expected):
     for path in root.rglob('*'):
         relative=path.relative_to(root)
         if path.is_file() and '__pycache__' not in relative.parts and (relative.as_posix() in {'requirements.txt','migration_stage.py'} or
-            relative.parts[0] in {'evidenceguard','tests'} and path.suffix in {'.py','.json'}):
+            relative.parts[0] in {'evidenceguard','tests'} and path.suffix in {'.py','.json'} or runtime_prompt(relative)):
             actual[relative.as_posix()]=digest(path)
     if actual!=expected: raise RuntimeError('Cloud source changed after audit; recompare before deployment: '+str(root))
 

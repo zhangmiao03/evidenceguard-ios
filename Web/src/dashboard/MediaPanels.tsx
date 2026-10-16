@@ -9,13 +9,13 @@ export const sec=(n:any)=>typeof n==='number'?`${n.toFixed(1)} s`:'—';
 const origin=(s:any)=>s==='official_sdk'?'官方 SDK 导入':s==='synthetic_review'?'合成测试素材 · 真实入库':s==='uploaded'?'用户上传':s==='fixture'?'测试场景素材':'数据库记录';
 const unitLabel=(r:MediaRow,i:number)=>r.data.indexVersion===2?(r.data.kind==='frame'?`关键帧向量 · ${sec(r.data.frameOffsetSeconds)}`:'视频片段向量'):`片段 ${i+1}`;
 const compatible=(v:any)=>v===true?'当前模型可检索':v===false?'需重新建立索引':'模型兼容性未采集';
-function output(row:MediaRow){let v=row.data.content?.response?.choices?.[0]?.message?.content||row.data.content?.response?.content;try{v=JSON.parse(v);}catch{}return typeof v==='string'?v:v?.visible||v?.summary||row.data.content?.error||'展开查看模型返回正文';}
+function output(row:MediaRow){if(row.data.privateContent)return '私有画面分析：此处仅展示模型、状态与耗时，结果正文请在 App 中查看。';let v=row.data.content?.response?.choices?.[0]?.message?.content||row.data.content?.response?.content;try{v=JSON.parse(v);}catch{}return typeof v==='string'?v:v?.visible||v?.summary||row.data.content?.error||'展开查看模型返回正文';}
 type Props={rows:MediaRow[];coverage?:Record<string,any>;onSelect:(r:any)=>void};
 export function ImageAnalysis({rows,coverage,onSelect}:Props){
   const [group,setGroup]=useState('episodes');
   const names:Record<string,string>={episodes:'media_sdk_episodes',events:'media_sdk_events',evidence:'media_evidence',cache:'media_visual_cache'};
   const items=rows.filter(r=>r.name===names[group]);
-  const calls=rows.filter(r=>r.kind==='model'&&(['image_review','frame_presence','video_verify'].includes(r.name)||rows.find(p=>p.id===r.data.promptId)?.data.inputMedia?.some((m:any)=>m.kind==='image'||m.kind==='video')));
+  const calls=rows.filter(r=>r.kind==='model'&&(['image_review','frame_presence','video_verify','vision.endpoints'].includes(r.name)||rows.find(p=>p.id===r.data.promptId)?.data.inputMedia?.some((m:any)=>m.kind==='image'||m.kind==='video')));
   return <div className="eg-media">
     <section className="eg-ops-panel eg-media-intro"><span className="eg-media-eyebrow">VISUAL OBSERVATIONS</span><h2>画面、理解，以及判断的依据</h2><p>事件原图与识别结论放在一起看。豆包调用记录单独展示当次上传的图片、提示词与返回结果。</p><small>真实业务库 / 模型追踪库 · 更新于 {time(coverage?.sampledAt)}</small></section>
     <section className="eg-ops-panel"><div className="eg-media-cardhead"><div><h2>豆包视觉调用</h2><p className="eg-ops-note">输入副本按原始字节校验。Codex 记录的是传入执行器的图片，底层 HTTP 报文不可见；历史缺失不会拿相邻图片代替。</p></div><span className="eg-ops-badge">{calls.length} 次</span></div>

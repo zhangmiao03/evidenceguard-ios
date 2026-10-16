@@ -142,6 +142,28 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(IOSToolExecutor.deviceID("T8171TESTTOOLS1"), "sdk-e41d9c3701a5f085f9ea")
     }
 
+    func testEndpointAnalysisDecodesUnknownAndPreservesPrivateHeaders() async throws {
+        let requests = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            requests.append(item.request)
+            XCTAssertEqual(item.request.url!.path, "/api/visual-scenes/scene-test/analyze")
+            XCTAssertEqual(item.request.timeoutInterval, 90)
+            item.reply(#"{"status":"unknown","code":"NEEDS_SECOND_FRAME","reason":"只有一张画面","readOnly":true,"controlEligible":false,"limitation":"只读分析"}"#)
+        }
+        // Decode a legacy response: optional new fields must not break older services.
+        let body = #"{"id":"scene-test","cameraId":"sdk-test","prompt":"看住包裹","revision":2,"status":"active","stage":"review","question":"","unsupportedReason":"","reason":"等待采样","summary":"包裹看护","limitation":"前台观察","canActivate":false,"observation":{"state":"unknown","reason":"等待采样"},"evidenceIds":[]}"#
+        let scene = try JSONDecoder().decode(VisualScene.self, from: Data(body.utf8))
+        XCTAssertNil(scene.endpointVision)
+        let result = try await client().analyzeScene(scene)
+        XCTAssertEqual(result.status, "unknown")
+        XCTAssertNil(result.analysis)
+        XCTAssertNil(result.sources)
+        XCTAssertEqual(result.reason, "只有一张画面")
+        XCTAssertEqual(requests.all.first?.httpMethod, "POST")
+        XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+    }
+
     func testUnavailableInstallationProofDoesNotSendRequest() async throws {
         let requests = Requests()
         StubProtocol.install { item in requests.append(item.request); item.reply("{}") }

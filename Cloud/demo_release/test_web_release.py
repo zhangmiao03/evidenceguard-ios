@@ -85,6 +85,17 @@ def test_active_backend_must_match_package(fixture):
     with pytest.raises(RuntimeError, match='differs'): deploy.verify_runtime(root, manifest)
 
 
+def test_changed_runtime_prompt_blocks_web_only_release(fixture):
+    root, _, _, _, _, _ = fixture
+    prompt=root/'evidenceguard/vision/prompts/common.md'
+    prompt.parent.mkdir(parents=True);prompt.write_text('reviewed fixed prompt')
+    manifest=dict(files={'Cloud/server/'+name:digest for name,digest in deploy.runtime_hashes(root).items()})
+    assert 'Cloud/server/evidenceguard/vision/prompts/common.md' in manifest['files']
+    deploy.verify_runtime(root,manifest)
+    prompt.write_text('changed analysis instructions')
+    with pytest.raises(RuntimeError,match='differs'): deploy.verify_runtime(root,manifest)
+
+
 def test_failed_web_health_automatically_restores_old_config(fixture, monkeypatch):
     root, backups, dropin, config, database, calls = fixture
     manifest = dict(files={'Cloud/server/' + name: digest for name, digest in deploy.runtime_hashes(root).items()})
