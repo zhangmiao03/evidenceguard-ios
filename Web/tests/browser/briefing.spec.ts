@@ -13,7 +13,8 @@ test('default tour progresses without writes, can pause, and reaches all three o
     await expect(current).toContainText('说出需求');
     for(let i=0;i<4;i++)await page.getByRole('button',{name:'下一步',exact:true}).click();
     await expect(current).toContainText('收到提醒与证据');
-    await expect(page.locator('.ios-current .ios-message').last()).toContainText('示例主动提醒');
+    await expect(page.locator('.ios-current')).toContainText('演示证据 · 非真实设备记录');
+    await expect(page.locator('.ios-current .ios-frame')).toBeVisible();
   }
   await page.getByRole('button',{name:'重播',exact:true}).click();await page.clock.runFor(4100);
   await expect(current).toContainText('圈定关注区域');
@@ -35,6 +36,7 @@ test('reduced motion starts paused and real results explain recall, verification
   await expect(page.getByRole('region',{name:'真实检索案例'})).toContainText('3 个候选窗口');
   await expect(page.locator('.eg-case-verdict')).toContainText('仍无法确认');
   await expect(page.getByRole('status').filter({hasText:'结果定位'})).toContainText('22.0 s');
+  await expect(page.getByText('下方模型描述按候选片段计时；播放器定位按完整原片计时。')).toBeVisible();
   await page.goto('/dashboard?view=images');
   await expect(page.getByText('两帧间隔超过 1 秒',{exact:true})).toBeVisible();
   await expect(page.locator('.eg-image-memory-grid')).toContainText('观察结论已保存');

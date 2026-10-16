@@ -19,7 +19,7 @@ import urllib.request
 import uuid
 
 
-def capture(config, environment, recording_id, expected_sha):
+def capture(config, environment, recording_id, expected_sha, sample_start=44.0):
     settings = json.loads(Path(config).read_text())
     e = settings['environments'][environment]
     state = json.loads(Path(e['state']).read_text())
@@ -62,7 +62,8 @@ def capture(config, environment, recording_id, expected_sha):
     # The source is a saved video: this is offline preprocessing, never forged
     # official_live metadata or a claimed decoder/hardware acceptance test.
     samples=[]
-    offsets=(36.,36.5)
+    offsets=(float(sample_start),float(sample_start)+.5)
+    assert 0 <= offsets[0] < offsets[1] < record['duration'], 'Choose two valid frames within the recording'
     for offset in offsets:
         raw=subprocess.check_output(['ffmpeg','-v','error','-ss',str(offset),'-i',str(video),'-frames:v','1','-vf','scale=640:-2','-f','image2pipe','-vcodec','mjpeg','-threads','1','-'],timeout=20)
         samples.append(raw)
@@ -130,4 +131,5 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--config',required=True);parser.add_argument('--environment',default='demo')
     parser.add_argument('--recording',required=True);parser.add_argument('--sha256',required=True)
-    args=parser.parse_args();capture(args.config,args.environment,args.recording,args.sha256)
+    parser.add_argument('--sample-start',type=float,default=44.0,help='Visually verify that this source frame contains the query target before publishing')
+    args=parser.parse_args();capture(args.config,args.environment,args.recording,args.sha256,args.sample_start)

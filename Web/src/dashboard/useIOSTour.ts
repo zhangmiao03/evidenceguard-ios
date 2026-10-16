@@ -59,7 +59,7 @@ export function useIOSTour() {
       reason:changed?s.changed:active?s.present:'先确认需求与关注区域'}]);
     setTopics([{id:'main',title:'anker 主对话',messages:[{role:'user',text:s.prompt,mode:'live',sceneId:id,condition:'baseline'},
       ...(changed?[{role:'assistant' as const,text:s.changed+'。已保留提醒画面，可以继续追问。',kind:'reminder' as const,mode:'live' as const,sceneId:id,condition:'changed' as const}]:[])]}]);
-    setTab(step===4?0:1);setStack(step===4?[]:['guard']);
+    setTab(step===4?0:1);setStack(step===4?['evidence']:['guard']);
   }
   function generate(){if(!editor?.prompt.trim())return;patchGuard({stage:1,frame:false,box:null,result:'pending',reason:'等待框选与确认'});}
   function revise(){

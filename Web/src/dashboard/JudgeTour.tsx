@@ -12,7 +12,7 @@ export function JudgeTour({onMonitor,onPage}:{onMonitor:()=>void;onPage?:(n:numb
   useEffect(()=>{apply.current(scene.id,step);},[scene.id,step]);
   useEffect(()=>{const resize=()=>setScale(Math.min(.82,Math.max(.45,(innerHeight-205)/852),(innerWidth-72)/393));resize();window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize);},[]);
   useEffect(()=>{if(!playing)return;const timer=window.setInterval(()=>{if(document.hidden)return;setPosition(n=>{if(n===14){setPlaying(false);return n;}return n+1;});},4000);return()=>clearInterval(timer);},[playing]);
-  const description=[scene.prompt,`指定“${scene.area}”，并由用户确认开启。`,scene.present+'，作为后续判断的依据。',scene.changed+'，保留对应证据。','提醒回到主对话，可以继续追问依据；看不清时返回“无法确认”。'][step];
+  const description=[scene.prompt,`指定“${scene.area}”，并由用户确认开启。`,scene.present+'，作为后续判断的依据。',scene.changed+'，保留对应证据。','直接展示提醒画面与来源；可带着证据追问，看不清时返回“无法确认”。'][step];
   return <section className="eg-brief-tour" aria-label="自动场景导览">
     <div className="eg-brief-story"><span className="eg-media-eyebrow">从一句话，到有依据的提醒</span><h1>让摄像头<br/>记住你在意的事。</h1><p className="eg-brief-lead">三个生活场景自动演示，无需逐个点击。</p>
       <div className="eg-brief-scenes">{tourScenarios.map((s,i)=><button key={s.id} aria-pressed={s.id===scene.id} onClick={()=>setPosition(i*5)}><small>0{i+1}</small><strong>{s.label}</strong><span>{s.id==='pet'?'进入区域 → 提醒':'物品离区 → 提醒'}</span></button>)}</div>
