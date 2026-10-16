@@ -30,7 +30,7 @@ test("offline dashboard: import, trace, model prompt, filter and export", async 
     .click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "查看关联提示词" }).click();
-  await expect(page.getByRole("dialog").locator("pre")).toContainText(
+  await expect(page.getByRole("dialog").locator(".eg-ops-messages")).toContainText(
     "这是模拟提示词",
   );
   await page.getByRole("button", { name: "查看完整 Trace" }).click();
@@ -49,6 +49,39 @@ test("offline dashboard: import, trace, model prompt, filter and export", async 
     ),
   ).toBe(true);
   expect(errors).toEqual([]);
+});
+
+test("full content inspector shows prompt, model output, tool result and final runtime answer", async ({ page }) => {
+  const bundle = sampleBundle();
+  bundle.records = bundle.records.filter((r: any) => r.traceId === "demo-run-1");
+  const capture = { version: 1, mode: "full_redacted", truncated: false };
+  const longText = "真实输入正文测试".repeat(2600) + "INPUT-END";
+  const prompt = bundle.records.find((r: any) => r.kind === "prompt");
+  prompt.data = { capture, contentCapture: true, request: { model: "demo-vision-model", messages: [{ role: "system", content: longText }, { role: "tool", tool_call_id: "call-full", content: '{"count":0}' }] } };
+  const model = bundle.records.find((r: any) => r.kind === "model");
+  model.data = { ...model.data, capture, content: { response: { choices: [{ message: { role: "assistant", content: "MODEL-OUTPUT-TEXT" } }] } } };
+  bundle.records.push({ ...model, id: "full-tool", kind: "event", name: "tool.finished", data: { tool: "list_tasks", capture, content: { arguments: { scope: "today", api_key: "never-show-this-key" }, result: [] } } });
+  bundle.records.push({ ...model, id: "full-final", kind: "event", name: "agent.result", data: { capture, content: { answer: "FINAL-APP-ANSWER", toolReceipts: [] } } });
+  await page.goto("/dashboard");
+  await page.getByLabel("导入追踪 JSON").setInputFiles({ name: "full.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+  await page.getByRole("navigation").getByRole("button", { name: "Agent 与模型" }).click();
+  await page.locator(".eg-ops-row-link").filter({ hasText: "demo-vision-model" }).first().click();
+  const detail = page.getByRole("dialog");
+  await expect(detail.locator(".eg-ops-messages")).toContainText("INPUT-END");
+  await expect(detail.getByText("工具回执 call-full", { exact: false })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "模型原始输出（脱敏）" })).toBeVisible();
+  await expect(detail.getByTestId("record-content")).toContainText("MODEL-OUTPUT-TEXT");
+  await page.getByRole("button", { name: "查看完整 Trace" }).click();
+  await page.getByRole("button", { name: /TOOL.*list_tasks/ }).click();
+  await expect(detail.getByRole("heading", { name: "工具参数", exact: true })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "工具返回结果", exact: true })).toBeVisible();
+  await expect(detail).not.toContainText("never-show-this-key");
+  await expect(detail).toContainText("[redacted]");
+  await page.getByRole("button", { name: "查看完整 Trace" }).click();
+  await page.getByRole("button", { name: /查看最终回复/ }).click();
+  await expect(detail.getByRole("heading", { name: "最终回复（实际返回 App）" })).toBeVisible();
+  await expect(detail.getByTestId("record-content")).toContainText("FINAL-APP-ANSWER");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
 });
 
 test("invalid import preserves current data and missing backend remains offline", async ({

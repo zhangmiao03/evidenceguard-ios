@@ -17,6 +17,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
+from eg_dashboard.service_config import parse_command
 
 BASE=Path('/opt/evidenceguard-dashboard')
 SERVICES={
@@ -73,22 +74,29 @@ def restore(directory):
     print('Restored configuration from '+str(directory),flush=True)
 
 
-def activate(release):
+def activate(release, capture_content=False):
     release=Path(release).resolve()
     if os.geteuid()!=0:raise RuntimeError('Run through the authorized root SSM maintenance command')
     if not release.is_relative_to(BASE/'releases') or not (release/'reference.json').is_file():raise ValueError('Unexpected release')
+    services={};commands={};observed_commands={}
     for label,(service,port,source,venv) in SERVICES.items():
         healthy(port)
         command=status(service,'ExecStart')
-        if venv not in command or not any(v in command for v in ['evidenceguard.app:app','eg_dashboard.bootstrap:app']):
-            raise RuntimeError('Service command changed; review before replacing observer entrypoint: '+service)
+        source,venv,commands[label]=parse_command(command,'/opt/evidenceguard-demo' if label=='demo' else '/opt/evidenceguard',port)
+        services[label]=(service,port,source,venv)
+        observed_commands[service]=command
     # Test each distinct deployed tree without reading production credentials.
-    for source,venv in sorted({(v[2],v[3]) for v in SERVICES.values()}):
+    for source,venv in sorted({(v[2],v[3]) for v in services.values()}):
         env=dict(os.environ,PYTHONPATH=str(release)+':'+source)
         run(venv+'/bin/python',str(release/'compatibility.py'),env=env,cwd='/tmp')
+        if capture_content:
+            run(venv+'/bin/python',str(release/'compatibility.py'),'--capture-content',env=env,cwd='/tmp')
     run(PYTHON,'-m','unittest','discover','-s',str(release/'tests'),'-v',env=dict(os.environ,PYTHONPATH=str(release)))
+    for service,command in observed_commands.items():
+        if status(service,'ExecStart')!=command:
+            raise RuntimeError('Backend changed during preflight; restart deployment after coordination: '+service)
 
-    dropins=[Path('/etc/systemd/system')/(s+'.service.d/40-dashboard-observer.conf') for s,_,_,_ in SERVICES.values()]
+    dropins=[Path('/etc/systemd/system')/(s+'.service.d/40-dashboard-observer.conf') for s,_,_,_ in services.values()]
     files=dropins+[Path('/etc/systemd/system')/(n+'.service') for n in [COLLECTOR,WEB]]+[CONFIG,NGINX]
     backup=Path('/var/backups/evidenceguard-dashboard')/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup.mkdir(parents=True,mode=0o700);backup.chmod(0o700)
@@ -110,20 +118,21 @@ def activate(release):
         config={'output':'/var/lib/evidenceguard-dashboard','reference':str(release/'reference.json'),'revision':release.name,
             'environments':{label:{'title':titles[label],'service':service,'source':source+'/evidenceguard',
                 'state':'/var/lib/'+service+'/observer-state.json','observations':'/var/lib/'+service+'/observability.sqlite3',
-                'database':'/var/lib/'+service+'/evidenceguard.sqlite3'} for label,(service,port,source,venv) in SERVICES.items()}}
+                'database':'/var/lib/'+service+'/evidenceguard.sqlite3'} for label,(service,port,source,venv) in services.items()}}
         CONFIG.write_text(json.dumps(config,ensure_ascii=False));CONFIG.chmod(0o644)
-        for label,(service,port,source,venv) in SERVICES.items():
+        for label,(service,port,source,venv) in services.items():
             target=Path('/etc/systemd/system')/(service+'.service.d/40-dashboard-observer.conf')
             target.parent.mkdir(parents=True,exist_ok=True)
             target.write_text(f'''[Service]
 Environment=PYTHONPATH={release}
 Environment=EG_OPS_ENABLED=1
 Environment=EG_OPS_CAPTURE_CONTENT=0
+Environment=EG_DASHBOARD_CAPTURE_CONTENT={int(capture_content)}
 Environment=EG_OPS_DATABASE=/var/lib/{service}/observability.sqlite3
 Environment=EG_DASHBOARD_ENVIRONMENT={label}
 Environment=EG_DASHBOARD_REVISION={release.name}
 ExecStart=
-ExecStart={venv}/bin/uvicorn eg_dashboard.bootstrap:app --app-dir {source} --host 127.0.0.1 --port {port} --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
+ExecStart={commands[label]}
 ''')
         common='''Restart=on-failure
 RestartSec=3
@@ -184,7 +193,7 @@ server {
 }
 ''')
         run('nginx','-t');run('systemctl','daemon-reload')
-        for label,(service,port,source,venv) in SERVICES.items():
+        for label,(service,port,source,venv) in services.items():
             manifest['restarted'].append(service);save()
             run('systemctl','restart',service);healthy(port)
             state=json.loads(Path('/var/lib/'+service+'/observer-state.json').read_text())
@@ -222,6 +231,7 @@ server {
 if __name__=='__main__':
     parser=argparse.ArgumentParser();group=parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--release');group.add_argument('--rollback')
+    parser.add_argument('--capture-content',action='store_true',help='Explicitly publish secret-filtered text for future observed runs')
     args=parser.parse_args()
     if args.rollback:restore(args.rollback)
-    else:activate(args.release)
+    else:activate(args.release,args.capture_content)

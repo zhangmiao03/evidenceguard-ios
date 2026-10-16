@@ -16,6 +16,7 @@ from pathlib import Path
 import time
 from types import SimpleNamespace
 import uuid
+from . import content, transport
 
 
 def load_ops():
@@ -53,6 +54,7 @@ def instrument(ops, native):
     store_module = importlib.import_module('evidenceguard.store')
     if getattr(runtime.AgentRuntime, '_dashboard_instrumented', False):
         return
+    transport.install(ops)
 
     original_execute = runtime.AgentRuntime._execute
     @functools.wraps(original_execute)
@@ -66,7 +68,8 @@ def instrument(ops, native):
                     trace={'traceId':run['id']} if native else None,
                     data={'executionMode': run.get('executionMode'),
                           'answer': summary(run.get('text')), 'toolReceipts': summary(run.get('toolReceipts', [])),
-                          'errorPresent': bool(run.get('error'))})
+                          'errorPresent': bool(run.get('error')),
+                          **content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error'))})
     runtime.AgentRuntime._execute = execute if native else ops.traced('agent')(execute)
 
     original_tool = tools.ToolRegistry.call
@@ -82,19 +85,24 @@ def instrument(ops, native):
         start = time.monotonic()
         status = 'failed'
         result_info = {}
-        recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs)})
+        captured = content.details(arguments=kwargs, positionalArguments=args[1:])
+        recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs), **captured})
         try:
             result = await original_tool(self, *args, **kwargs)
             result_info = summary(result)
+            captured = content.details(arguments=kwargs, positionalArguments=args[1:], result=result)
             status = 'failed' if isinstance(result, dict) and (result.get('error') or result.get('status') in {'failed', 'error', 'unsupported'}) else 'completed'
             return result
         except asyncio.CancelledError:
             status = 'cancelled'
             raise
+        except Exception as error:
+            captured = content.details(arguments=kwargs, positionalArguments=args[1:], error=str(error))
+            raise
         finally:
             recorder.emit('tool.finished', status=status,
                 duration=round((time.monotonic()-start)*1000, 2),
-                data={'tool': name, 'result': result_info})
+                data={'tool': name, 'result': result_info, **captured})
             ops.CTX.reset(token)
     tools.ToolRegistry.call = tool_call
 
@@ -105,13 +113,15 @@ def instrument(ops, native):
         if recorder:
             recorder.emit('context.prepared', data={
                 'messages': [{'role': m.get('role'), 'content': summary(m.get('content'))} for m in messages],
-                'tools': [s.get('function', {}).get('name') for s in tools]})
+                'tools': [s.get('function', {}).get('name') for s in tools],
+                **content.details(messages=messages, tools=tools)})
         result = await original_complete(self, messages, tools)
         if recorder:
             recorder.emit('model.output', data={'answer': summary(result.get('content')),
                 'toolCalls': [{'name': c.get('function', {}).get('name'),
                                'arguments': summary(c.get('function', {}).get('arguments'))}
-                              for c in result.get('tool_calls', []) or []]})
+                              for c in result.get('tool_calls', []) or []],
+                **content.details(output=result)})
         return result
     providers.OpenAICompatibleProvider.complete = complete if native else ops.traced('chat')(complete)
 
@@ -191,6 +201,7 @@ def attach(app, ops, native):
              'environment': os.getenv('EG_DASHBOARD_ENVIRONMENT','local'),
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
              'nativeOps': native, 'files': source_files(source),
+             'contentCapture': content.enabled(),
              'models': configured_models,
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
              'tools': ops.safe(app.state.tools.schemas)}

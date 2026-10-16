@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import time
 from urllib.parse import quote
+from . import content
 
 SCHEMA = 'evidenceguard.ops/v1'
 MAX_RECORDS = 3000
@@ -53,7 +54,14 @@ def content_ref(value):
 def public_record(record):
     result={key:record.get(key) for key in ('id','kind','name','at','traceId','spanId','parentSpanId',
                                           'source','platform','status','durationMs','data')}
-    result['data']=public_value(result.get('data') or {})
+    data=result.get('data') or {}
+    capture=data.get('capture') if isinstance(data,dict) else None
+    full=isinstance(capture,dict) and capture.get('version')==1 and capture.get('mode') in {'full_redacted','truncated'}
+    if full:
+        result['data']=content.safe_record(data)
+        result['data']['publicProjection']=True
+        return result
+    result['data']=public_value(data)
     if result['kind']=='prompt':
         body=result['data'].get('request',{})
         for index,message in enumerate(body.get('messages',[])):
@@ -184,11 +192,12 @@ class Collector:
     def bundle(self, label, environment, server):
         now=time.time();records=[];coverage={'readOnly':True,'publicProjection':True,'contentCapture':False,
             'environment':label,'sampledAt':now,'clock':'server receive wall clock; durations use monotonic clocks',
-            'limitations':['No historical model backfill','Dynamic messages are metadata-only on the public dashboard',
+            'limitations':['No historical model backfill','Full text only for explicitly captured records; older records remain metadata-only',
                 'No model private reasoning, credentials, camera images or video URLs','No inference that missing events mean success']}
         try:
             state=json.loads(Path(environment['state']).read_text())
         except (OSError,ValueError):state={}
+        coverage['contentCapture']=bool(state.get('contentCapture'))
         if not self.disk_cache or time.monotonic()-self.scan_at>30:
             self.disk_cache={}
             for env in self.config['environments'].values():
@@ -209,7 +218,10 @@ class Collector:
         try:
             with readonly(environment['observations']) as db:
                 coverage['totalStored']=db.execute('SELECT COUNT(*) FROM records').fetchone()[0]
+                read_bytes=0
                 for row in db.execute('SELECT payload FROM records ORDER BY at DESC LIMIT ?', (MAX_RECORDS,)):
+                    read_bytes+=len(row[0].encode())
+                    if read_bytes>MAX_BYTES:break
                     records.append(public_record(json.loads(row[0])))
                 records.reverse()
             coverage['observability']='connected' if same_process else 'stale_process'
@@ -234,6 +246,7 @@ class Collector:
             selected.append(row)
         selected.reverse()
         count=sum(r['kind']!='resource' for r in selected)
+        coverage['contentRecords']=sum(r['data'].get('capture',{}).get('mode') in {'full_redacted','truncated'} for r in selected)
         coverage.update(returned=len(selected),truncated=coverage.get('totalStored',0) is not None and coverage.get('totalStored',0)>count,
                         recordLimit=MAX_RECORDS,server=server)
         return dict(schemaVersion=SCHEMA,dataset={'id':'cloud-'+label,'title':environment['title']+' · 云端实时追踪',

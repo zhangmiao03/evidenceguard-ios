@@ -57,40 +57,61 @@ export function validateBundle(value) {
   return value;
 }
 
-export function sanitizeData(value, depth = 0) {
-  if (depth > 16) return "[depth omitted]";
+export function sanitizeData(value, depth = 0, options = {}) {
+  const maxItems = options.full ? 2000 : 100;
+  const cut = () => { options.truncated = true; return "[truncated: capture limit]"; };
+  if (depth > (options.full ? 32 : 16)) return cut();
   if (Array.isArray(value))
-    return value.slice(0, 100).map((v) => sanitizeData(v, depth + 1));
+    return [...value.slice(0, maxItems).map((v) => sanitizeData(v, depth + 1, options)), ...(value.length > maxItems ? [cut()] : [])];
   if (object(value))
     return Object.fromEntries(
       Object.entries(value)
-        .slice(0, 100)
+        .slice(0, maxItems)
         .map(([k, v]) => [
           k.slice(0, 100),
-          /authorization|api.?key|secret|password|credential|tokenhash|imagebase64|token$|^sn$|devicesn|serialnumber|accountid|clientid|importedby/i.test(
+          /authorization|cookie|api.?key|secret|password|passwd|credential|tokenhash|imagebase64|image_base64|image_url|input_audio|private.?key|token$|^sn$|devicesn|serialnumber|accountid|clientid|importedby/i.test(
             k,
           )
             ? "[redacted]"
-            : sanitizeData(v, depth + 1),
-        ]),
+            : /^(reasoning_content|reasoning|thinking|chain_of_thought)$/i.test(k) ? "[private reasoning omitted]" : sanitizeData(v, depth + 1, options),
+        ]).concat(Object.keys(value).length > maxItems ? [["_captureLimit", cut()]] : []),
     );
   if (typeof value === "string") {
     if (value.includes("data:") && value.includes(";base64,"))
       return "[binary omitted]";
-    return value
-      .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
+    if (/^\s*[\[{]/.test(value)) {
+      try {
+        const nested = JSON.parse(value);
+        if (object(nested) || Array.isArray(nested)) {
+          const cleaned = sanitizeData(nested, depth + 1, options);
+          if (JSON.stringify(cleaned) !== JSON.stringify(nested)) value = JSON.stringify(cleaned);
+        }
+      } catch { /* ordinary text */ }
+    }
+    const clean = value
+      .replace(/(?:密钥|密码|口令|授权码)\s*(?:[：:=]|是|为)\s*[^\s，。；;]+/g, "[redacted]")
+      .replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/g, "[redacted]")
+      .replace(/(?:Bearer|Basic)\s+\S+/gi, "[redacted]")
       .replace(
-        /(api[_-]?key|password|secret|access[_-]?token)["']?\s*[=:]\s*["']?[^\s,;"'}]+/gi,
-        "$1=[redacted]",
+        /(?:api[_-]?key|password|passwd|secret|(?:access|refresh|session)[_-]?token)["']?\s*[=:]\s*(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}]+)/gi,
+        "[redacted]",
       )
       .replace(
-        /\b(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9]{30,})\b/g,
+        /\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|(?:AKIA|ASIA)[A-Z0-9]{16}|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)\b/g,
         "[credential omitted]",
       )
-      .replace(/https?:\/\/[^\s"<>]+/g, "[remote URL omitted]")
-      .slice(0, 16000);
+      .replace(/https?:\/\/[^\s"<>]+/g, "[remote URL omitted]");
+    const maxString = options.full ? 256000 : 16000;
+    return clean.length > maxString ? clean.slice(0, maxString) + "\n" + cut() : clean;
   }
   return value;
+}
+
+function sanitizeRecordData(data) {
+  const options = { full: data.capture?.version === 1 && ["full_redacted", "truncated"].includes(data.capture?.mode), truncated: false };
+  const result = sanitizeData(data, 0, options);
+  if (options.full && options.truncated) result.capture = { ...result.capture, mode: "truncated", truncated: true };
+  return result;
 }
 
 export function sanitizeBundle(bundle) {
@@ -114,7 +135,7 @@ export function sanitizeBundle(bundle) {
       source: r.source,
       status: r.status,
       durationMs: r.durationMs ?? null,
-      data: sanitizeData(r.data),
+      data: sanitizeRecordData(r.data),
     })),
     coverage: sanitizeData(bundle.coverage || {}),
   };
