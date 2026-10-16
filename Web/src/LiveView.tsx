@@ -10,6 +10,7 @@ import { type SDKFrame } from "./sdk";
 import { FrameGate } from "./frame-gate.mjs";
 import { observe } from "./telemetry";
 import { newID } from "./browser-support";
+import { WebToolExecutor } from "./hardware-tools";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 async function base64(blob: Blob): Promise<string> {
@@ -36,6 +37,7 @@ export function LiveView({
   const { Provider, DeviceLiveLayout } = window.WebSDK;
   const [state, setState] = useState("正在连接官方媒体服务");
   const [error, setError] = useState("");
+  const [toolMessage, setToolMessage] = useState("");
   const [leased, setLeased] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const stop = useRef(false);
@@ -46,6 +48,8 @@ export function LiveView({
     let disposed = false,
       session: MediaSession | undefined,
       unsubscribe: (() => void) | undefined;
+    let toolHost: WebToolExecutor | undefined;
+    const client = api.scoped();
     let fallbackVideo: HTMLVideoElement | undefined,
       fallbackID: number | undefined;
     let fallbackBusy = false;
@@ -137,7 +141,7 @@ export function LiveView({
 
     const start = async () => {
       try {
-        session = await api.request<MediaSession>("/api/media-sessions", {
+        session = await client.request<MediaSession>("/api/media-sessions", {
           deviceId: device.id,
           platform: "web",
         }, undefined, undefined, liveTrace);
@@ -146,6 +150,8 @@ export function LiveView({
         // Do not mount the auto-starting vendor player before obtaining the
         // shared iOS/Web capture lease.
         setLeased(true);
+        toolHost = new WebToolExecutor(device, session, message => { if (!disposed) setToolMessage(message); });
+        toolHost.start();
         const connectStarted = Date.now();
         while (!disposed && !stop.current) {
           if (!unsubscribe && !fallbackVideo) {
@@ -180,7 +186,7 @@ export function LiveView({
           const age = f ? Date.now() - f.localAt : null;
           const ready = age !== null && age < 3000;
           if (ready && !firstFrameReported) { firstFrameReported = true; report("live.first_frame"); }
-          await api.request(
+          await client.request(
             `/api/media-sessions/${session.id}/heartbeat`,
             {
               state: ready ? "streaming" : "connecting",
@@ -200,7 +206,7 @@ export function LiveView({
             );
             break;
           }
-          const commands = await api.request<CaptureCommand[]>(
+          const commands = await client.request<CaptureCommand[]>(
             `/api/media-sessions/${session.id}/commands`,
             undefined,
             session,
@@ -228,7 +234,7 @@ export function LiveView({
             observe({ name: "capture.sampled", traceId: pending.command.traceId || id, parentSpanId: pending.command.parentSpanId, requestId: id, deviceId: device.id }, api.token);
             if (disposed || stop.current) break;
             try {
-              await api.request(
+              await client.request(
                 `/api/media-sessions/${session.id}/heartbeat`,
                 {
                   state: "streaming",
@@ -239,7 +245,7 @@ export function LiveView({
                 undefined,
                 pending.command.traceId,
               );
-              await api.request(
+              await client.request(
                 `/api/media-sessions/${session.id}/frames`,
                 {
                   requestId: id,
@@ -266,6 +272,7 @@ export function LiveView({
       } catch (e) {
         fail(e instanceof Error ? e.message : "媒体会话未完成");
       } finally {
+        await toolHost?.stop();
         report("live.stopped");
         if (!disposed) setLeased(false);
         unsubscribe?.();
@@ -273,7 +280,7 @@ export function LiveView({
           fallbackVideo.cancelVideoFrameCallback(fallbackID);
         if (session) {
           try {
-            await api.request(
+            await client.request(
               `/api/media-sessions/${session.id}/stop`,
               {},
               session,
@@ -342,6 +349,7 @@ export function LiveView({
           停止直播
         </button>
       </div>
+      {toolMessage && <p className="hint" role="status">工具执行器：{toolMessage}。现有直播取帧独立工作。</p>}
     </div>
   );
 }

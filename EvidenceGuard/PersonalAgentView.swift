@@ -19,22 +19,34 @@ struct MemoryView: View {
                 ConnectionBanner()
                 VStack(alignment: .leading, spacing: 14) {
                     Text("我记下的事").font(.title3.bold())
-                    Text("记下你的关注点和沟通偏好，下次对话时继续使用。")
+                    Text("每次聊完，整理你明确说过的关注点、家庭信息和沟通偏好，下次接着聊。")
                         .font(.subheadline).foregroundStyle(Brand.muted)
+                    if let memory = store.data.personal?.automaticMemory {
+                        Toggle("从聊天整理记忆", isOn: Binding(get: { memory.enabled }, set: { value in
+                            Task { await store.perform { store.data.personal = try await store.client.memoryOptions(enabled: value) } }
+                        })).disabled(store.busy || !store.isConnected)
+                        HStack {
+                            if memory.pending > 0 { ProgressView() }
+                            Text(memory.pending > 0 ? "正在整理 \(memory.pending) 轮对话…" : memory.reason).font(.caption)
+                        }.foregroundStyle(Brand.muted)
+                        if memory.status == "failed" {
+                            Button("重试整理") { Task { await store.perform { store.data.personal = try await store.client.retryMemory() } } }
+                        }
+                    }
                     Button { adding = true } label: {
                         HStack { Label("添加一条记忆", systemImage: "plus"); Spacer(); Image(systemName: "chevron.right").font(.caption) }
                             .font(.subheadline.weight(.medium)).padding(15).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 16))
                     }.buttonStyle(.plain).foregroundStyle(Brand.blue).accessibilityIdentifier("memory.add")
-                    Text("只保存你确认的内容；临时情况可设置为 24 小时有效。")
+                    Text("记忆不是聊天逐字备份；临时信息会过期，你随时可以移除记错的内容。")
                         .font(.caption).foregroundStyle(Brand.muted)
                 }.padding(20).background(Brand.paleBlue.opacity(0.86)).clipShape(RoundedRectangle(cornerRadius: 24))
                 HStack {
-                    Text("已确认的记忆").font(.headline)
+                    Text("已保存的记忆").font(.headline)
                     Spacer()
                     Text("\(memories.count) 条").font(.caption).foregroundStyle(Brand.muted)
                 }
                 Picker("记忆类型", selection: $filter) {
-                    Text("全部").tag("all"); Text("长期").tag("longterm"); Text("24 小时").tag("temporary")
+                    Text("全部").tag("all"); Text("长期").tag("longterm"); Text("临时").tag("temporary")
                 }.pickerStyle(.segmented).accessibilityIdentifier("memory.filter")
                 if filtered.isEmpty {
                     Text(memories.isEmpty ? "还没有保存的记忆。可以先告诉我：你最关心什么，或希望我怎样回复。" : "这里还没有这类记忆。")
@@ -53,6 +65,10 @@ struct MemoryView: View {
                                 .accessibilityLabel("管理这条记忆").disabled(store.busy || !store.isConnected)
                         }
                         Text(item.content).font(.body).textSelection(.enabled)
+                        Text(item.source == "conversation" ? "来自对话" : "你手动记下的").font(.caption).foregroundStyle(Brand.blue)
+                        if let quote = item.sourceQuote {
+                            DisclosureGroup("查看原话") { Text(quote).font(.caption).textSelection(.enabled) }
+                        }
                         Text(item.expiresAt.map { "有效至 " + displayTime($0) } ?? "保存于 " + displayTime(item.createdAt))
                             .font(.caption).foregroundStyle(Brand.muted)
                     }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
@@ -218,6 +234,7 @@ struct DemoSceneView: View {
 
 struct PersonalInboxView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var error: String?
     var body: some View {
         List {
             Section {
@@ -225,7 +242,7 @@ struct PersonalInboxView: View {
                 Button("回到助手继续处理") { store.openAI() }
             }
             if store.data.personal?.inbox.isEmpty ?? true {
-                Text("暂时没有助手提醒。开启后，新的任务事件、未处理事项的后续提醒和每日概况会出现在这里。")
+                Text("暂时没有助手消息。开启提醒或订阅报告后，新消息会直接出现在 anker 主对话，这里保留历史记录。")
                     .foregroundStyle(Brand.muted)
             }
             ForEach(store.data.personal?.inbox ?? []) { notice in
@@ -233,10 +250,17 @@ struct PersonalInboxView: View {
                     HStack { Text(notice.title).font(.headline); if !notice.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) } }
                     Text(notice.body).font(.subheadline)
                     Text("\(notice.kindLabel) · \(displayTime(notice.createdAt))").font(.caption).foregroundStyle(Brand.muted)
+                    Button("在助手对话中查看") {
+                        Task {
+                            do { try await store.openAssistantMessage(notice.id); error = nil }
+                            catch { self.error = "这条记录暂时无法在对话中打开：" + error.localizedDescription }
+                        }
+                    }
                     if let id = notice.skillId { NavigationLink("查看任务和证据", value: AppRoute.skill(id)) }
                     if !notice.read { Button("标记已读") { Task { await store.perform { store.data.personal = try await store.client.readNotice(notice.id) } } }.disabled(store.busy) }
                 }.padding(.vertical, 8)
             }
+            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
         }.pageStyle("助手提醒").refreshable { await store.refresh() }
     }
 }
@@ -256,24 +280,34 @@ struct ProactiveMessageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(message.title).font(.headline)
+                Image("AnkerAvatar").resizable().scaledToFit().frame(width: 24, height: 24)
+                Text(AssistantIdentity.name).font(.subheadline.weight(.medium))
                 Spacer()
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
-            if message.body != message.title { Text(message.body).font(.body).textSelection(.enabled) }
+            Text(ChatPresentation.text(message.body.isEmpty ? message.title : message.body)).font(.body).textSelection(.enabled)
             Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
-            Label(testSource ? "测试 / 回放资料" : "事件记录", systemImage: "clock")
-                .font(.caption).foregroundStyle(Brand.muted)
+            if testSource { Label("测试 / 回放资料", systemImage: "clock").font(.caption).foregroundStyle(Brand.muted) }
+            if let source = message.sources.first(where: { $0.evidenceId != nil }), let evidence = source.evidenceId {
+                NavigationLink(value: AppRoute.evidence(evidence)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let url = store.client.absoluteURL(source.imageUrl) {
+                            AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { ProgressView() }.frame(maxHeight: 180)
+                        }
+                        Label("查看这次事件画面", systemImage: "photo")
+                    }
+                }.buttonStyle(.plain)
+            }
             DisclosureGroup("查看来源") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.why).font(.caption)
-                    ForEach(limitations, id: \.self) { Text($0).font(.caption2).foregroundStyle(Brand.muted) }
+                    Text(ChatPresentation.text(message.why)).font(.caption)
+                    ForEach(limitations, id: \.self) { Text(ChatPresentation.text($0)).font(.caption2).foregroundStyle(Brand.muted) }
                     ForEach(message.sources) { source in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(source.name ?? source.title ?? source.reason ?? "已记录的摄像头观察").font(.caption)
+                            Text(ChatPresentation.text(source.name ?? source.title ?? source.reason ?? "已记录的摄像头观察")).font(.caption)
                             if let at = source.observedAt { Text("记录于 " + displayTime(at)).font(.caption2).foregroundStyle(Brand.muted) }
                             if let id = source.evidenceId { NavigationLink("查看这条证据", value: AppRoute.evidence(id)).font(.caption) }
-                            if let limitation = source.limitation { Text(limitation).font(.caption2).foregroundStyle(Brand.muted) }
+                            if let limitation = source.limitation { Text(ChatPresentation.text(limitation)).font(.caption2).foregroundStyle(Brand.muted) }
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
@@ -284,7 +318,7 @@ struct ProactiveMessageCard: View {
                 } else if let skill = message.skillId {
                     NavigationLink("查看守护", value: AppRoute.skill(skill)).buttonStyle(.borderedProminent)
                 }
-                Button("接着聊") { respond("read"); onReply() }
+                Button("回复这条消息") { respond("read"); onReply() }
                 Spacer(minLength: 0)
                 if message.feedback == "handled" { Text("已处理此提醒").font(.caption).foregroundStyle(Brand.muted) }
                 else {
@@ -295,6 +329,9 @@ struct ProactiveMessageCard: View {
                     } label: { Image(systemName: "ellipsis") }.accessibilityLabel("处理提醒")
                 }
             }.disabled(store.busy)
+            if let camera = message.sources.compactMap(\.cameraId).first {
+                NavigationLink("查看摄像头当前画面", value: AppRoute.liveCamera(camera)).font(.subheadline)
+            }
             if message.feedback == "handled" { Text("已记下你的反馈；摄像头告警仍以新观察为准。").font(.caption2).foregroundStyle(Brand.muted) }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white).clipShape(RoundedRectangle(cornerRadius: 16))
@@ -302,6 +339,6 @@ struct ProactiveMessageCard: View {
             .accessibilityIdentifier("chat.proactive.\(message.id)")
     }
     private func respond(_ action: String) {
-        Task { await store.perform { store.data.personal = try await store.client.messageFeedback(message.id, action: action) } }
+        Task { await store.perform { try await store.feedbackAssistantMessage(message.id, action: action) } }
     }
 }

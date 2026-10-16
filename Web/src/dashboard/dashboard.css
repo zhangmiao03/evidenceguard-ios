@@ -849,3 +849,36 @@
     transition: none !important;
   }
 }
+
+.eg-ops-cloud-status, .eg-ops-cloud-controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+  padding: 12px 16px; border: 1px solid #27435b; border-radius: 10px;
+  background: #102435; margin-bottom: 14px; font-size: 12px; color: #9db9d1;
+}
+.eg-ops-cloud-status strong { color: #c8e8ee; font-weight: 500; }
+.eg-ops-cloud-status span:last-child { margin-left: auto; font-size: 11px; }
+.eg-ops-cloud-controls { background: #101b2b; }
+.eg-ops-cloud-controls label { display: flex; align-items: center; gap: 12px; }
+.eg-ops-cloud-controls select { width: auto; min-width: 140px; }
+.eg-ops-resource-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.eg-ops-resource-kpis .eg-ops-kpi > strong { font-size: clamp(18px, 2vw, 28px); overflow-wrap: anywhere; }
+.eg-ops-spark { display: block; width: 100%; height: auto; min-height: 120px; }
+.eg-ops-axis { display: flex; justify-content: space-between; gap: 16px; color: #819cbb; font-size: 10px; }
+.eg-ops-mono, .eg-ops-hash { font-family: Consolas, monospace; }
+.eg-ops-hash { overflow: hidden; text-overflow: ellipsis; max-width: 150px !important; }
+.eg-ops-cycle { margin: 20px 0; }
+.eg-ops-cycle-phases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.eg-ops-cycle-phases button { display: grid; gap: 8px; text-align: left; }
+.eg-ops-cycle-phases strong { font-size: 12px; }
+.eg-ops-cycle-phases span { color: #62c9ee; }
+.eg-ops-cycle-phases button:disabled { opacity: .55; cursor: default; }
+.eg-ops-span-list { display: grid; gap: 8px; margin-top: 16px; }
+.eg-ops-span-list button { display: flex; align-items: center; gap: 10px; text-align: left; }
+.eg-ops-span-list strong { flex: 1; overflow-wrap: anywhere; font-size: 12px; }
+.eg-ops-span-list button > span:last-child { font-size: 11px; color: #9db9d1; white-space: nowrap; }
+@media (max-width: 1100px) { .eg-ops-resource-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .eg-ops-cloud-status span:last-child { margin-left: 0; }
+  .eg-ops-cycle-phases { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .eg-ops-cloud-controls select { min-width: 120px; }
+}

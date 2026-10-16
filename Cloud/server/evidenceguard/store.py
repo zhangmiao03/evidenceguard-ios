@@ -284,6 +284,8 @@ class Store:
 
     def save_run(self, run):
         with self.transaction():
+            if run.get('status') in {'completed', 'failed', 'cancelled', 'interrupted'} and not run.get('completedAt'):
+                run['completedAt'] = time.time()
             self.db.execute('INSERT INTO runs VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload',(run['id'],run['conversationId'],run['createdAt'],json.dumps(run,ensure_ascii=False)))
         return run
 

@@ -104,6 +104,8 @@ async function setup(
         agent: { ready: true, provider: "test" },
       };
     if (path === "/api/captures") json = [];
+    if (path === "/api/hardware/snapshot") json = { devices: [], operations: [], tools: [] };
+    if (path === "/api/sdk/events") json = { events: [], truncated: false, continuousCoverage: false };
     if (path === "/api/media-sessions") {
       if (options.delayStart)
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -385,7 +387,7 @@ test("stopping live cancels an Agent run returned after navigation", async ({
     .getByRole("navigation", { name: "主导航" })
     .getByRole("button", { name: "助手", exact: true })
     .click();
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("现在画面里有什么？");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("现在画面里有什么？");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect
     .poll(() => calls.some((c) => c.path === "/api/agent/runs"))

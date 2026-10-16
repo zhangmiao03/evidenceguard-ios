@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from .assistant_identity import ASSISTANT_NAME
 
 
 class DeviceRegistration(BaseModel):
@@ -73,12 +74,17 @@ class APNsProvider:
         client = self.clients.get(environment)
         if client is None:
             client = self.clients[environment] = httpx.AsyncClient(http2=True, timeout=20, trust_env=False)
-        body = {'aps': {'alert': {'title': 'EvidenceGuard', 'body': {
-            'test': '手机通知测试，请点开查看结果。',
-            'run': '你交给助手的事项有了结果，点开查看。',
-            'draft': '助手已准备好草案，等待你确认。',
-        }.get(delivery['kind'], '助手有一条新提醒，点开查看。')}, 'sound': 'default',
+        body = {'aps': {'alert': {'title': ASSISTANT_NAME, 'body': {
+            'test': '这是一条测试提醒，点开后可以查看结果。',
+            'run': '这件事有结果了，点开看看。',
+            'draft': '草案整理好了，等你看看。',
+        }.get(delivery['kind'], '有件事想提醒你，点开看看。')}, 'sound': 'default',
             'thread-id': 'evidenceguard-' + scope}, 'eg': {'deliveryId': delivery['id'], 'scope': scope}}
+        if delivery.get('foregroundGuard'):
+            body['aps']['alert']['body'] = '你设置的守护发现了变化，点开查看画面。'
+            body['eg']['foreground'] = 'guard'
+        elif delivery['kind'] == 'test':
+            body['eg']['foreground'] = 'test'
         response = await client.post('https://' + host + '/3/device/' + device['token'], json=body,
             headers={'authorization': self.authorization(), 'apns-topic': self.topic,
                      'apns-push-type': 'alert', 'apns-priority': '10',
@@ -215,7 +221,7 @@ class PushService:
     def target(self, delivery):
         target = json.loads(delivery['target'])
         client = delivery['client']
-        if delivery['kind'] == 'test': return dict(kind='test', title='手机通知测试', body='已记录你点开这条测试通知。')
+        if delivery['kind'] == 'test': return dict(kind='test', title=ASSISTANT_NAME + ' · 通知测试', body='你已点开这条测试提醒。')
         if 'messageId' in target:
             row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (target['messageId'],client)).fetchone()
             if not row: raise KeyError('message')
@@ -226,7 +232,7 @@ class PushService:
                         skillId=message.get('skillId'), evidenceId=evidence)
         run = self.store.run(target['runId'])
         if not run or run.get('clientId') != client: raise KeyError('run')
-        return dict(kind='run',title='助手处理结果',body=run.get('text') or run.get('error') or '请查看对话中的结果。',
+        return dict(kind='run',title=ASSISTANT_NAME,body=run.get('text') or run.get('error') or '点开对话看看结果。',
                     conversationId=run['conversationId'],skillId=run.get('skillId'),
                     executionMode=run.get('executionMode','live'),
                     draftId=run.get('draft',{}).get('id') if run.get('draft') else None)
@@ -247,6 +253,8 @@ class PushService:
         return dict(zip([c[0] for c in cursor.description], row)) if row else None
 
     def eligible(self, item, device, now):
+        subscribed_report = False
+        confirmed_guard = False
         if now >= item['expires_at']: return 'expired', 'Expired', None
         if not device or not device['enabled']: return 'cancelled', 'Disabled', None
         if item['opened_at']: return 'cancelled', 'Opened', None
@@ -256,6 +264,11 @@ class PushService:
             row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (item['source'],item['client'])).fetchone()
             if not row: return 'cancelled', 'Removed', None
             message = json.loads(row[0])
+            subscribed_report = bool(message.get('report'))
+            confirmed_guard = message.get('kind') == 'visual_scene' and any(
+                source.get('type') == 'camera_evidence' and source.get('evidenceId')
+                for source in message.get('sources', []))
+            item['foregroundGuard'] = bool(confirmed_guard)
             if not p['enabled'] or message.get('read') or message.get('feedback') in {'read','handled','dismiss','snooze'}:
                 return 'cancelled', 'NoLongerNeeded', None
             job_row = self.store.db.execute('SELECT payload FROM proactive_jobs WHERE id=?', (message['jobId'],)).fetchone()
@@ -266,10 +279,17 @@ class PushService:
                 if gate: return ('retry' if gate[0]=='deferred' else gate[0], 'PolicyChanged', gate[1])
         if self.personal.engine.quiet(p, now): return 'retry', 'QuietHours', now+60
         # A short lease is renewed while this app is visible, never background polling.
-        if device['active'] and now-device['seen_at'] < 75: return 'retry', 'AppVisible', now+30
+        if device['active'] and now-device['seen_at'] < 75 and not confirmed_guard: return 'retry', 'AppVisible', now+30
+        # Explicitly enabled guard conditions, like subscribed reports, are not
+        # ordinary unsolicited suggestions. Keep opt-out, quiet hours, expiry,
+        # evidence publication dedupe and read-state checks above.
+        if subscribed_report or confirmed_guard: return None
         zone = ZoneInfo(p['timezone'])
         day = datetime.fromtimestamp(now, zone).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
-        count,last = self.store.db.execute("SELECT COUNT(*),MAX(accepted_at) FROM push_outbox WHERE client=? AND kind!='test' AND accepted_at>=?", (item['client'],day)).fetchone()
+        count,last = self.store.db.execute("""SELECT COUNT(*),MAX(accepted_at) FROM push_outbox
+            WHERE client=? AND kind!='test' AND accepted_at>=? AND NOT EXISTS
+            (SELECT 1 FROM assistant_messages a WHERE a.id=push_outbox.source AND a.client=push_outbox.client
+             AND json_type(a.payload,'$.report')='object')""", (item['client'],day)).fetchone()
         if count >= 6: return 'retry', 'DailyLimit', now+3600
         if last and now-last < 300: return 'retry', 'RateLimit', last+300
         return None

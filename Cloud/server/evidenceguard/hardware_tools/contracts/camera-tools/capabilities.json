@@ -1,0 +1,861 @@
+{
+  "version": "0.2.0",
+  "source": "docs/AGENT_TOOL_PLAN.md#4",
+  "capabilities": [
+    {
+      "id": "C01",
+      "label": "官方身份与授权设备列表",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "W",
+          "T8214": "W"
+        }
+      }
+    },
+    {
+      "id": "C02",
+      "label": "动态能力和真实设备状态",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C03",
+      "label": "QR 首次配网与换网",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C04",
+      "label": "BLE 配网",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C05",
+      "label": "直播会话",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "W",
+          "T8214": "W"
+        }
+      }
+    },
+    {
+      "id": "C06",
+      "label": "接收设备声音",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "C",
+          "T8214": "C"
+        }
+      }
+    },
+    {
+      "id": "C07",
+      "label": "当前直播帧用于观察",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "W",
+          "T8214": "W"
+        }
+      }
+    },
+    {
+      "id": "C08",
+      "label": "无取流的设备独立拍照",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C09",
+      "label": "缩略图与缓存封面",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C10",
+      "label": "历史事件 日历与详情",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C11",
+      "label": "设备事件订阅",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C12",
+      "label": "历史图片 视频回放与下载",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C13",
+      "label": "客户端有限录制",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "S",
+          "T8214": "S"
+        }
+      }
+    },
+    {
+      "id": "C14",
+      "label": "普通人机对讲",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C15",
+      "label": "实时 AI 音频输入与任意语音回传",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C16",
+      "label": "云台单步 持续转动与停止",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C17",
+      "label": "预置位读取 跳转与维护",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C18",
+      "label": "云台速度 校准与环视",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C19",
+      "label": "云台跟踪与自动巡航",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C20",
+      "label": "夜视",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C21",
+      "label": "画质及图像设置",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C22",
+      "label": "设备麦克风 扬声器与录音设置",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C23",
+      "label": "照明开关 亮度与色温",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "X",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "X",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "X",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C24",
+      "label": "设备状态指示灯",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C25",
+      "label": "门铃回复目录与播放",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "X",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "X",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "X",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C26",
+      "label": "自定义回复文件上传与管理",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "X",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "X",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "X",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C27",
+      "label": "双摄模式与布局",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "X",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "X",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "X",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C28",
+      "label": "检测开关 灵敏度与活动区",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C29",
+      "label": "运动检测类型写入",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C30",
+      "label": "声音检测设置",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C31",
+      "label": "隐私模式与隐私区",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C32",
+      "label": "设备通知设置",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C33",
+      "label": "设备原生包裹守护",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C34",
+      "label": "全景生成与位置控制",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C35",
+      "label": "电源 工作模式与录像策略",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C36",
+      "label": "设备 Wi-Fi 名称与信号查询",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C37",
+      "label": "只读存储诊断",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C38",
+      "label": "StorageAPI 格式化与清理",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C39",
+      "label": "名称 时间 时区与设备版本",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "A"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "I"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "B"
+        }
+      }
+    },
+    {
+      "id": "C40",
+      "label": "主动报警声",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "A",
+          "T8214": "X"
+        },
+        "iOS": {
+          "T8171": "I",
+          "T8214": "X"
+        },
+        "Web": {
+          "T8171": "B",
+          "T8214": "X"
+        }
+      }
+    },
+    {
+      "id": "C41",
+      "label": "OTA 重启 解绑与恢复出厂",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C42",
+      "label": "Skill 授权 操作记录与 R2 同步",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "S",
+          "T8214": "S"
+        },
+        "iOS": {
+          "T8171": "S",
+          "T8214": "S"
+        },
+        "Web": {
+          "T8171": "S",
+          "T8214": "S"
+        }
+      }
+    },
+    {
+      "id": "C43",
+      "label": "自有系统通知完整链路",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "S",
+          "T8214": "S"
+        },
+        "iOS": {
+          "T8171": "S",
+          "T8214": "S"
+        },
+        "Web": {
+          "T8171": "S",
+          "T8214": "S"
+        }
+      }
+    },
+    {
+      "id": "C44",
+      "label": "HomeBase RTSP 与连续录像扩展",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "iOS": {
+          "T8171": "C",
+          "T8214": "C"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    },
+    {
+      "id": "C45",
+      "label": "设备端自定义模型部署",
+      "hardwareValidation": "not_run",
+      "platforms": {
+        "Android": {
+          "T8171": "U",
+          "T8214": "U"
+        },
+        "iOS": {
+          "T8171": "U",
+          "T8214": "U"
+        },
+        "Web": {
+          "T8171": "U",
+          "T8214": "U"
+        }
+      }
+    }
+  ]
+}

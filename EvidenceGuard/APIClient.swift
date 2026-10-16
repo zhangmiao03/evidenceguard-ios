@@ -50,8 +50,31 @@ struct APIClient {
         #endif
     }
     var baseURL: URL
-    var accessToken: String { ServiceAccess.token(for: baseURL) }
-    init(baseURL: URL = APIClient.defaultBaseURL) { self.baseURL = baseURL }
+    private let transport: URLSession
+    private let observations: OpsDelivery
+    private var pinnedAccessToken: String?
+    var accessToken: String { pinnedAccessToken ?? ServiceAccess.token(for: baseURL) }
+    func scoped() -> APIClient { var copy = self; copy.pinnedAccessToken = accessToken; return copy }
+    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
+        self.baseURL = baseURL; self.transport = transport; self.observations = observations
+    }
+    func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
+    func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
+    func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
+    func disconnectConnector(_ provider: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)", method: "DELETE", body: Optional<String>.none) }
+    func sharePhone(_ items: [SharedPhoneItem], truncated: Bool) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/phone-context", body: SharedPhoneContext(items: items, truncated: truncated))
+    }
+    func removePhoneContext() async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/phone-context", method: "DELETE", body: Optional<String>.none)
+    }
+    func cameraObservations() async throws -> [CameraObservation] { try await get("/api/camera-observation") }
+    func saveObservation(_ id: String, enabled: Bool, interval: Int) async throws -> [CameraObservation] {
+        struct Options: Encodable { var enabled: Bool; var intervalSeconds: Int }
+        return try await send("/api/camera-observation/\(id)", method: "PUT", body: Options(enabled: enabled, intervalSeconds: interval))
+    }
     func pushStatus() async throws -> PushStatus { try await send("/api/push/status", method: "GET", body: Optional<String>.none, push: true) }
     func registerPush(token: String) async throws -> PushStatus {
         let environment = Bundle.main.object(forInfoDictionaryKey: "EGAPNSEnvironment") as? String ?? ""
@@ -92,6 +115,13 @@ struct APIClient {
     func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
     func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
     func personalSettings() async throws -> PersonalSnapshot { try await get("/api/personal") }
+    func memoryOptions(enabled: Bool) async throws -> PersonalSnapshot {
+        try await send("/api/personal/memory-options?enabled=\(enabled)", method: "PUT", body: [String:String]())
+    }
+    func cancelPersonalTask(_ id: String) async throws -> PersonalSnapshot {
+        try await send("/api/personal/tasks/\(id)/cancel", body: [String: String]())
+    }
+    func retryMemory() async throws -> PersonalSnapshot { try await send("/api/personal/memory-retry", body: [String:String]()) }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
         struct Body: Encodable { var content: String; var temporary: Bool }
@@ -111,6 +141,7 @@ struct APIClient {
     func messageFeedback(_ id: String, action: String) async throws -> PersonalSnapshot {
         try await send("/api/personal/messages/\(id)/feedback", body: ["action": action])
     }
+    func assistantMessage(_ id: String) async throws -> AssistantMessage { try await get("/api/personal/messages/\(id)") }
     func conversation(_ id: String) async throws -> [AgentRun] { try await get("/api/agent/conversations/\(id)") }
     func conversations() async throws -> [ConversationSummary] { try await get("/api/agent/conversations") }
     func newConversation(requestID: String) async throws -> ConversationSummary {
@@ -137,7 +168,7 @@ struct APIClient {
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
         try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
+        let (data, response) = try await transport.upload(for: request, fromFile: file)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             throw APIProblem(message: json?["detail"] as? String ?? "录像上传失败，请重试")
@@ -145,7 +176,7 @@ struct APIClient {
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
     func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String? }
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios"; var guardFlowVersion = 1 }
         return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
@@ -169,8 +200,33 @@ struct APIClient {
     func absoluteURL(_ path: String?) -> URL? {
         guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
+    func visualScenes() async throws -> [VisualScene] { try await get("/api/visual-scenes") }
+    func visualScene(_ id: String) async throws -> VisualScene { try await get("/api/visual-scenes/\(id)") }
+    func createScene(cameraID: String, message: String, requestID: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes", body: ["cameraId":cameraID, "message":message, "requestId":requestID])
+    }
+    func interpretScene(_ scene: VisualScene, message: String, requestID: String) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var message: String; var requestId: String }
+        return try await send("/api/visual-scenes/\(scene.id)/interpret", body: Body(revision:scene.revision, message:message, requestId:requestID))
+    }
+    func sceneAction(_ scene: VisualScene, action: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes/\(scene.id)/\(action)", body: ["revision":scene.revision])
+    }
+    func selectScene(_ scene: VisualScene, frameID: String, box: ROI) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var frameId: String; var box: ROI }
+        return try await send("/api/visual-scenes/\(scene.id)/selection", body: Body(revision:scene.revision, frameId:frameID, box:box))
+    }
+    func sceneImage(_ path: String) async throws -> Data {
+        guard path.hasPrefix("/api/media/"), let url = absoluteURL(path) else { throw APIProblem(message:"画面地址无效，请重新获取。") }
+        var request = URLRequest(url:url); try authorize(&request)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await transport.data(for:request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw APIProblem(message:"画面加载失败，请重新获取。") }
+        return data
+    }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
     func registeredCameras() async throws -> [RegisteredCamera] { try await get("/api/devices") }
+    func cameraDemands() async throws -> [String] { try await get("/api/media-demands") }
     func importDevices(account: String, environment: String, cameras: [SDKDiscoveredCamera]) async throws -> [RegisteredCamera] {
         struct Item: Encodable { var sn: String; var model: String; var name: String }
         struct Body: Encodable { var accountId: String; var environment: String; var platform = "ios"; var devices: [Item] }
@@ -196,7 +252,10 @@ struct APIClient {
         try await send("/api/devices/\(deviceID)/capture", body:[String:String]())
     }
     func agentRun(_ id: String) async throws -> AgentRun { try await get("/api/runs/\(id)") }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil) async throws -> T {
+    func hardware(_ path: String, body: HardwareValue? = nil, executor: HardwareExecutorSession? = nil) async throws -> HardwareValue {
+        try await send("/api/hardware/" + path, method: body == nil ? "GET" : "POST", body: body, executor: executor)
+    }
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
         let trace = traceID ?? mediaSession?.traceId ?? UUID().uuidString
@@ -212,6 +271,7 @@ struct APIClient {
             }
         }
         if let mediaSession { req.setValue(mediaSession.token, forHTTPHeaderField: "X-EG-Media-Session") }
+        if let executor { req.setValue(executor.token, forHTTPHeaderField: "X-EG-Executor-Token") }
         if push {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
@@ -222,7 +282,7 @@ struct APIClient {
         if let body { req.httpBody = try JSONEncoder().encode(body) }
         let data: Data
         let response: URLResponse
-        do { (data, response) = try await URLSession.shared.data(for: req) }
+        do { (data, response) = try await transport.data(for: req) }
         catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             let message: String
@@ -249,6 +309,9 @@ struct APIClient {
             throw APIProblem(message: "请求地址不属于当前服务，已停止发送。")
         }
         request.setValue(MobileServiceConfiguration.installationID, forHTTPHeaderField: "X-EG-Installation-ID")
+        if baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") {
+            request.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Private-Key")
+        }
         let token = accessToken
         guard !token.isEmpty else { return }
         guard baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") else {
@@ -273,18 +336,6 @@ struct APIClient {
         request.httpBody = try? JSONEncoder().encode([Event(name: name, traceId: traceID, parentSpanId: parentSpanID, status: status,
             durationMs: durationMS, deviceId: deviceID, requestId: requestID, route: route)])
         guard request.httpBody != nil else { return }
-        Task { await OpsDelivery.shared.send(request) }
-    }
-}
-
-private actor OpsDelivery {
-    static let shared = OpsDelivery()
-    private var pending = 0
-    func send(_ request: URLRequest) async {
-        guard pending < 8 else { return }
-        pending += 1
-        defer { pending -= 1 }
-        // No retries: a missing/disabled dashboard never blocks an app action.
-        _ = try? await URLSession.shared.data(for: request)
+        Task(priority: .background) { await observations.send(request) }
     }
 }

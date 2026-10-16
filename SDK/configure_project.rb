@@ -4,7 +4,7 @@ root = File.expand_path('..', __dir__)
 project = Xcodeproj::Project.open(File.join(root, 'EvidenceGuard.xcodeproj'))
 app = project.targets.find { |target| target.name == 'EvidenceGuard' }
 group = project.main_group.find_subpath('EvidenceGuard', false)
-%w[OfficialSDKConnection.swift OfficialSDKSettingsView.swift OfficialSDKInspectionView.swift LiveCameraView.swift].each do |name|
+%w[SDKConfiguration.swift OfficialSDKConnection.swift OfficialSDKSettingsView.swift OfficialSDKInspectionView.swift LiveCameraView.swift].each do |name|
   reference = group.files.find { |file| file.path == name } || group.new_file(name)
   app.source_build_phase.add_file_reference(reference, true)
 end
@@ -25,6 +25,7 @@ target.build_configurations.each do |configuration|
   configuration.build_settings['EG_APP_BUNDLE_ID'] = 'com.anker.evidenceguard.sdkdemo'
   configuration.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = '$(EG_APP_BUNDLE_ID)'
   configuration.build_settings['PRODUCT_NAME'] = 'EvidenceGuardSDK'
+  configuration.build_settings['EG_SDK_ARTIFACT_HASH'] = ENV.fetch('EG_SDK_ARTIFACT_HASH', '')
   conditions = original.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] || '$(inherited)'
   configuration.build_settings['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] = "#{conditions} EVIDENCEGUARD_OFFICIAL_SDK"
   configuration.build_settings['FRAMEWORK_SEARCH_PATHS'] = [

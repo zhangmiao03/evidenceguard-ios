@@ -1,4 +1,5 @@
 import type { Capture, Device, Run } from "./api";
+import type { HardwareOperation } from "./hardware-tools";
 
 export type Tab = "assistant" | "cameras" | "tasks" | "memory" | "settings";
 export type ROI = { x: number; y: number; width: number; height: number };
@@ -140,11 +141,22 @@ export type Preferences = {
   enabled: boolean;
   dailySummary: boolean;
   summaryHour: number;
+  morningReport?: boolean;
+  eveningReport?: boolean;
+  morningHour?: number;
+  eveningHour?: number;
   quietStart: number;
   quietEnd: number;
   timezone: string;
 };
+export function reportPreferences(p: Preferences): Preferences {
+  return { ...p, morningReport: p.morningReport ?? false,
+    eveningReport: p.eveningReport ?? p.dailySummary,
+    morningHour: p.morningHour ?? 8, eveningHour: p.eveningHour ?? p.summaryHour };
+}
 export type Memory = {
+  source?: string;
+  sourceQuote?: string;
   id: string;
   content: string;
   createdAt: number;
@@ -174,6 +186,7 @@ export type AssistantMessage = Notice & {
   }[];
 };
 export type Personal = {
+  automaticMemory?: { enabled: boolean; pending: number; status: string; reason: string };
   revision: number;
   preferences: Preferences;
   memories: Memory[];
@@ -192,7 +205,14 @@ export type Camera = Device & {
   adapter?: string;
   channels?: { id: string; label: string }[];
 };
+export type CameraEvent = {
+  id: string; cameraId: string; deviceName: string; startMs: number; endMs: number;
+  detectionType: string; hasVideo: boolean; imageUrl?: string | null;
+  reviewStatus: string; reason: string; sourceType: "official_sdk";
+};
+export type CameraEventTimeline = { events: CameraEvent[]; truncated: boolean; continuousCoverage: false };
 export type Bootstrap = {
+  cameraEvents?: CameraEventTimeline | null;
   skills: Skill[];
   cameras: Camera[];
   evidence: Evidence[];
@@ -221,6 +241,7 @@ export type HistoryFilter = {
   endAt?: number;
 };
 export type ChatRun = Omit<Run, "captures"> & {
+  hardwareOperations?: HardwareOperation[];
   conversationId: string;
   createdAt: number;
   executionMode?: string;

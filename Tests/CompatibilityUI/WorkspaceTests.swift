@@ -7,7 +7,7 @@ final class WorkspaceTests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.buttons["workspace.switch"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.tabBars.buttons["助手"].waitForExistence(timeout: 15))
     }
 
     func testAllProductTabsRemainReachable() {
@@ -15,21 +15,23 @@ final class WorkspaceTests: XCTestCase {
             let tab = app.tabBars.buttons[title]
             XCTAssertTrue(tab.exists, "Missing native tab: \(title)")
             tab.tap()
-            XCTAssertTrue(app.buttons["workspace.switch"].exists)
+            XCTAssertFalse(app.buttons["workspace.switch"].exists)
         }
         let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Native iOS profile and workspace switch"
+        screenshot.name = "Native iOS profile without developer header"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }
 
-    func testSimulatorExplainsOfficialSDKBoundaryAndReturns() {
-        app.buttons["workspace.switch"].tap()
-        XCTAssertTrue(app.navigationBars["官方 SDK 检查指引"].waitForExistence(timeout: 5))
+    func testOfficialDiagnosticsLivesInSettings() {
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["profile.settings"].tap()
+        app.buttons["settings.cameraDebug"].tap()
+        XCTAssertTrue(app.navigationBars["摄像头调试"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "当前是模拟器")).firstMatch.exists)
-        app.buttons["完成"].tap()
-        XCTAssertTrue(app.buttons["workspace.switch"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.tabBars.buttons["助手"].exists)
+        XCTAssertFalse(app.buttons["settings.openOfficialWorkspace"].isEnabled)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
     }
 
     func testProfileKeepsNotificationsAndOfficialCameraEntry() {
@@ -39,6 +41,33 @@ final class WorkspaceTests: XCTestCase {
         if !official.isHittable { app.swipeUp() }
         official.tap()
         XCTAssertTrue(app.navigationBars["连接摄像头"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["workspace.switch"].exists)
+        XCTAssertFalse(app.buttons["workspace.switch"].exists)
+    }
+
+    func testConnectionsAndPhonePreviewDoNotRequestPermissionOnEntry() {
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["连接应用"].tap()
+        XCTAssertTrue(app.navigationBars["连接应用"].waitForExistence(timeout: 5))
+        app.buttons["日历与提醒事项"].tap()
+        XCTAssertTrue(app.navigationBars["手机信息"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["预览未来 7 天的日历"].exists)
+        XCTAssertFalse(app.alerts.firstMatch.exists)
+        XCTAssertFalse(app.buttons["共享给 anker，24 小时内可读"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phone information requires preview before sharing"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    func testMorningAndEveningReportsHaveSeparateControls() {
+        app.tabBars.buttons["我的"].tap()
+        app.buttons["profile.notifications"].tap()
+        XCTAssertTrue(app.switches["notifications.morning"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.switches["notifications.evening"].exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "不把没有事件当作家里安全")).firstMatch.exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Morning and evening report subscriptions"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
     }
 }

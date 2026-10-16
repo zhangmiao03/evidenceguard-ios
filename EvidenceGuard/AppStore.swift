@@ -16,6 +16,14 @@ import Foundation
     @Published var activeConversationID: String
     @Published var creatingConversation = false
     @Published var conversationListError: String?
+    @Published var assistantMessageFocus: String?
+    @Published private var openedAssistantMessages: [String: AssistantMessage] = [:]
+    private var readingAssistantMessages: Set<String> = []
+    var assistantMessages: [AssistantMessage] {
+        var messages = openedAssistantMessages
+        for message in data.personal?.messages ?? [] { messages[message.id] = message }
+        return messages.values.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+    }
     var conversationModes: [String: String] = [:] { didSet { persistChat() } }
     private var newConversationRequestID: String? { didSet { persistChat() } }
     private var chatStorageKey: String { "localChats:" + client.baseURL.absoluteString }
@@ -54,7 +62,7 @@ import Foundation
         client = APIClient(baseURL: URL(string: base) ?? APIClient.defaultBaseURL)
         generalConversation = defaults.string(forKey: "conversationID") ?? "chat-\(UUID().uuidString)"
         defaults.set(generalConversation, forKey: "conversationID")
-        activeConversationID = defaults.string(forKey: "activeChat:" + base) ?? generalConversation
+        activeConversationID = generalConversation
         restoreChat()
     }
     var selectedCamera: CameraDevice? { data.cameras.first { $0.id == selectedCameraID } ?? data.cameras.first }
@@ -63,7 +71,36 @@ import Foundation
     var onlineCount: Int { data.cameras.filter { $0.fresh && isConnected }.count }
     func selectConversation(_ id: String) {
         activeConversationID = id
+        assistantMessageFocus = nil
+        selectedTab = .assistant
+        tabPaths[AppTab.assistant.rawValue] = id == generalConversation ? [] : [.conversation(id, nil)]
         UserDefaults.standard.set(id, forKey: "activeChat:" + client.baseURL.absoluteString)
+    }
+    func openAssistantMessage(_ id: String) async throws {
+        let source = client
+        // Keep a bootstrap fallback for a client updated before the backend.
+        let message: AssistantMessage
+        if let cached = assistantMessages.first(where: { $0.id == id }) { message = cached }
+        else { message = try await source.assistantMessage(id) }
+        guard source.baseURL == client.baseURL else { return }
+        openedAssistantMessages[id] = message
+        selectConversation(generalConversation)
+        assistantMessageFocus = id
+    }
+    func readAssistantMessage(_ id: String) async {
+        guard assistantMessages.contains(where: { $0.id == id && !$0.read }), !readingAssistantMessages.contains(id) else { return }
+        readingAssistantMessages.insert(id)
+        defer { readingAssistantMessages.remove(id) }
+        do { try await feedbackAssistantMessage(id, action: "read") }
+        catch { /* Keep unread on failure; a later visible pass can retry. */ }
+    }
+    func feedbackAssistantMessage(_ id: String, action: String) async throws {
+        let source = client
+        let snapshot = try await source.messageFeedback(id, action: action)
+        guard source.baseURL == client.baseURL else { return }
+        openedAssistantMessages[id]?.read = true
+        if action != "read" { openedAssistantMessages[id]?.feedback = action }
+        data.personal = snapshot
     }
     func reloadConversations() async {
         let origin = client.baseURL
@@ -125,15 +162,22 @@ import Foundation
         guard client.baseURL.host != "unconfigured.invalid" else {
             isConnected = false; lastError = MobileServiceConfiguration.current.isInternalDemo ? "此测试版本连接配置不完整，请联系团队更新。" : "请在头像下的“服务连接”设置云端 HTTPS 地址。"; return
         }
+        let source = client
         do {
-            data = try await client.bootstrap(); isConnected = true; lastError = nil
-            if personalOrigin != client.baseURL {
-                do { try await client.bindPersonalConversation(generalConversation); personalOrigin = client.baseURL; await reloadConversations() }
+            let snapshot = try await source.bootstrap()
+            guard source.baseURL == client.baseURL else { return }
+            data = snapshot; isConnected = true; lastError = nil
+            if personalOrigin != source.baseURL {
+                do {
+                    try await source.bindPersonalConversation(generalConversation)
+                    guard source.baseURL == client.baseURL else { return }
+                    personalOrigin = source.baseURL; await reloadConversations()
+                }
                 catch { data.personal?.lastError = "助手对话尚未完成同步，正在重试。" }
             }
         } catch is CancellationError { }
-        catch let problem as APIProblem { isConnected = false; lastError = problem.message }
-        catch { isConnected = false; lastError = "服务暂时未连接，已显示的记录不代表当前状态。" }
+        catch let problem as APIProblem { if source.baseURL == client.baseURL { isConnected = false; lastError = problem.message } }
+        catch { if source.baseURL == client.baseURL { isConnected = false; lastError = "服务暂时未连接，已显示的记录不代表当前状态。" } }
     }
     func configure(_ url: String, accessToken: String? = nil) async -> Bool {
         errorMessage = nil
@@ -149,12 +193,14 @@ import Foundation
             catch { errorMessage = error.localizedDescription; return false }
         }
         client = APIClient(baseURL: parsed); data = .empty
+        openedAssistantMessages = [:]; assistantMessageFocus = nil; personalOrigin = nil
+        tabPaths[AppTab.assistant.rawValue] = []
         // Preserve each service's local state before changing namespaces.
         conversations = []
         let saved = UserDefaults.standard.data(forKey: "localChats:" + parsed.absoluteString).flatMap { try? JSONDecoder().decode(LocalChatState.self, from: $0) } ?? LocalChatState()
         conversationDrafts = saved.drafts; pendingChatRequests = saved.pending
         conversationModes = saved.modes; newConversationRequestID = saved.newConversationRequestID
-        activeConversationID = UserDefaults.standard.string(forKey: "activeChat:" + parsed.absoluteString) ?? generalConversation
+        activeConversationID = generalConversation
         UserDefaults.standard.set(parsed.absoluteString, forKey: "serviceURL")
         await refresh(); return isConnected
     }

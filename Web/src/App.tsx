@@ -4,6 +4,9 @@ import { observe } from "./telemetry";
 import { newID } from "./browser-support";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
 import { LiveView } from "./LiveView";
+import { HardwarePanel } from "./HardwareTools";
+import { CameraEvents } from "./CameraEvents";
+import { mergeDevices } from "./device-overview.mjs";
 import { OfficialWorkspace } from "./OfficialWorkspace";
 import {
   Assistant,
@@ -94,7 +97,9 @@ export default function App() {
       sequence !== refreshSequence.current
     )
       return;
-    setDevices(all);
+    const overview = mergeDevices(bootstrap.cameras || [], all);
+    setDevices(overview);
+    setSelected(old => overview.some(d => d.id === old) ? old : "");
     setData({
       ...emptyBootstrap,
       ...bootstrap,
@@ -526,7 +531,7 @@ export default function App() {
                           {d.model} ·{" "}
                           {d.connection === "online"
                             ? "画面输入可用"
-                            : "待开启直播"}
+                            : d.connection === "event_only" ? "事件已登记" : "待开启直播"}
                         </small>
                       </span>
                     </button>
@@ -538,7 +543,7 @@ export default function App() {
                       <h2>{device?.name || "连接你的第一台摄像头"}</h2>
                       <span>
                         {device
-                          ? `${device.model} · ${device.sn}`
+                          ? `${device.model} · ${device.sn || "仅事件身份，直播需同步官方账号"}`
                           : "支持 T8171 云台摄像头与 T8214 双摄门铃"}
                       </span>
                     </div>
@@ -576,7 +581,7 @@ export default function App() {
                         className="primary"
                         disabled={busy || switching || stoppingLive}
                         onClick={async (e) => {
-                          if (!device || !integration) {
+                          if (!device?.sn || !integration) {
                             openSettings(e.currentTarget);
                             return;
                           }
@@ -586,7 +591,7 @@ export default function App() {
                         }}
                       >
                         {" "}
-                        {device && integration
+                        {device?.sn && integration
                           ? "▶ 开始直播"
                           : "连接官方设备 →"}
                       </button>
@@ -660,6 +665,8 @@ export default function App() {
                     让助手看看 →
                   </button>
                 </div>
+                {tab === "cameras" && <CameraEvents devices={devices} initial={data.cameraEvents} />}
+                {tab === "cameras" && device && <HardwarePanel key={device.id} deviceID={device.id} />}
                 <div className="context-card">
                   <span>01</span>
                   <div>

@@ -11,6 +11,7 @@ import pytest
 from evidenceguard.store import Store
 from evidenceguard.video.providers import LiteVideoProvider
 from evidenceguard.visual_review import VisualReview
+from evidenceguard.assistant_identity import VOICE_GUIDANCE
 from test_harness import ScriptedProvider, environment, settle, tool
 
 
@@ -33,6 +34,12 @@ def test_chat_and_proactive_receive_current_product_guidance(tmp_path, mode):
                 assert entry in system
             assert 'APNs' in system and 'Web Push' in system
             assert 'Web 设备工作台当前只提供' not in system
+            # A human voice must reach both paths without promising perception
+            # or actions that their read-only contracts cannot perform.
+            assert '你是 anker，EvidenceGuard' in system
+            assert VOICE_GUIDANCE in system
+            assert '成功的视觉核验回执' in system
+            assert '不能说已经保存、启用、处理或送达' in system
         tools = {item['function']['name'] for item in provider.complete.call_args_list[1].args[1]}
         assert tools == {'read_proactive_context', 'read_observation_image'}
         assert store.skills() == []

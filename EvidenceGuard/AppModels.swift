@@ -1,5 +1,152 @@
 import Foundation
 
+enum CameraQuestion {
+    static func needsLiveFrame(_ message: String) -> Bool {
+        let text = message.lowercased()
+        if ["录像", "回放", "昨天", "历史", "提醒我", "通知我", "不要看", "不用看"].contains(where: text.contains) { return false }
+        return ["画面", "看一眼", "看一下摄像头", "看看摄像头", "现在门口", "快递到没到", "live", "snapshot"].contains(where: text.contains)
+    }
+}
+
+enum HardwareValue: Codable, Equatable, Sendable {
+    case object([String: HardwareValue]), array([HardwareValue]), string(String), number(Double), bool(Bool), null
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
+        else if let v = try? c.decode(Double.self) { self = .number(v) }
+        else if let v = try? c.decode(String.self) { self = .string(v) }
+        else if let v = try? c.decode([String: HardwareValue].self) { self = .object(v) }
+        else { self = .array(try c.decode([HardwareValue].self)) }
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .object(let v): try c.encode(v)
+        case .array(let v): try c.encode(v)
+        case .string(let v): try c.encode(v)
+        case .number(let v): try c.encode(v)
+        case .bool(let v): try c.encode(v)
+        case .null: try c.encodeNil()
+        }
+    }
+    subscript(_ key: String) -> HardwareValue { object[key] ?? .null }
+    var object: [String: HardwareValue] { if case .object(let v) = self { return v }; return [:] }
+    var array: [HardwareValue] { if case .array(let v) = self { return v }; return [] }
+    var string: String { if case .string(let v) = self { return v }; return "" }
+    var boolean: Bool { if case .bool(let v) = self { return v }; return false }
+    var json: String { let e=JSONEncoder(); e.outputFormatting=[.prettyPrinted,.sortedKeys]; return (try? String(data:e.encode(self),encoding:.utf8)) ?? "{}" }
+    static func parse(_ json: String) throws -> HardwareValue { try JSONDecoder().decode(Self.self,from:Data(json.utf8)) }
+}
+
+enum AssistantIdentity {
+    static let name = "anker"
+}
+
+// Presentation only. Raw requests and receipts remain intact for diagnostics.
+enum ChatPresentation {
+    static let actions = [
+        "devices_list":"查看摄像头列表", "device_inspect":"查看摄像头能力", "camera_observe":"查看摄像头新画面",
+        "camera_events_query":"查看摄像头事件", "camera_ptz_step":"移动摄像头", "camera_goto_preset":"转到选定位置",
+        "camera_set_night_vision":"调整夜视模式", "doorbell_light_set":"调整门铃灯光", "doorbell_reply_play":"播放门铃回复",
+        "camera_record_clip":"录制一段视频", "operation_get":"查看操作进度", "camera_stop":"停止摄像头操作",
+        "device_state_get":"查看设备状态", "device_settings_get":"查看摄像头设置", "device_settings_set":"调整摄像头设置",
+        "camera_events_subscribe":"关注新的摄像头事件", "camera_events_unsubscribe":"停止关注摄像头事件",
+        "camera_event_get":"查看事件详情", "camera_evidence_get":"查看事件资料", "camera_evidence_download":"保存事件资料",
+        "camera_presets_list":"查看摄像头预置位置", "doorbell_replies_list":"查看门铃回复选项", "camera_talk_start":"开启对讲",
+        "camera_talk_stop":"结束对讲", "camera_light_set":"调整摄像头灯光", "camera_dual_mode_set":"调整双摄画面",
+        "camera_ptz_mode_set":"调整摄像头跟踪模式", "camera_panorama_generate":"生成全景画面", "operation_cancel":"取消操作",
+        "list_camera_capabilities":"查看摄像头能力", "request_camera_snapshot":"查看摄像头新画面", "list_tasks":"查看任务",
+        "save_personal_task":"保存你交代的事项",
+        "create_camera_guard":"整理守护需求", "revise_camera_guard":"更新守护条件",
+        "read_camera_guard":"查看守护结果", "list_camera_guards":"查看我的守护",
+        "web_search":"搜索外部资料", "fetch_url":"读取来源内容", "get_weather":"查看天气", "read_feishu_context":"查看飞书资料",
+        "get_task_state":"查看任务进度", "search_evidence":"查找事件资料", "read_stored_image":"查看已保存的图片",
+        "search_recordings":"查找并核对录像", "draft_visual_skill":"整理守护草案", "list_skill_capabilities":"查看可用守护能力",
+        "list_camera_events":"查看摄像头事件", "request_recheck":"重新查看现场", "read_home_report":"整理家庭报告",
+        "read_proactive_context":"核对已有记录", "read_observation_image":"查看观察图片",
+        "gmail_search":"查找邮件", "gmail_read":"读取邮件", "lark_chats":"查看会话列表", "lark_messages":"读取会话消息",
+        "read_phone_context":"查看已共享的手机信息"
+    ]
+    static let controls: Set<String> = ["camera_ptz_step", "camera_goto_preset", "camera_set_night_vision", "doorbell_light_set", "doorbell_reply_play", "camera_record_clip", "device_settings_set", "camera_events_subscribe", "camera_events_unsubscribe", "camera_talk_start", "camera_talk_stop", "camera_light_set", "camera_dual_mode_set", "camera_ptz_mode_set", "camera_panorama_generate", "camera_stop", "operation_cancel"]
+    static func action(_ tool: String) -> String { actions[tool] ?? "处理请求" }
+    static func progress(_ tool: String) -> String { (controls.contains(tool) ? "正在准备" : "正在") + action(tool) }
+    static func receipt(_ tool: String, _ status: String) -> String {
+        let state = ["completed":"已收到处理结果", "failed":"未完成", "unavailable":"暂不可用", "unsupported":"暂不支持", "awaitingApproval":"等待你确认", "queued":"正在等待设备", "executing":"正在执行", "verifying":"正在核对结果", "unknown":"结果尚未确认", "cancelled":"已取消"][status] ?? "状态待确认"
+        return action(tool) + " · " + state
+    }
+    static func operationStatus(_ operation: HardwareValue) -> String {
+        let action = action(operation["tool"].string)
+        switch operation["executionState"].string {
+        case "awaitingApproval": return "等待你确认，确认后才会" + action
+        case "queued": return "正在等待设备响应，尚未开始" + action
+        case "executing": return "正在" + action
+        case "verifying": return "正在确认设备是否已停止，请稍候"
+        case "completed": return "已收到设备处理回执，实际效果仍需核对"
+        case "failed": return "这次操作未完成，请检查设备连接后重试"
+        case "cancelled": return "这次操作已取消"
+        default: return "操作结果尚未确认，请先核对设备状态"
+        }
+    }
+    static func operationDetails(_ operation: HardwareValue, deviceName: String?, references: [HardwareValue] = []) -> String {
+        let args = operation["arguments"], tool = operation["tool"].string
+        var parts = ["设备：" + text(deviceName ?? "所选摄像头", fallback: "所选摄像头")]
+        if let direction = ["LEFT":"向左", "RIGHT":"向右", "UP":"向上", "DOWN":"向下"][args["direction"].string] { parts.append("方向：" + direction + "移动一步") }
+        if case .number(let seconds) = args["duration"], seconds.isFinite, (1...300).contains(seconds) { parts.append("持续 \(Int(seconds)) 秒") }
+        if ["camera_light_set", "doorbell_light_set"].contains(tool), case .bool(let enabled) = args["enabled"] { parts.append(enabled ? "开启灯光" : "关闭灯光") }
+        if tool == "device_settings_set" {
+            let field = ["ptzSpeed":"转动速度", "microphoneEnabled":"麦克风", "audioRecordEnabled":"录像声音", "statusLED":"状态指示灯"][args["field"].string] ?? "所选设置"
+            if case .bool(let enabled) = args["value"] { parts.append(field + "：" + (enabled ? "开启" : "关闭")) }
+            else if case .number(let number) = args["value"], number.isFinite { parts.append(field + "：\(number)") }
+            else { parts.append("调整" + field + "，请先核对所选选项") }
+        }
+        if tool == "camera_record_clip", let policy = ["required":"需要录入声音", "forbidden":"不录入声音", "allowIfPresent":"设备有音轨时一并录入"][args["audioPolicy"].string] { parts.append(policy) }
+        for (key, label) in [("presetRef", "位置"), ("optionRef", "选项"), ("modeRef", "模式"), ("replyRef", "门铃回复"), ("channelRef", "灯光")] {
+            let id = args[key].string
+            if !id.isEmpty {
+                let name = references.first(where: { $0["id"].string == id })?["label"].string ?? ""
+                parts.append(label + "：" + text(name, fallback: "已选择，名称暂未同步"))
+            }
+        }
+        if args["scope"].string == "persistent" { parts.append("该设置会持续生效") }
+        return parts.joined(separator: " · ")
+    }
+    static func error(_ raw: String) -> String {
+        let value = raw.lowercased()
+        if value.contains("输入已保留") || value.contains("内容已保留") || value.contains("内容已保存") { return "这次发送未完成，输入已保留，请重试。" }
+        if value.contains("timeout") || value.contains("timed out") || value.contains("超时") { return "等待响应超时，请稍后重试。" }
+        if value.contains("offline") || value.contains("离线") { return "设备暂时离线，请检查连接后重试。" }
+        if value.contains("unauthorized") || value.contains("401") { return "连接凭证已失效，请到设置重新连接。" }
+        return "这次处理未完成，请检查连接后重试。"
+    }
+    static func text(_ raw: String, fallback: String = "处理信息已记录，请查看相关状态。") -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return fallback }
+        // Decode a stringified natural-language answer, never expose structured payloads.
+        if let data = value.data(using: .utf8), let decoded = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) {
+            if let prose = decoded as? String, prose != value { return text(prose, fallback: fallback) }
+            if let object = decoded as? [String: Any] {
+                for key in ["text", "content", "body"] { if let prose = object[key] as? String { return text(prose, fallback: fallback) } }
+            }
+            return fallback
+        }
+        var output = value.replacingOccurrences(of: #"(?s)```.*?(?:```|$)"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"(?s)<(?:tool_call|function_call|analysis)>.*?(?:</(?:tool_call|function_call|analysis)>|$)"#, with: "", options: .regularExpression)
+        // Hide technical lines in mixed prose too, including unfinished streamed payloads.
+        output = output.components(separatedBy: .newlines).filter { line in
+            let clean = line.trimmingCharacters(in: .whitespaces)
+            return clean.range(of: #"[{}]|^[\[\]]|^[A-Za-z_][A-Za-z0-9_.]*\s*=|^[\"\'].*[\"\'],?$|^[\"'][A-Za-z_][A-Za-z0-9_]*[\"']\s*:|^(?:import\s|from\s|def\s|class\s|function\s|const\s|let\s|var\s|return\b|console\.|Traceback|File\s+\"|raise\s|Exception|Error:|HTTP/|curl\s)|=>|\\u[0-9a-fA-F]{4}|<\|[^>]+\|>|(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*\([^\n]*\)|(?<![A-Za-z0-9_])(?:requestHash|executionState|tool_calls|tool_call_id|executorPlatform|deviceId|operationId)\s*[=:]"#, options: .regularExpression) == nil
+        }.joined(separator: "\n")
+        for (tool, label) in actions.sorted(by: { $0.key.count > $1.key.count }) {
+            output = output.replacingOccurrences(of: "(?<![A-Za-z0-9_])" + NSRegularExpression.escapedPattern(for: tool) + "(?![A-Za-z0-9_])", with: label, options: .regularExpression)
+        }
+        output = output.replacingOccurrences(of: #"`[^`]*`"#, with: "", options: .regularExpression)
+        output = output.replacingOccurrences(of: #"(?<![A-Za-z0-9_])(?:(?:sdk|run|op|executor|proactive)-[A-Za-z0-9-]+|[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}|[a-z][a-z0-9]*(?:_[a-z0-9]+)+|[0-9a-fA-F]{32,}|requestHash|executionState|executorPlatform|operationId|deviceId)(?![A-Za-z0-9_])(?:\([^\n)]*\))?"#, with: "相关记录", options: .regularExpression)
+        output = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return output.isEmpty ? fallback : output
+    }
+}
+
 struct ROI: Codable, Equatable { var x: Double; var y: Double; var width: Double; var height: Double
     static let initial = ROI(x: 0.18, y: 0.25, width: 0.55, height: 0.55)
 }
@@ -85,6 +232,7 @@ struct ToolReceipt: Codable, Equatable { var tool: String; var status: String }
 struct CameraCapture: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var skillId: String?; var status: String; var reason: String
     var requestedAt: Double; var capturedAt: Double?; var imageUrl: String?; var sourceType: String?
+    var sampledAt: Double? = nil; var timestampMeaning: String? = nil
     var historical: Bool?
 }
 struct CameraOccupancy: Codable, Identifiable, Equatable {
@@ -114,30 +262,66 @@ struct LocalChatState: Codable {
 struct AgentRun: Codable, Identifiable, Equatable {
     var id: String; var conversationId: String; var skillId: String?; var message: String; var status: String; var createdAt: Double
     var text: String?; var error: String?; var draft: VisualSkill?; var toolReceipts: [ToolReceipt]
+    var guardDraftId: String?
     var captures: [CameraCapture]?
+    var hardwareOperations: [HardwareValue]?
     var executionMode: String?
     var videos: [VideoHit]?
     var cameraId: String?
     var historyFilter: HistoryFilter?
     var historyScope: HistoryFilter?
+    var completedAt: Double?
     var isRunning: Bool { status == "queued" || status == "running" }
+}
+
+enum ChatTimelineItem: Identifiable {
+    case user(AgentRun), reply(AgentRun), proactive(AssistantMessage)
+    var id: String {
+        switch self {
+        case .user(let run): return "0-user:" + run.id
+        case .reply(let run): return "1-reply:" + run.id
+        case .proactive(let message): return "2-message:" + message.id
+        }
+    }
+    var createdAt: Double {
+        switch self {
+        case .user(let run): return run.createdAt
+        case .reply(let run): return run.completedAt ?? run.createdAt
+        case .proactive(let message): return message.createdAt
+        }
+    }
+    static func items(runs: [AgentRun], messages: [AssistantMessage]) -> [Self] {
+        var unique: [String: Self] = [:]
+        for run in runs {
+            for item in [Self.user(run), .reply(run)] { unique[item.id] = item }
+        }
+        for message in messages { let item = Self.proactive(message); unique[item.id] = item }
+        return unique.values.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+    }
+    static func messageID(_ id: String) -> String { "2-message:" + id }
 }
 struct RunEvent: Decodable, Identifiable {
     var runId: String; var sequence: Int; var type: String; var at: Double?
     var payload: RunProgress?
     var progressLabel: String {
+        if type == "tool_started" { return ChatPresentation.progress(payload?.tool ?? "") }
+        if type == "tool_completed" { return "已处理" + ChatPresentation.action(payload?.tool ?? "") + "的请求，正在整理结果" }
+        if type == "tool_failed" { return ChatPresentation.action(payload?.tool ?? "") + "未完成，正在核对原因" }
         if type == "video_verification_progress", let done = payload?.completed, let total = payload?.total { return "已复核 \(done)/\(total) 段录像" }
         return ["video_search_started":"正在筛选已存录像", "video_search_empty":"所选范围暂无可检索录像", "video_embedding_started":"正在检索相关片段", "video_candidates_found":"已找到候选，等待视频复核", "video_verification_started":"正在观看候选录像", "video_search_completed":"视频复核完成，正在整理证据"][type] ?? label
     }
     var id: String { "\(runId)-\(sequence)" }
-    var label: String { ["timing_review_required":"检测已升级为按秒抽样，需重新验收", "trial_reviewed":"已核验试跑报告", "capability_checked":"已检查任务执行能力", "replay_acknowledged":"已标记核验，证据保留", "camera_requested":"已请求新画面", "camera_completed":"已取得新画面", "camera_failed":"画面请求未完成", "recheck_requested":"已请求复核", "alert_opened":"触发提醒", "alert_resolved":"新证据确认恢复", "observation_recovered":"恢复观察，等待新画面", "result_changed":"观察结果更新", "skill_confirmed":"用户已确认启用", "skill_revised":"草案已更新", "skill_drafted":"已生成草案", "lifecycle_changed":"任务状态已变更", "skill_completed":"一次性任务已完成", "replay_observing":"正在分析已到达的回放片段", "replay_model_completed":"回放模型观察完成", "replay_model_failed":"回放模型复核失败", "replay_input_failed":"回放输入失败，已暂停", "replay_finished":"回放测试结束", "replay_interrupted":"回放中断，等待恢复", "replay_transport_changed":"回放输入连接已变化", "run_queued":"请求已排队", "run_started":"开始理解需求", "model_started":"AI 正在处理", "tool_started":"正在查询或生成草案", "tool_completed":"操作已完成", "tool_failed":"操作未完成", "frame_attached":"已附上所选摄像头画面", "frame_unavailable":"本次未取得画面", "response_completed":"回复已完成", "run_failed":"本次请求未完成", "run_cancelled":"已取消"][type] ?? type }
+    var label: String { ["timing_review_required":"检测已升级为按秒抽样，需重新验收", "trial_reviewed":"已核验试跑报告", "capability_checked":"已检查任务执行能力", "replay_acknowledged":"已标记核验，证据保留", "camera_requested":"已请求新画面", "camera_completed":"已取得新画面", "camera_failed":"画面请求未完成", "recheck_requested":"已请求复核", "alert_opened":"触发提醒", "alert_resolved":"新证据确认恢复", "observation_recovered":"恢复观察，等待新画面", "result_changed":"观察结果更新", "skill_confirmed":"用户已确认启用", "skill_revised":"草案已更新", "skill_drafted":"已生成草案", "lifecycle_changed":"任务状态已变更", "skill_completed":"一次性任务已完成", "replay_observing":"正在分析已到达的回放片段", "replay_model_completed":"回放模型观察完成", "replay_model_failed":"回放模型复核失败", "replay_input_failed":"回放输入失败，已暂停", "replay_finished":"回放测试结束", "replay_interrupted":"回放中断，等待恢复", "replay_transport_changed":"回放输入连接已变化", "run_queued":"请求已排队", "run_started":"开始理解需求", "model_started":"AI 正在处理", "tool_started":"正在查询或生成草案", "tool_completed":"操作已完成", "tool_failed":"操作未完成", "frame_attached":"已附上所选摄像头画面", "frame_unavailable":"本次未取得画面", "response_completed":"回复已完成", "run_failed":"本次请求未完成", "run_cancelled":"已取消"][type] ?? "正在处理请求" }
 }
 enum AppTab: Int, CaseIterable {
     case assistant, cameraSkills, tasks, memory, profile
 }
 
 enum AppRoute: Hashable {
+    case cameraGuard(String), newCameraGuard(String?)
+    case connectedApps, cameraObservation, legacyTasks
     case pushDelivery(String, String)
+    case liveCamera(String)
     case pushConversation(String, String?, String)
     case demoScene
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
@@ -201,7 +385,7 @@ func displayTime(_ timestamp: Double?) -> String {
     return Date(timeIntervalSince1970: timestamp).formatted(date: .abbreviated, time: .standard)
 }
 
-struct RunProgress: Decodable { var completed: Int?; var total: Int? }
+struct RunProgress: Decodable { var completed: Int?; var total: Int?; var tool: String? }
 struct HistoryFilter: Codable, Equatable {
     var period: String
     var startAt: Double? = nil
@@ -253,29 +437,96 @@ struct PersonalPreferences: Codable, Equatable {
     var enabled = false
     var dailySummary = false
     var summaryHour = 18
+    var morningReport = false
+    var eveningReport = false
+    var morningHour = 8
+    var eveningHour = 20
+    var supportsTwoReports = true
     var quietStart = 22
     var quietEnd = 8
     var timezone = TimeZone.current.identifier
+    init() {}
+    private enum CodingKeys: String, CodingKey {
+        case enabled, dailySummary, summaryHour, morningReport, eveningReport, morningHour, eveningHour, quietStart, quietEnd, timezone
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        supportsTwoReports = c.contains(.morningReport) && c.contains(.eveningReport)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
+        dailySummary = try c.decodeIfPresent(Bool.self, forKey: .dailySummary) ?? false
+        summaryHour = try c.decodeIfPresent(Int.self, forKey: .summaryHour) ?? 18
+        morningReport = try c.decodeIfPresent(Bool.self, forKey: .morningReport) ?? false
+        eveningReport = try c.decodeIfPresent(Bool.self, forKey: .eveningReport) ?? dailySummary
+        morningHour = try c.decodeIfPresent(Int.self, forKey: .morningHour) ?? 8
+        eveningHour = try c.decodeIfPresent(Int.self, forKey: .eveningHour) ?? summaryHour
+        quietStart = try c.decodeIfPresent(Int.self, forKey: .quietStart) ?? 22
+        quietEnd = try c.decodeIfPresent(Int.self, forKey: .quietEnd) ?? 8
+        timezone = try c.decodeIfPresent(String.self, forKey: .timezone) ?? TimeZone.current.identifier
+    }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(enabled, forKey: .enabled)
+        try c.encode(dailySummary, forKey: .dailySummary)
+        try c.encode(summaryHour, forKey: .summaryHour)
+        try c.encode(quietStart, forKey: .quietStart)
+        try c.encode(quietEnd, forKey: .quietEnd)
+        try c.encode(timezone, forKey: .timezone)
+        if supportsTwoReports {
+            try c.encode(morningReport, forKey: .morningReport)
+            try c.encode(eveningReport, forKey: .eveningReport)
+            try c.encode(morningHour, forKey: .morningHour)
+            try c.encode(eveningHour, forKey: .eveningHour)
+        }
+    }
+    var reportScheduleLabel: String {
+        var parts: [String] = []
+        if morningReport { parts.append(String(format: "早安 %02d:00", morningHour)) }
+        if eveningReport { parts.append(String(format: "晚间 %02d:00", eveningHour)) }
+        return parts.isEmpty ? "尚未开启" : parts.joined(separator: " · ")
+    }
 }
 struct PersonalMemory: Codable, Identifiable, Equatable {
     var id: String; var content: String; var source: String; var createdAt: Double; var expiresAt: Double?
+    var sourceQuote: String?
+    var updatedAt: Double?
+}
+struct AutomaticMemoryStatus: Codable, Equatable {
+    var enabled: Bool; var pending: Int; var status: String; var reason: String
 }
 struct PersonalNotice: Codable, Identifiable, Equatable {
     var id: String; var kind: String; var title: String; var body: String
     var createdAt: Double; var read: Bool; var skillId: String?
-    var kindLabel: String { ["event":"事件触发", "schedule":"定时概况", "followup":"后续提醒"][kind] ?? "助手提醒" }
+    var kindLabel: String {
+        switch kind {
+        case "schedule", "camera_observation": "定时"
+        case "followup", "revisit", "instruction": "用户指令"
+        case "doorbell", "special": "特殊"
+        default: "事件"
+        }
+    }
 }
 struct PersonalSnapshot: Codable, Equatable {
     var preferences: PersonalPreferences; var revision: Int
     var memories: [PersonalMemory]; var inbox: [PersonalNotice]; var delivery: String; var lastError: String?
     var messages: [AssistantMessage]?
     var activity: [ProactiveActivity]?
+    var automaticMemory: AutomaticMemoryStatus?
+    var tasks: [PersonalTask]?
+}
+
+struct PersonalTask: Codable, Equatable, Identifiable {
+    var id: String; var title: String; var instruction: String; var conversationId: String
+    var status: String; var reason: String; var createdAt: Double; var expiresAt: Double?
+    var cameraId: String?; var eventType: String?
+    var statusLabel: String { ["waiting_events":"等待新事件", "needs_setup":"待配置", "expired":"已到期", "cancelled":"已结束"][status] ?? "待确认" }
+    var isOpen: Bool { status == "waiting_events" || status == "needs_setup" }
 }
 
 struct ProactiveSource: Codable, Identifiable, Equatable {
     var id: String; var type: String
     var name: String?; var title: String?; var reason: String?; var limitation: String?
     var observedAt: Double?; var skillId: String?; var evidenceId: String?; var sourceType: String?
+    var cameraId: String?; var imageUrl: String?
 }
 struct AssistantMessage: Codable, Identifiable, Equatable {
     var id: String; var title: String; var body: String; var why: String

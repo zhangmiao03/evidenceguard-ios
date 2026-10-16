@@ -76,6 +76,7 @@ class LiveDevices:
         self.store = store
         self.sessions: dict[str, dict] = {}
         self.pending: dict[str, dict] = {}
+        self.demands: dict[str, dict] = {}
         self.frames: dict[str, tuple] = {}
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS live_devices (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
@@ -122,6 +123,13 @@ class LiveDevices:
         return next((s for s in self.sessions.values() if s['deviceId'] == device_id
                      and s['state'] not in {'stopped', 'failed'}
                      and now - s['heartbeatAt'] <= self.heartbeat_ttl), None)
+
+    def capture_demands(self, client):
+        # Camera media is shared inside this demo household. Only a client
+        # already maintaining a foreground session can service capture demands.
+        if not any(s['client'] == client and self.current(s['deviceId']) is s for s in self.sessions.values()): return []
+        now = time.time()
+        return list(dict.fromkeys(d['deviceId'] for d in self.demands.values() if d['deadline'] > now))
 
     def ready(self, session):
         return bool(session and session['state'] == 'streaming' and session['sequence'] > 0
@@ -189,6 +197,16 @@ class LiveDevices:
                 for rid, p in self.pending.items() if p['sessionId'] == s['id']
                 and not p['future'].done() and p['deadline'] > time.time()]
 
+    def invalidate_view(self, device_id):
+        s=self.current(device_id)
+        if s:
+            s['viewVersion']=s.get('viewVersion',0)+1
+            s.pop('lastFrameUrl',None)
+            s['frameAgeMs']=None
+        for pending in self.pending.values():
+            if pending['deviceId']==device_id and not pending['future'].done():
+                pending['future'].set_exception(ValueError('设备视角已改变，需要重新请求新画面'))
+
     def upload(self, s, body: FrameUpload):
         p = self.pending.get(body.requestId)
         if not p or p['sessionId'] != s['id'] or p['deviceId'] != s['deviceId']:
@@ -210,7 +228,7 @@ class LiveDevices:
             raise ValueError('无法解码直播取样图片') from error
         frame = FrameRef(frame_id='live-' + uuid.uuid4().hex, device_id=s['deviceId'], channel_id='main',
                          captured_at=None, received_at=time.time(), source_type='official_live_' + s['platform'],
-                         freshness='sampled_after_request', view_revision=s['id'],
+                         freshness='sampled_after_request', view_revision=s['id']+':'+str(s.get('viewVersion',0)),
                          sampled_at=body.sampledAt, request_id=body.requestId, session_id=s['id'])
         self.frames[frame.frame_id] = (frame, raw, mime)
         media = self.store.save_media(asdict(frame), raw, mime)

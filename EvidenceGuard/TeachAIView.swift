@@ -3,21 +3,23 @@ import SwiftUI
 struct TeachAIView: View {
     @EnvironmentObject private var store: AppStore
     var body: some View {
-        ConversationView(conversationID: store.activeConversationID, skillID: nil,
+        ConversationView(conversationID: store.generalConversation, skillID: nil,
                          allowsConversationSwitching: true,
-                         initialMode: store.conversationModes[store.activeConversationID] ?? store.conversations.first { $0.id == store.activeConversationID }?.lastMode ?? "live")
-            .id(store.activeConversationID)
+                         initialMode: store.conversationModes[store.generalConversation] ?? "live")
+            .id(store.client.baseURL)
     }
 }
 
-private enum ChatTimelineItem: Identifiable {
-    case run(AgentRun), proactive(AssistantMessage)
-    var id: String { switch self { case .run(let r): return r.id; case .proactive(let m): return m.id } }
-    var createdAt: Double { switch self { case .run(let r): return r.createdAt; case .proactive(let m): return m.createdAt } }
+private struct ChatVisibleFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
 }
 
 struct ConversationView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
     let conversationID: String
     let skillID: String?
     let historyEvidenceID: String?
@@ -45,11 +47,12 @@ struct ConversationView: View {
     @State private var replyingTo: AssistantMessage?
     @State private var showConversations = false
     @State private var showScope = false
+    @State private var viewportHeight: CGFloat?
     private var isMainConversation: Bool { conversationID == store.generalConversation }
     private var conversationTitle: String {
         if skillID != nil { return "任务对话" }
         if historyEvidenceID != nil { return "事件追问" }
-        return isMainConversation ? "助手" : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
+        return isMainConversation ? AssistantIdentity.name : store.conversations.first { $0.id == conversationID }?.title ?? "新对话"
     }
     private var conversationDrafts: [VisualSkill] {
         let ids = Set(runs.compactMap { $0.draft?.id } + [skillID].compactMap { $0 })
@@ -66,12 +69,12 @@ struct ConversationView: View {
         return store.data.cameras.filter { skill.devices.contains($0.id) }
     }
     private var selectedCamera: CameraDevice? { cameraID == "all" ? nil : availableCameras.first { $0.id == cameraID } ?? availableCameras.first }
-    private var activeRun: AgentRun? { runs.last { $0.isRunning } }
+    private var activeRun: AgentRun? { runs.last { $0.isRunning && $0.conversationId == effectiveConversationID } }
     private var proactiveMessages: [AssistantMessage] {
-        skillID == nil && executionMode == "live" && conversationID == store.generalConversation ? store.data.personal?.messages ?? [] : []
+        skillID == nil && isMainConversation ? store.assistantMessages : []
     }
     private var timeline: [ChatTimelineItem] {
-        (runs.map { ChatTimelineItem.run($0) } + proactiveMessages.map { ChatTimelineItem.proactive($0) }).sorted { $0.createdAt < $1.createdAt }
+        ChatTimelineItem.items(runs: runs, messages: proactiveMessages)
     }
     private var canSend: Bool {
         !sending && activeRun == nil && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.isConnected && store.data.agent.ready
@@ -91,15 +94,21 @@ struct ConversationView: View {
                     }
                     if showCamera && executionMode == "live" {
                         CameraFrame(camera: selectedCamera)
-                        Text("需要看现场时，AI 会请求新画面，并显示设备与采集时间。")
+                        Text("需要看现场时，\(AssistantIdentity.name) 会请求新画面，并显示设备与采集时间。")
                             .font(.caption).foregroundStyle(Brand.muted)
                     }
                     if runs.isEmpty && proactiveMessages.isEmpty { suggestions }
                     ForEach(timeline) { item in
                         switch item {
                         case .proactive(let message):
-                            ProactiveMessageCard(message: message) { replyingTo = message; inputFocused = true }
-                        case .run(let run):
+                            ProactiveMessageCard(message: message) {
+                                changeMode("live"); replyingTo = message; inputFocused = true
+                            }
+                            .id(item.id)
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key: ChatVisibleFrames.self, value: [message.id: geometry.frame(in: .global)])
+                            })
+                        case .user(let run):
                         HStack {
                             Spacer(minLength: 36)
                             VStack(alignment: .leading, spacing: 6) {
@@ -111,19 +120,59 @@ struct ConversationView: View {
                             }.padding(14)
                                 .background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 16))
                         }
-                        reply(run)
+                        case .reply(let run): reply(run)
                         }
                     }
                     if let syncError { Text(syncError).font(.caption).foregroundStyle(.orange) }
-                    if let error { Text(error).font(.caption).foregroundStyle(.orange) }
+                    if let error { Text(ChatPresentation.error(error)).font(.caption).foregroundStyle(.orange) }
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(16)
             }
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: ChatVisibleFrames.self, value: ["viewport": geometry.frame(in: .global)])
+            })
+            .onPreferenceChange(ChatVisibleFrames.self) { frames in
+                if let height = frames["viewport"]?.height, height > 0, viewportHeight != height {
+                    let resized = viewportHeight != nil
+                    viewportHeight = height
+                    // Mounting/removing the shared player changes the viewport.
+                    // Re-anchor after layout so LazyVStack cannot retain an empty offset.
+                    if resized {
+                        Task { @MainActor in
+                            await Task.yield()
+                            if isMainConversation, let id = store.assistantMessageFocus {
+                                proxy.scrollTo(ChatTimelineItem.messageID(id), anchor: .top)
+                            } else { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                    }
+                }
+                guard isMainConversation, scenePhase == .active, store.selectedTab == .assistant,
+                      !showConversations, !showScope, !voice, !rangeSheet,
+                      store.editor == nil, store.errorMessage == nil,
+                      store.tabPaths[AppTab.assistant.rawValue].isEmpty,
+                      let viewport = frames["viewport"] else { return }
+                for message in proactiveMessages where !message.read {
+                    if let frame = frames[message.id], frame.height > 0,
+                       frame.intersection(viewport).height >= min(frame.height / 2, 120) {
+                        Task { await store.readAssistantMessage(message.id) }
+                    }
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-            .onChange(of: timeline.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: timeline.map(\.id), initial: true) { _, _ in
+                if isMainConversation, let id = store.assistantMessageFocus {
+                    proxy.scrollTo(ChatTimelineItem.messageID(id), anchor: .top)
+                } else { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: store.assistantMessageFocus) { _, id in
+                if isMainConversation, let id { proxy.scrollTo(ChatTimelineItem.messageID(id), anchor: .top) }
+            }
+            .simultaneousGesture(DragGesture().onChanged { _ in
+                if isMainConversation { store.assistantMessageFocus = nil }
+            })
             .onChange(of: activeRun?.status) { _, status in
-                if status == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if status == nil && store.assistantMessageFocus == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
         }
         .agentPageStyle(conversationTitle)
@@ -151,7 +200,7 @@ struct ConversationView: View {
             input = store.conversationDrafts[effectiveConversationID] ?? historyEvidenceID.map { "请读取这条已保存的证据，解释可见内容和不确定之处：\($0)" } ?? ""
             if let pending = store.pendingChatRequests[effectiveConversationID], pending.message == input.trimmingCharacters(in: .whitespacesAndNewlines) {
                 cameraID = pending.camera ?? "all"; historyFilter = pending.filter
-                replyingTo = store.data.personal?.messages?.first { $0.id == pending.replyID }
+                replyingTo = store.assistantMessages.first { $0.id == pending.replyID }
                 error = "上次发送尚未确认，内容已保留。重试会核对同一请求，避免重复发送。"
             }
             if cameraID.isEmpty { cameraID = skillID.flatMap { store.skill($0)?.target.cameraId } ?? store.selectedCameraID }
@@ -161,6 +210,15 @@ struct ConversationView: View {
             }
         }
         .onChange(of: input) { _, value in store.conversationDrafts[effectiveConversationID] = value }
+        .onAppear {
+            if allowsConversationSwitching { store.activeConversationID = conversationID }
+            if skillID == nil && executionMode == "live" && store.pendingChatRequests[effectiveConversationID] == nil {
+                cameraID = store.selectedCameraID
+            }
+        }
+        .onChange(of: store.selectedCameraID) { _, id in
+            if skillID == nil && executionMode == "live" && !sending && store.pendingChatRequests[effectiveConversationID] == nil { cameraID = id }
+        }
         .onDisappear { inputFocused = false; store.conversationDrafts[effectiveConversationID] = input }
         .onChange(of: store.composerRevision) { _, _ in
             guard allowsConversationSwitching else { return }
@@ -187,23 +245,16 @@ struct ConversationView: View {
     }
 
     private func createDraft(camera: String?) async {
-        guard let camera, !creatingDraft, store.isConnected else { return }
-        creatingDraft = true; inputFocused = false; defer { creatingDraft = false }
-        do {
-            let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-            let prompt = String((text.isEmpty ? runs.last?.message ?? "请选择画面中的观察对象并完善提醒条件" : text).prefix(2000))
-            let draft = try await store.client.createDraft(camera: camera, conversation: conversationID, prompt: prompt.count >= 2 ? prompt : "请选择画面中的观察对象并完善提醒条件", replacesID: skillID)
-            await store.refresh()
-            store.openEditor(draft, regionCameraID: camera)
-        } catch { self.error = error.localizedDescription }
+        inputFocused = false
+        store.beginCameraGuard(cameraID: camera)
     }
 
     private var suggestions: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Image("DogAvatar").resizable().scaledToFill().frame(width: 52, height: 52).clipShape(Circle())
-            Text(isMainConversation ? "有事，直接和我说。" : "接着聊聊这件事。")
+            Image("AnkerAvatar").resizable().scaledToFit().frame(width: 64, height: 64).accessibilityLabel("anker")
+            Text(isMainConversation ? "我是 \(AssistantIdentity.name)，你的安防小助手。" : "接着聊聊这件事。")
                 .font(.title2.weight(.semibold))
-            Text(executionMode == "history" ? "想找哪段记录？" : "你想关注什么，或者有什么想问的？")
+            Text(executionMode == "history" ? "想找哪段记录？" : "想看看家里的情况，或有件事需要留意，都可以和我说。")
                 .foregroundStyle(Brand.muted)
             HStack(spacing: 10) {
                 Button(executionMode == "history" ? "看看今天的事件" : "最近有什么事件") {
@@ -223,14 +274,14 @@ struct ConversationView: View {
         VStack(alignment: .leading, spacing: 9) {
             if let message = replyingTo, executionMode == "live" {
                 HStack {
-                    Label("回复：" + message.title, systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(1)
+                    Label("回复：" + ChatPresentation.text(message.title, fallback: "这条提醒"), systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(1)
                     Spacer()
                     Button { replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("取消引用提醒")
                 }
             }
             if allowsConversationSwitching && !isMainConversation && store.unreadAssistantCount > 0 {
                 Button { store.selectConversation(store.generalConversation) } label: {
-                    HStack { Label("助手有 \(store.unreadAssistantCount) 条新提醒", systemImage: "bell.badge"); Spacer(); Image(systemName: "arrow.up.right") }
+                    HStack { Label("\(AssistantIdentity.name) 有 \(store.unreadAssistantCount) 条新提醒", systemImage: "bell.badge"); Spacer(); Image(systemName: "arrow.up.right") }
                         .font(.caption).padding(8).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 10))
                 }.disabled(sending)
             }
@@ -250,7 +301,7 @@ struct ConversationView: View {
                     if executionMode == "live" {
                         Button("看看现在的画面", systemImage: "viewfinder") { input = "请调用当前摄像头拍一张新画面，告诉我看到了什么。"; inputFocused = true }.accessibilityIdentifier("chat.inspect")
                         Button(showCamera ? "收起摄像头画面" : "查看摄像头画面", systemImage: "video") { inputFocused = false; showCamera.toggle() }
-                        Button("新建守护并圈选", systemImage: "square.dashed") { Task { await createDraft(camera: selectedCamera?.id) } }
+                        Button("添加守护", systemImage: "plus.circle") { Task { await createDraft(camera: selectedCamera?.id) } }
                             .disabled(creatingDraft || selectedCamera == nil || !store.isConnected)
                     } else {
                         Button("查录像", systemImage: "magnifyingglass") { input = "查录像：包裹什么时候被拿走？找到正确片段并定位时间点。"; inputFocused = true }.accessibilityIdentifier("chat.findVideo")
@@ -276,7 +327,7 @@ struct ConversationView: View {
                 Button { inputFocused = false; voice = true } label: {
                     Image(systemName: "mic").font(.system(size: 21)).frame(width: 44, height: 44)
                 }.accessibilityLabel("语音输入").accessibilityIdentifier("chat.voice")
-                TextField("说点什么…", text: $input, axis: .vertical)
+                TextField("和 \(AssistantIdentity.name) 聊聊…", text: $input, axis: .vertical)
                     .lineLimit(1...5).focused($inputFocused)
                     .padding(.horizontal, 12).padding(.vertical, 12)
                     .background(Brand.background).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -303,7 +354,7 @@ struct ConversationView: View {
     private func changeMode(_ value: String) {
         guard value != executionMode else { return }
         store.conversationDrafts[effectiveConversationID] = input
-        executionMode = value; runs = []; events = []; error = nil; syncError = nil
+        executionMode = value; if !isMainConversation { runs = [] }; events = []; error = nil; syncError = nil
         showCamera = false; replyingTo = nil
         store.conversationModes[conversationID] = value
         input = store.conversationDrafts[effectiveConversationID] ?? ""
@@ -334,12 +385,13 @@ struct ConversationView: View {
 
     private func reply(_ run: AgentRun) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(displayTime(run.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
+            Text("\(AssistantIdentity.name) · \(displayTime(run.completedAt ?? run.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
             if run.isRunning {
-                HStack { ProgressView(); Text(events.last?.progressLabel ?? "正在处理…").font(.subheadline) }
+                HStack { ProgressView(); Text((run.conversationId == effectiveConversationID ? events.last(where: { $0.runId == run.id })?.progressLabel : nil) ?? "正在处理…").font(.subheadline) }
                 Button("停止本次回复", role: .cancel) { Task { await cancel(run) } }.accessibilityIdentifier("chat.cancel")
             }
-            if let text = run.text {
+            if let raw = run.text {
+                let text = ChatPresentation.text(raw, fallback: run.isRunning ? "正在整理处理结果…" : "本次回复未能完整显示，请查看操作状态或重试。")
                 Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).textSelection(.enabled)
                     .onAppear {
                         if reportedRuns.insert(run.id).inserted {
@@ -348,28 +400,36 @@ struct ConversationView: View {
                     }
             }
             if let error = run.error {
-                Text(error).foregroundStyle(.orange).font(.subheadline)
+                Text(ChatPresentation.error(error)).foregroundStyle(.orange).font(.subheadline)
                 Button("编辑后重试") { prepareRetry(run) }
+            }
+            ForEach(Array((run.hardwareOperations ?? []).enumerated()), id: \.offset) { item in
+                HardwareOperationCard(operation: item.element)
             }
             ForEach(run.captures ?? []) { capture in
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(store.camera(capture.cameraId)?.name ?? capture.cameraId, systemImage: "video")
+                    Label(store.camera(capture.cameraId)?.name ?? "所选摄像头", systemImage: "video")
                         .font(.subheadline.bold())
                     if capture.status == "completed", let url = store.client.absoluteURL(capture.imageUrl) {
                         if let draft = draftForCapture(capture) {
                             DraftFramePreview(url: url, skill: draft, cameraID: capture.cameraId)
                             Text("蓝框：关注区域 · 橙框：目标 · 草案框待确认，尚未启用").font(.caption).foregroundStyle(Brand.muted)
                         } else { EvidenceImage(url: url) }
-                        Text(capture.sourceType == "official_sdk" ? "设备事件时间 · \(displayTime(capture.capturedAt)) · 事件缩略图" : capture.sourceType == "synthetic_demo" ? "合成测试 · 生成于 \(displayTime(capture.capturedAt)) · 非摄像头实拍" : "\(capture.historical == true ? "历史资料 · " : "")采集于 \(displayTime(capture.capturedAt)) · \(capture.sourceType == "fixture" ? "测试画面" : "设备画面")")
+                        Text(capture.timestampMeaning == "client_live_sample" ? "本机取样于 \(displayTime(capture.sampledAt)) · 设备拍摄时间未知" : capture.sourceType == "official_sdk" ? "设备事件时间 · \(displayTime(capture.capturedAt)) · 事件缩略图" : capture.sourceType == "synthetic_demo" ? "合成测试 · 生成于 \(displayTime(capture.capturedAt)) · 非摄像头实拍" : "\(capture.historical == true ? "历史资料 · " : "")采集于 \(displayTime(capture.capturedAt)) · \(capture.sourceType == "fixture" ? "测试画面" : "设备画面")")
                             .font(.caption).foregroundStyle(Brand.muted)
                         if executionMode == "live" && capture.historical != true {
-                            if let draft = draftForCapture(capture) {
-                                Button("圈选此摄像头的目标与区域") { inputFocused = false; store.openEditor(draft, regionCameraID: capture.cameraId) }.accessibilityIdentifier("chat.capture.editRegion")
+                            if let guardID = run.guardDraftId {
+                                Button("继续设置守护") { inputFocused = false; store.openCameraGuard(guardID) }.accessibilityIdentifier("chat.capture.editRegion")
                             } else {
-                                Button("为此摄像头新建草案并圈选") { Task { await createDraft(camera: capture.cameraId) } }.disabled(creatingDraft || !store.isConnected).accessibilityIdentifier("chat.capture.newDraft")
+                                Button("添加守护") { Task { await createDraft(camera: capture.cameraId) } }.disabled(!store.isConnected).accessibilityIdentifier("chat.capture.newDraft")
                             }
                         }
-                    } else { Text(capture.reason).font(.caption).foregroundStyle(.orange) }
+                    } else {
+                        Text(ChatPresentation.text(capture.reason)).font(.caption).foregroundStyle(.orange)
+                        if capture.cameraId.hasPrefix("sdk-") {
+                            NavigationLink("打开摄像头画面", value: AppRoute.liveCamera(capture.cameraId))
+                        }
+                    }
                 }.padding(12).background(Brand.background).clipShape(RoundedRectangle(cornerRadius: 12))
             }
             ForEach(run.videos ?? []) { video in
@@ -377,9 +437,9 @@ struct ConversationView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(video.verdictLabel, systemImage: video.verdict == "matched" ? "checkmark.circle" : "questionmark.circle")
                             .font(.subheadline.bold()).foregroundStyle(video.verdict == "matched" ? Brand.blue : .orange)
-                        Text(video.summary).font(.subheadline).foregroundStyle(.primary)
-                        Text("\(store.camera(video.cameraId)?.name ?? video.cameraId) · \(video.title)").font(.caption).foregroundStyle(Brand.muted)
-                        if !video.limitation.isEmpty { Text(video.limitation).font(.caption).foregroundStyle(Brand.muted) }
+                        Text(ChatPresentation.text(video.summary)).font(.subheadline).foregroundStyle(.primary)
+                        Text("\(store.camera(video.cameraId)?.name ?? "所选摄像头") · \(video.title)").font(.caption).foregroundStyle(Brand.muted)
+                        if !video.limitation.isEmpty { Text(ChatPresentation.text(video.limitation)).font(.caption).foregroundStyle(Brand.muted) }
                         Label("\(video.verdict == "matched" ? "核验动作" : "查看候选") · \(videoTime(video.seekSeconds))", systemImage: "play.circle.fill").font(.headline)
                         Text(video.recordedAt == nil ? "拍摄日期未知 · 显示录像内时间，定位为模型估计" : "录像始于 \(displayTime(video.recordedAt)) · 定位为模型估计")
                             .font(.caption2).foregroundStyle(Brand.muted)
@@ -389,6 +449,14 @@ struct ConversationView: View {
             if (run.videos ?? []).contains(where: { $0.verificationStatus == "failed" }) {
                 Button("复核未完成，编辑后重试") { prepareRetry(run) }.font(.subheadline)
             }
+            if let guardID = run.guardDraftId {
+                Button { inputFocused = false; store.openCameraGuard(guardID) } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("继续设置守护", systemImage: "shield.checkered").font(.headline)
+                        Text("需求已保存，点这里到摄像头守护中继续框选和确认。").font(.subheadline)
+                    }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(8)
+                }.buttonStyle(.borderedProminent).accessibilityIdentifier("chat.guardDraft")
+            }
             if let draft = run.draft {
                 let current = store.skill(draft.id) ?? draft
                 Button {
@@ -396,7 +464,7 @@ struct ConversationView: View {
                     if current.status == "draft" { store.openEditor(current) } else { store.path.append(.skill(current.id)) }
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(current.name, systemImage: "doc.badge.gearshape").font(.headline)
+                        Label(ChatPresentation.text(current.name), systemImage: "doc.badge.gearshape").font(.headline)
                         Text(current.status == "draft" ? "还没开始运行，等你确认" : "查看任务当前状态").font(.caption)
                         Text(current.status == "draft" ? "继续设置 →" : "查看任务 →").font(.subheadline.bold())
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -409,7 +477,7 @@ struct ConversationView: View {
                 }
                 DisclosureGroup("查看处理过程") {
                     ForEach(Array(run.toolReceipts.enumerated()), id: \.offset) { _, receipt in
-                        Text("\(toolLabel(receipt.tool)) · \(receipt.status == "completed" ? "已完成" : "未完成")")
+                        Text(ChatPresentation.receipt(receipt.tool, receipt.status))
                             .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -419,6 +487,7 @@ struct ConversationView: View {
     }
 
     private func prepareRetry(_ run: AgentRun) {
+        changeMode(run.executionMode ?? "live")
         input = run.message
         if executionMode == "history" {
             historyFilter = run.historyFilter
@@ -428,9 +497,16 @@ struct ConversationView: View {
     }
     private func reload() async {
         let id = effectiveConversationID
+        let client = store.client
         do {
-            let loaded = try await store.client.conversation(id)
-            guard id == effectiveConversationID && !Task.isCancelled else { return }
+            let loaded: [AgentRun]
+            if isMainConversation {
+                // Presentation is unified; tool scopes and retry IDs stay separate.
+                async let live = client.conversation(conversationID)
+                async let history = client.conversation(conversationID + "-history")
+                loaded = try await live + history
+            } else { loaded = try await client.conversation(id) }
+            guard id == effectiveConversationID && client.baseURL == store.client.baseURL && !Task.isCancelled else { return }
             runs = loaded
             if let pending = store.pendingChatRequests[id], loaded.contains(where: { $0.id == pending.id }) {
                 store.pendingChatRequests.removeValue(forKey: id)
@@ -448,19 +524,29 @@ struct ConversationView: View {
     }
     private func send() async {
         guard canSend else { return }
+        if isMainConversation { store.assistantMessageFocus = nil }
         sending = true; defer { sending = false }
         let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let selectedCameraID = selectedCamera?.id
+        let requestConversation = effectiveConversationID
+        let requestMode = executionMode
+        let client = store.client
         let filter = executionMode == "history" ? historyFilter : nil
         let replyID = executionMode == "live" ? replyingTo?.id : nil
-        let saved = store.pendingChatRequests[effectiveConversationID]
-        let reuse = saved?.matches(message: message, camera: selectedCamera?.id, mode: executionMode, filter: filter, replyID: replyID) == true
+        let saved = store.pendingChatRequests[requestConversation]
+        let reuse = saved?.matches(message: message, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID) == true
         let id = reuse ? saved!.id : "run-\(UUID().uuidString)"
-        store.pendingChatRequests[effectiveConversationID] = PendingChatRequest(id: id, message: message, conversation: effectiveConversationID, skill: skillID, camera: selectedCamera?.id, mode: executionMode, filter: filter, replyID: replyID)
+        store.pendingChatRequests[requestConversation] = PendingChatRequest(id: id, message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, mode: requestMode, filter: filter, replyID: replyID)
         do {
-            let run = try await store.client.start(message: message, conversation: effectiveConversationID, skill: skillID, camera: selectedCamera?.id, requestID: id, executionMode: executionMode, historyFilter: filter, replyToMessageID: replyID)
+            if requestMode == "live", let cameraID = selectedCameraID,
+               CameraQuestion.needsLiveFrame(message) {
+                try await store.officialSDK.prepareAssistantCamera(cameraID, client: client)
+                await store.refresh()
+            }
+            let run = try await client.start(message: message, conversation: requestConversation, skill: skillID, camera: selectedCameraID, requestID: id, executionMode: requestMode, historyFilter: filter, replyToMessageID: replyID)
             events = []
             if !runs.contains(where: { $0.id == run.id }) { runs.append(run) }
-            store.pendingChatRequests.removeValue(forKey: effectiveConversationID)
+            store.pendingChatRequests.removeValue(forKey: requestConversation)
             if input.trimmingCharacters(in: .whitespacesAndNewlines) == message { input = ""; store.conversationDrafts[effectiveConversationID] = "" }
             inputFocused = false; replyingTo = nil; error = nil
             await store.reloadConversations()
@@ -473,9 +559,7 @@ struct ConversationView: View {
         do { _ = try await store.client.cancel(run.id); await reload() }
         catch { self.error = error.localizedDescription }
     }
-    private func toolLabel(_ name: String) -> String {
-        ["search_recordings":"检索录像并观看片段复核", "read_stored_image":"读取历史图片", "request_camera_snapshot":"请求摄像头新画面", "list_camera_capabilities":"读取设备", "list_tasks":"查询任务", "get_task_state":"读取状态", "search_evidence":"检索证据", "draft_visual_skill":"整理守护设置", "list_camera_events":"查看摄像头事件", "request_recheck":"重新观察"][name] ?? name
-    }
+
 }
 
 private struct ConversationListSheet: View {
@@ -497,7 +581,7 @@ private struct ConversationListSheet: View {
                             Image(systemName: "sparkles").font(.title2).foregroundStyle(Brand.blue)
                                 .frame(width: 44, height: 44).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("助手主对话").font(.headline).foregroundStyle(Brand.dark)
+                                Text("\(AssistantIdentity.name) 主对话").font(.headline).foregroundStyle(Brand.dark)
                                 Text("主动提醒与日常沟通").font(.caption).foregroundStyle(Brand.muted)
                             }
                             Spacer()
@@ -517,11 +601,11 @@ private struct ConversationListSheet: View {
                                 Image(systemName: "bubble.left").foregroundStyle(Brand.blue).padding(.top, 3)
                                 VStack(alignment: .leading, spacing: 5) {
                                     HStack {
-                                        Text(topic.title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.dark).lineLimit(1)
+                                        Text(ChatPresentation.text(topic.title, fallback: "对话")).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.dark).lineLimit(1)
                                         Spacer(minLength: 4)
                                         Text(Date(timeIntervalSince1970: topic.updatedAt), style: .date).font(.caption2).foregroundStyle(Brand.muted)
                                     }
-                                    Text(topic.preview).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
+                                    Text(ChatPresentation.text(topic.preview, fallback: "打开查看对话")).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
                                     if topic.hasActiveRun { Label("正在回复", systemImage: "ellipsis").font(.caption2).foregroundStyle(Brand.blue) }
                                 }
                                 if topic.id == store.activeConversationID { Image(systemName: "checkmark").foregroundStyle(Brand.blue) }
@@ -532,7 +616,7 @@ private struct ConversationListSheet: View {
                     }
                 }
                 if let problem = store.conversationListError {
-                    Section { Text(problem).font(.caption).foregroundStyle(.orange); Button("重新加载") { Task { await store.reloadConversations() } } }
+                    Section { Text(ChatPresentation.error(problem)).font(.caption).foregroundStyle(.orange); Button("重新加载") { Task { await store.reloadConversations() } } }
                 }
             }
             .listStyle(.insetGrouped)

@@ -1,5 +1,29 @@
 # EvidenceGuard · iOS / Web / Cloud
 
+## 当前版本（2026-10-17）
+
+原生 iOS 以「助手 / 摄像头守护 / 设备 / 记忆 / 我的」为主线。普通问答、主动提醒和早晚报告进入同一主对话；通过一句话描述、框选和确认创建 Visual Skill。支持指定区域人员进入、框选人物离开、宠物与物品状态观察；遮挡或证据不足时保留未确认状态，不做实名或跨摄像头身份识别。
+
+App 前台共用一路隐藏的官方摄像头连接供助手取图，可切换摄像头；不需要先打开直播页。设备页提供 Core Bluetooth 扫描与连接。早晚报告结合该时段已保存的图片讲清可见情况。锁屏持续采集、所有蓝牙产品的专有控制协议及人物真实进出提醒仍需各自验收。
+
+此版本准备作为 **1.0 (17)** 分发到既有内部 TestFlight 组。源码验证：374 项后端测试、14 项 Web 单元测试、Web 生产构建、移动端契约检查通过。上传、Apple 处理与真机验收是独立步骤，发布结果见 [本次版本记录](Docs/verification/release17-2026-10-17.md)。下方按日期保留历史交付记录，较早的构建号与界面说明不代表当前状态。
+
+公开仓库包含自有 App、Web、Cloud、桥接源码和测试。官方 SDK 二进制、模型服务密钥、联调账号、签名材料、运行数据及内部安装包均不在 Git 中。普通模拟器开发可从 `EvidenceGuard.xcodeproj` 开始；真实摄像头方案需自行取得厂商 SDK，并按下方开发启动说明恢复本地依赖和私有配置。
+
+## 比赛云端 Dashboard 与服务器快捷连接
+
+云端只读入口：**http://47.131.21.137/dashboard**，按比赛要求免登录。可切换 demo / team / review，查看真实模型调用、系统提示词、工具执行循环、Trace、部署 Python 文件与仓库基准的差异，以及每 5 秒采样的 CPU / 内存 / 磁盘 / 网络和后端进程。原有 App API、摄像头取流与媒体鉴权保持原配置；公开页面只读取脱敏快照。
+
+本机 PowerShell 在仓库根目录执行 `.\scripts\cloud_session.ps1` 可直接进入服务器 SSM 终端，不必每次经过 AWS 控制台；临时登录过期时执行 `.\scripts\cloud_session.ps1 -Action login`。维护命令可用 `python scripts/cloud_command.py --file YOUR_SCRIPT`。安装、接口、数据边界、两套部署兼容策略、真实模型验证和回滚见 [云端 Dashboard 与快捷连接](Docs/CLOUD-DASHBOARD.md)。
+
+## 工具链接入（2026-10-15 · dongrunze）
+
+已合入 `main@cc16c98`，保留 iOS 埋点会话隔离与回归修复。团队 v0.2.0 工具包现在通过现有 Cloud 的 `/api/hardware/*` 接入：iOS 前台执行器领取已确认的 SDK 命令、回传结果并独立处理 stop；观察共用现有直播 challenge，图片进入产品证据库与 Agent 视觉链路。Web 补齐仅事件设备、事件筛选与核验状态，并增加工具检查、跨端确认和执行回执；官方 SDK 原版切换保留。
+
+首次使用在“摄像头 Skill → 硬件工具与执行回执”做人工诊断，再按设备和适配版本记录真机结果；控制仍需逐次确认。Web 自身只登记观察路线，其他已接入工具可委派给在线 iOS。**SDK 回执不等于物理效果通过，包内 29 个工具定义也不等于 29 项已完成能力。** 对讲、录像导出和回复播放等尚未闭环的路线继续关闭。
+
+Mac 必须重新运行 `SDK/prepare.py` 生成含工具桥接的 SampleCore 与真实 iOS SDK 构件指纹；普通 Simulator 不能验证官方 arm64 链接或实际摄像头。具体接入、12 项新 API、使用步骤、状态/权限约束与测试入口见 [硬件工具接入说明](Docs/HARDWARE-TOOLS-INTEGRATION.md)。本地后端 230 项、Web 单元 11 项通过，四浏览器 124 项通过 / 4 项媒体解码跳过，最后回执重传修改另通过 8 项专项回归；Web 生产构建及共享 Kotlin 对官方 Android AAR 的类型检查通过。iOS 编译与真实设备验收仍需 Mac；下方旧构建结果不能替代本轮验收。
+
 ## 本地研发 Dashboard（dongrunze）
 
 新增参考 AIBuddy 的 `/dashboard`：运行总览、设备与取流、Trace、模型调用、提示词、任务、证据、试跑、用量与离线数据。可在没有云端/root 权限时本地运行，导入/导出版本化 JSON；模拟样例需要手动载入且持续标识。iOS、Web 和后端新增关联埋点，官方 SDK 切换与 App 五栏功能保留。
@@ -7,6 +31,10 @@
 先在 `Web` 执行 `npm ci`、`npm run build`，回仓库根目录用已安装 Cloud 依赖的 Python 执行 `scripts/run_dashboard.py`，打开 **http://127.0.0.1:8790/dashboard**。Windows 例如 `.venv/Scripts/python.exe scripts/run_dashboard.py`；macOS/Linux 使用自己的虚拟环境 Python 路径。默认使用隔离的 `Cloud/data/local-dashboard/`，不读取生产环境文件。
 
 追踪默认不影响已有服务：现有后端需显式设置 `EG_OPS_ENABLED=1` 才采集。默认提示词动态内容仅存摘要；需要全文时用启动器 `--capture-content`。独立 Dashboard 访问权限、采集口径、模型覆盖、导入格式和完整操作见 [Dashboard 开发与使用说明](Docs/DASHBOARD.md)。
+
+iOS 埋点使用独立、限流的 URLSession，避免慢埋点请求占用业务会话；超时或失败直接放弃。macOS CI 除原有界面测试外，增加真实 APIClient 的网络故障回归，验证直播心跳、取样上传、停止、旧服务兼容与原有错误处理；后端还覆盖追踪队列满、写库失败时的画面→Agent 链路。模拟器检查不包含主办方 arm64 SDK 真机播放验收。
+
+Actions 暂不可用时，由 Mac 队友按 [iOS 验证交接](Docs/IOS-MAC-VERIFICATION.md) 检出固定提交、运行完整测试并回传日志与 `.xcresult`。当前 `6ed031b` 的两项测试等待修正仍待复验，不能仅凭编译通过宣布全部回归通过。
 
 本仓库维护原生 iOS App、响应式 Web App 和共用的 Cloud Agent。两端都提供助手、摄像头 Skill、任务、记忆与设置；设备、实时取帧、观察回执和媒体统一经过同一套 API，两端分别使用主办方原生 SDK 与 Web SDK 播放视频。当前接入与 Web 功能在 `dongrunze` 分支开发。
 

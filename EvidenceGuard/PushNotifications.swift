@@ -193,9 +193,12 @@ enum PushBinding {
         Task { @MainActor in PushNotifications.shared.tapped(info); completionHandler() }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Foreground uses the assistant's own inbox; still retain the notification
-        // in Notification Center so an explicit test can be opened.
-        completionHandler([.list])
+        let metadata = notification.request.content.userInfo["eg"] as? [String: String]
+        // Camera sampling requires the app in front. A user-confirmed guard
+        // must still be able to show its alert while that sampling is active.
+        if metadata?["foreground"] == "guard" || metadata?["foreground"] == "test" {
+            completionHandler([.banner, .sound, .list])
+        } else { completionHandler([.list]) }
     }
 }
 
@@ -215,13 +218,14 @@ struct PushDeliveryView: View {
                 if let id = result.evidenceId { NavigationLink("查看证据", value: AppRoute.evidence(id)) }
                 if let id = result.skillId { NavigationLink("查看任务", value: AppRoute.skill(id)) }
                 if let id = result.conversationId { NavigationLink("回到对话", value: conversationRoute(id, result)) }
+                if let id = result.messageId { Button("在助手对话中查看") { Task { await openMessage(id) } } }
                 if result.kind == "message" { NavigationLink("查看提醒记录", value: AppRoute.personalInbox) }
             } else if loading { ProgressView("正在读取通知内容") }
             if let error { Text(error).foregroundStyle(.orange); Button("重试") { Task { await load() } } }
         }.pageStyle("通知详情").task { await load() }
     }
     private func load() async {
-        guard !loading, result == nil else { return }; loading = true; defer { loading = false }
+        guard !loading else { return }; loading = true; defer { loading = false }
         let client = store.client
         do {
             let status = try await client.pushStatus()
@@ -232,9 +236,10 @@ struct PushDeliveryView: View {
             await store.refresh()
             await PushNotifications.shared.sync()
             guard store.client.baseURL == client.baseURL else { return }
-            // Follow only IDs resolved by the authenticated service, retaining the
-            // receipt as the previous screen and preserving all composer drafts.
-            if let draft = target.draftId, store.skill(draft) != nil {
+            // Message identity takes priority over its evidence/task attachments.
+            if let message = target.messageId {
+                try await store.openAssistantMessage(message)
+            } else if let draft = target.draftId, store.skill(draft) != nil {
                 store.path.append(.skill(draft))
             } else if let evidence = target.evidenceId, store.data.evidence.contains(where: { $0.id == evidence }) {
                 store.path.append(.evidence(evidence))
@@ -244,6 +249,10 @@ struct PushDeliveryView: View {
                 store.path.append(.skill(skill))
             }
         } catch { self.error = error.localizedDescription }
+    }
+    private func openMessage(_ id: String) async {
+        do { try await store.openAssistantMessage(id); error = nil }
+        catch { self.error = error.localizedDescription }
     }
     private func conversationRoute(_ id: String, _ result: PushDestination) -> AppRoute {
         let history = result.executionMode == "history"

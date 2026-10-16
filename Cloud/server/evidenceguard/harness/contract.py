@@ -1,6 +1,6 @@
 """Host-owned execution boundary, inspired by MiiMiao's frozen run context.
 
-The current mobile executor is bounded-chat-v1, not the desktop Codex binary.
+The executor is frozen per run: bounded-chat-v1 or official codex-app-server-v1.
 Memory is source material and cannot expand the frozen tool allowlist.
 """
 from dataclasses import asdict, dataclass

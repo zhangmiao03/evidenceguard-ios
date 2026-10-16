@@ -61,12 +61,12 @@ def test_query_does_not_create_or_activate_skill(tmp_path):
     asyncio.run(check())
 
 
-def test_official_empty_camera_receipt_blocks_unavailable_workflow_claims(tmp_path,monkeypatch):
+def test_official_empty_camera_receipt_constrains_camera_work_without_enabling_tasks(tmp_path,monkeypatch):
     from evidenceguard.app import create_app
     monkeypatch.setenv('EG_CAMERA_SOURCE','official_sdk')
     async def check():
         provider=ScriptedProvider([tool('list_camera_capabilities',{}),
-            {'role':'assistant','content':'已经开始看门口了，你还可以选录像试跑。'},
+            {'role':'assistant','content':'还没连接摄像头，暂时不能看门口。请先在摄像头 Skill 中连接设备。'},
             {'role':'assistant','content':'嗨，我在。'}])
         app=create_app(tmp_path/'official-empty.sqlite3',start_worker=False,provider=provider)
         try:
@@ -75,10 +75,46 @@ def test_official_empty_camera_receipt_blocks_unavailable_workflow_claims(tmp_pa
             assert run['status']=='completed' and run['cameraUnavailable']
             assert '连接摄像头' in run['text'] and '开始看门口' not in run['text'] and '录像试跑' not in run['text']
             assert run['draft'] is None and app.state.store.skills()==[]
+            # Check what the real model receives. This scripted provider does
+            # not establish whether a model always follows the instruction.
+            context=provider.messages[1][-1]
+            assert context['role']=='system' and '不能据此声称看到了现场' in context['content']
             events=await app.state.tools.call('list_camera_events')
             assert events['registeredDeviceCount']==0 and events['events']==[]
             greeting=await settle(runtime,runtime.start('你好','greeting'))
             assert greeting['text']=='嗨，我在。' and greeting['toolReceipts']==[]
+        finally:
+            await app.state.agent.scheduler.shutdown();await app.state.push.provider.close()
+            await app.state.videos.shutdown();app.state.store.close()
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('query_tool', ['list_camera_capabilities', 'list_camera_events'])
+@pytest.mark.parametrize('question,answer', [
+    ('你是谁', '我是 anker，你的安防小助手。'),
+    ('有几台摄像头？没连上也没关系，再解释一下长期记忆是什么。',
+     '目前没有已接入的摄像头。长期记忆保存你明确告诉我的有效偏好，可以在记忆页查看和删除。'),
+])
+def test_empty_camera_lookup_preserves_non_camera_and_mixed_answers(tmp_path,monkeypatch,query_tool,question,answer):
+    """Regression: the host used to overwrite even '你是谁' after an empty lookup."""
+    from evidenceguard.app import create_app
+    monkeypatch.setenv('EG_CAMERA_SOURCE','official_sdk')
+    async def check():
+        provider=ScriptedProvider([
+            tool(query_tool,{}), {'role':'assistant','content':answer},
+            {'role':'assistant','content':'嗨，我在。'},
+        ])
+        app=create_app(tmp_path/'chat-without-camera.sqlite3',start_worker=False,provider=provider)
+        try:
+            runtime=app.state.agent
+            run=await settle(runtime,runtime.start(question,'same-conversation'))
+            assert run['status']=='completed' and run['cameraUnavailable'] is True
+            assert run['text']==answer
+            assert run['toolReceipts']==[{'tool':query_tool,'status':'completed'}]
+            assert run['draft'] is None and run['captures']==[]
+            followup=await settle(runtime,runtime.start('你好','same-conversation'))
+            assert followup['text']=='嗨，我在。' and not followup.get('cameraUnavailable')
+            assert followup['toolReceipts']==[] and app.state.store.skills()==[]
         finally:
             await app.state.agent.scheduler.shutdown();await app.state.push.provider.close()
             await app.state.videos.shutdown();app.state.store.close()
@@ -174,6 +210,7 @@ def test_model_snapshot_request_produces_visible_receipt_and_image_message(tmp_p
         store=Store(tmp_path/'camera-run.sqlite')
         scheduler=TaskScheduler()
         cameras=AsyncMock()
+        cameras.live=None  # This fixture adapter has no mobile live relay.
         cameras.manifests.return_value=[DeviceManifest('cam-a','T8171','测试','primary','online','fixture',(),{'liveSnapshot':CapabilityState.SUPPORTED},'test')]
         now=time.time()
         cameras.snapshot.side_effect=lambda *args: SnapshotReceipt('request','completed',SnapshotKind.LIVE,FrameRef('cam-a-1-1','cam-a','main',time.time(),time.time(),'fixture','live','v1'),'新画面')

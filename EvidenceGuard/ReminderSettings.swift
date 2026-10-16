@@ -43,6 +43,17 @@ import Foundation
     func update<Value>(_ key: WritableKeyPath<PersonalPreferences, Value>, to value: Value) {
         guard loaded, !loading else { return }
         preferences[keyPath: key] = value
+        if key == \.morningReport || key == \.eveningReport || key == \.morningHour || key == \.eveningHour {
+            preferences.dailySummary = preferences.morningReport || preferences.eveningReport
+            if preferences.eveningReport { preferences.summaryHour = preferences.eveningHour }
+            else if preferences.morningReport { preferences.summaryHour = preferences.morningHour }
+        } else if key == \.dailySummary {
+            if !preferences.dailySummary { preferences.morningReport = false; preferences.eveningReport = false }
+            else if !preferences.morningReport && !preferences.eveningReport { preferences.eveningReport = true; preferences.eveningHour = preferences.summaryHour }
+        } else if key == \.summaryHour {
+            if preferences.eveningReport { preferences.eveningHour = preferences.summaryHour }
+            else if preferences.morningReport { preferences.morningHour = preferences.summaryHour }
+        }
         preferences.timezone = TimeZone.current.identifier
         retry()
     }

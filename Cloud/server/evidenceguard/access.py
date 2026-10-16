@@ -39,13 +39,14 @@ class TeamAccess(BaseHTTPMiddleware):
         if request.url.path.startswith('/api/sdk/openapi/'):
             bearer = 'Bearer ' + request.headers.get('X-EG-Access-Token', '')
         authorized = hmac.compare_digest(bearer.encode(), ('Bearer ' + self.token).encode())
+        oauth_callback = request.method=='GET' and request.url.path in {'/api/connectors/oauth/callback/gmail','/api/connectors/oauth/callback/feishu','/api/connectors/oauth/callback/feishu_cli'}
         # Serve the login shell without a secret; all API/media data remain
         # protected. StaticFiles performs path containment and existence checks.
         static_path = request.url.path in {'/', '/dashboard', '/dashboard/', '/favicon.ico'} or request.url.path.startswith(('/assets/', '/sdk/', '/official-demo/'))
         shell = bool(os.getenv('EG_WEB_ROOT')) and request.method in {'GET', 'HEAD'} and static_path
         media_cookie = (request.method in {'GET', 'HEAD'} and MEDIA.fullmatch(request.url.path)
                         and self.valid_cookie(request.cookies.get(COOKIE, '')))
-        if not authorized and not media_cookie and not shell:
+        if not authorized and not media_cookie and not shell and not oauth_callback:
             return JSONResponse({'detail': '请输入有效的团队访问令牌'}, status_code=401,
                                 headers={'WWW-Authenticate': 'Bearer', 'Cache-Control': 'no-store'})
         response = await call_next(request)

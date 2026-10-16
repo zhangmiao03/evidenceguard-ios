@@ -24,7 +24,9 @@ def test_web_product_preserves_scopes_and_real_device_activation_gate(tmp_path):
         assert c.post('/api/agent/runs', json=body).json()['id'] == response.json()['id']
         assert len(c.get('/api/agent/conversations/'+main['id']).json()) == 1
         prefs = dict(enabled=True, dailySummary=True, summaryHour=21, quietStart=22, quietEnd=8, timezone='Asia/Shanghai')
-        assert c.put('/api/personal/preferences',json=prefs).json()['preferences'] == prefs
+        saved = c.put('/api/personal/preferences',json=prefs).json()['preferences']
+        assert {k:saved[k] for k in prefs} == prefs
+        assert saved['eveningReport'] and saved['eveningHour']==21 and not saved['morningReport']
         memory = c.post('/api/personal/memories',json=dict(content='只关注客厅',temporary=True))
         assert memory.status_code == 201
         camera = c.post('/api/devices/import',json=dict(accountId='synthetic-account',environment='PR',platform='web',devices=[dict(sn='T8171WEBTEST001',model='T8171',name='客厅')])).json()[0]

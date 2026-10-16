@@ -2,83 +2,7 @@ import SwiftUI
 
 struct CameraSkillsView: View {
     @EnvironmentObject private var store: AppStore
-    var body: some View { OfficialCameraHomeView(connection: store.officialSDK) }
-}
-
-private struct OfficialCameraHomeView: View {
-    @EnvironmentObject private var store: AppStore
-    @ObservedObject var connection: OfficialSDKConnection
-    private var events: [SDKEventRecord] { store.data.cameraEvents?.events ?? [] }
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                ConnectionBanner()
-                HStack {
-                    Text("我的摄像头").font(.headline)
-                    Spacer()
-                    NavigationLink("连接摄像头", value: AppRoute.officialSDK).font(.subheadline)
-                        .accessibilityIdentifier("cameraSkills.connect")
-                }
-                if connection.devices.filter(\.isCompetitionCamera).isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "video.badge.plus").font(.largeTitle).foregroundStyle(Brand.blue)
-                        Text("等你连接第一台摄像头").font(.title3.weight(.semibold))
-                        Text("连接后，在这里看门铃、人物和包裹等设备事件。").foregroundStyle(Brand.muted)
-                        NavigationLink("连接摄像头", value: AppRoute.officialSDK).buttonStyle(.borderedProminent)
-                    }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 22))
-                } else {
-                    VStack(spacing: 12) {
-                        ForEach(connection.devices.filter(\.isCompetitionCamera)) { device in
-                            NavigationLink { OfficialSDKInspectionView(connection: connection, camera: device) } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "video").font(.title2).foregroundStyle(Brand.blue)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(device.name).font(.headline)
-                                        Text(device.model + " · " + (device.online.map { $0 ? "在线" : "离线" } ?? "状态待确认"))
-                                            .font(.caption).foregroundStyle(Brand.muted)
-                                    }
-                                    Spacer(); Image(systemName: "chevron.right").font(.caption)
-                                }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
-                            }.buttonStyle(.plain)
-                            NavigationLink { OfficialLiveCameraView(camera: device) } label: {
-                                Label("查看直播", systemImage: "play.circle")
-                            }.accessibilityIdentifier("cameraSkills.live." + device.sn)
-                        }
-                    }
-                    Toggle("App 打开时同步新事件", isOn: Binding(
-                        get: { connection.syncEnabled(for: store.client) },
-                        set: { connection.setEventSync($0, client: store.client) }))
-                        .accessibilityIdentifier("cameraSkills.sync")
-                    Text(connection.syncMessage).font(.caption).foregroundStyle(Brand.muted)
-                    Text("切换页面后继续同步；锁屏后暂停。收到的新事件按你的通知偏好处理。")
-                        .font(.caption).foregroundStyle(Brand.muted)
-                }
-                HStack { Text("最近事件").font(.headline); Spacer(); NavigationLink("提醒设置", value: AppRoute.notificationSettings).font(.subheadline) }
-                if events.isEmpty {
-                    Text("还没有收到摄像头事件。").foregroundStyle(Brand.muted).padding(.vertical, 12)
-                }
-                ForEach(events) { event in
-                    NavigationLink(value: AppRoute.evidence(event.id)) {
-                        HStack(alignment: .top, spacing: 12) {
-                            if let url = store.client.absoluteURL(event.imageUrl) {
-                                AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { Color.gray.opacity(0.1) }
-                                    .frame(width: 64, height: 64).clipShape(RoundedRectangle(cornerRadius: 12))
-                            } else { Image(systemName: "video").frame(width: 64, height: 64).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 12)) }
-                            VStack(alignment: .leading, spacing: 5) {
-                                Text(event.label).font(.headline)
-                                Text(event.deviceName + " · " + displayTime(Double(event.startMs) / 1_000)).font(.caption).foregroundStyle(Brand.muted)
-                                Text(event.reviewStatus == "completed" ? "设备检测 · 查看图片分析" : "设备检测 · 图片待分析").font(.caption).foregroundStyle(Brand.muted)
-                            }
-                            Spacer(minLength: 0); Image(systemName: "chevron.right").font(.caption)
-                        }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
-                    }.buttonStyle(.plain).accessibilityIdentifier("cameraSkills.event." + event.id)
-                }
-                if store.data.cameraEvents?.truncated == true { Text("显示最近 100 条已同步事件。").font(.caption).foregroundStyle(Brand.muted) }
-            }.padding(20)
-        }.agentPageStyle("摄像头 Skill", largeTitle: true)
-            .refreshable { await store.refresh() }
-    }
+    var body: some View { CameraOverviewView(connection: store.officialSDK) }
 }
 
 struct CameraTestToolsView: View {
@@ -193,8 +117,25 @@ struct TasksView: View {
                     Label("定时", systemImage: "clock").tag("scheduled")
                 }.pickerStyle(.segmented).accessibilityIdentifier("skills.sections")
                 if section == "tasks" {
-                    if store.data.skills.isEmpty {
+                    VisualScenesSection()
+                    if store.data.skills.isEmpty && (store.data.personal?.tasks ?? []).isEmpty {
                         EmptyState(title: "想让摄像头帮你关注什么？", detail: "告诉助手你的需求，一起确认对象、区域和提醒条件。", icon: "video")
+                    }
+                    if let tasks = store.data.personal?.tasks, !tasks.isEmpty {
+                        Text("交代给助手的事项").font(.headline)
+                        ForEach(tasks) { task in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack { Text(ChatPresentation.text(task.title)).font(.headline); Spacer(); Text(task.statusLabel).font(.caption).foregroundStyle(Brand.blue) }
+                                Text(task.reason).font(.caption).foregroundStyle(Brand.muted)
+                                if let expires = task.expiresAt { Text("截至 " + displayTime(expires)).font(.caption).foregroundStyle(Brand.muted) }
+                                NavigationLink("回到这件事的对话", value: AppRoute.conversation(task.conversationId, nil))
+                                if task.isOpen {
+                                    Button("结束关注") { Task { await store.perform { store.data.personal = try await store.client.cancelPersonalTask(task.id) } } }
+                                        .disabled(store.busy)
+                                }
+                            }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
+                                .accessibilityIdentifier("tasks.personal." + task.id)
+                        }
                     }
                     taskGroup("运行中", status: "active")
                     taskGroup("待确认", status: "draft")
@@ -255,8 +196,8 @@ struct TasksView: View {
     @ViewBuilder private var scheduledTasks: some View {
         if let preferences = store.data.personal?.preferences {
             VStack(alignment: .leading, spacing: 14) {
-                Label("每日守护概况", systemImage: "sun.max").font(.headline)
-                Text(preferences.dailySummary ? "每天 \(preferences.summaryHour):00" : "尚未开启")
+                Label("早晚报告", systemImage: "sun.max").font(.headline)
+                Text(preferences.reportScheduleLabel)
                     .font(.title3.weight(.medium))
                 if preferences.dailySummary && !preferences.enabled {
                     Text("已暂停：主动提醒总开关已关闭").font(.caption).foregroundStyle(.orange)
@@ -267,7 +208,7 @@ struct TasksView: View {
                 NavigationLink("设置时间与免打扰", value: AppRoute.personalAgent).font(.subheadline.bold())
                     .accessibilityIdentifier("skills.scheduleSettings")
             }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.83)).clipShape(RoundedRectangle(cornerRadius: 22))
-            Text("当前支持每日概况；摄像头任务按各自规则持续或单次执行，暂不支持预约启停。")
+            Text("早晚报告汇总已保存的记录，不会自动启动摄像头；摄像头任务按各自规则执行。")
                 .font(.caption).foregroundStyle(Brand.muted)
         } else { Text("正在读取定时设置…").font(.subheadline).foregroundStyle(Brand.muted) }
     }

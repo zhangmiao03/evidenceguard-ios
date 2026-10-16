@@ -17,6 +17,7 @@ from .camera.live import LiveDevices
 from .camera.live_routes import install_live_routes
 from .camera.sources import official_mode, fixture_mode, REAL_SOURCES, visible_recording
 from .camera.service import CameraService
+from .camera.watch import CameraWatch, WatchOptions
 from .harness.scheduler import TaskScheduler
 from .harness.runtime import AgentRuntime
 from .harness.tools import build_tools
@@ -32,6 +33,8 @@ from .skill_trials import SkillTrials
 from .deployment import SitePreparation
 from .access import install_access
 from .personal import PersonalAgent, Preferences, MemoryInput, installation
+from .memory import MemoryService
+from .connectors import Connectors, install_connector_routes
 from .proactive import ProactiveEngine, Feedback, BindConversation
 from .visual_review import VisualReview
 from .camera.ingest import SDKIngest, SDKBatch, SDKDevices
@@ -39,6 +42,11 @@ from .conversations import Conversations, NewConversation, ConversationTitle
 from .demo_scene import DemoScenes, SceneRequest
 from .push import PushService, DeviceRegistration, Presence
 from .ops import install_ops
+from .hardware_tools.gateway import HardwareGateway
+from .hardware_tools.routes import install_hardware_routes
+from .visual_skills.harness import SceneHarness
+from .visual_skills.service import VisualScenes
+from .visual_skills.routes import install_scene_routes
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -52,6 +60,8 @@ class LifecycleRequest(BaseModel):
     action: Literal['pause','resume','stop']
     switchFrom: dict[str,str] = Field(default_factory=dict)
 class AgentRequest(BaseModel):
+    clientPlatform: Literal['ios','web'] | None = None
+    guardFlowVersion: Literal[1] | None = None
     message: str = Field(min_length=1,max_length=2000)
     conversationId: str = Field(min_length=1,max_length=100)
     requestId: str = Field(min_length=1,max_length=100)
@@ -85,6 +95,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     official_events=official_mode() or (camera_adapter is None and not fixture_mode())
     camera=CameraRegistry(camera_adapter or (FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')) if fixture_mode() else SDKEventsAdapter(store)))
     camera.official_mode=official_events
+    camera.personal=personal
     camera.live=LiveDevices(store)
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
@@ -97,6 +108,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     trials=SkillTrials(store,videos)
     preparation=SitePreparation(store)
     tools=build_tools(store,camera,captures,video_service=videos); agent=AgentRuntime(store,tools,provider,camera,scheduler)
+    memory=MemoryService(personal,agent.model_provider)
+    agent.memory=memory
+    connectors=Connectors(store)
+    agent.connectors=connectors
     proactive=ProactiveEngine(personal,agent)
     push=PushService(store,personal)
     proactive.push=push
@@ -107,7 +122,12 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     replay_worker.visual_budget=visual_review
     ingest=SDKIngest(store,visual_review,personal)
     camera.sdk_ingest=ingest
+    hardware=HardwareGateway(store,camera,captures,database.with_name(database.stem+'-hardware.sqlite3'))
+    camera.hardware=hardware
     proactive.ingest=ingest
+    watch=CameraWatch(store,captures,visual_review,proactive)
+    scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
+    agent.visual_scenes=scenes
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -116,11 +136,21 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def lifespan(_):
         task=asyncio.create_task(worker.run()) if start_worker else None
         personal_task=asyncio.create_task(proactive.run()) if start_worker else None
+        memory_task=asyncio.create_task(memory.run()) if start_worker else None
+        watch_task=asyncio.create_task(watch.run()) if start_worker else None
+        scenes_task=asyncio.create_task(scenes.run()) if start_worker else None
         ingest_task=asyncio.create_task(ingest.run()) if start_worker else None
         demo_task=asyncio.create_task(demo.run()) if start_worker and demo.enabled else None
         push_task=asyncio.create_task(push.run()) if start_worker else None
         try: yield
         finally:
+            if scenes_task:
+                scenes_task.cancel(); await asyncio.gather(scenes_task,return_exceptions=True)
+            await scenes.shutdown()
+            if watch_task:
+                watch_task.cancel(); await asyncio.gather(watch_task,return_exceptions=True)
+            if memory_task:
+                memory_task.cancel(); await asyncio.gather(memory_task,return_exceptions=True)
             if push_task:
                 push_task.cancel(); await asyncio.gather(push_task,return_exceptions=True)
             await push.provider.close()
@@ -138,19 +168,27 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             await videos.shutdown()
             await scheduler.shutdown()
             await camera.live.shutdown()
+            await hardware.close()
             if getattr(store, 'ops', None): await asyncio.to_thread(store.ops.close)
             store.close()
     app=FastAPI(title='EvidenceGuard Cloud',version='0.9.0',lifespan=lifespan)
     install_access(app)
+    install_connector_routes(app,connectors)
     install_ops(app, store)
     for model in (agent.model_provider, videos.vision, getattr(videos, 'embedding', None)):
         if model is not None: model.ops = store.ops
     install_live_routes(app, camera, captures)
+    install_hardware_routes(app, hardware)
+    app.state.hardware=hardware
     app.state.store,app.state.camera,app.state.tools,app.state.agent,app.state.worker=store,camera,tools,agent,worker
     app.state.videos=videos
     app.state.replay_worker=replay_worker
     app.state.trials=trials
     app.state.personal=personal
+    app.state.memory=memory
+    app.state.connectors=connectors
+    app.state.watch=watch
+    app.state.visual_scenes=scenes
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -185,9 +223,14 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
             evidence=[e for e in evidence if e['sourceType'] in REAL_SOURCES]
             recordings=[r for r in recordings if visible_recording(r,ids)]
-        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(installation(request.headers['X-EG-Installation-ID'])) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='iOS event relay and iOS/Web foreground relay implemented; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
-    def personal_client(request): return installation(request.headers.get('X-EG-Installation-ID'))
+        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(personal_client(request)) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='iOS event relay and iOS/Web foreground relay implemented; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+    def personal_client(request):
+        client=installation(request.headers.get('X-EG-Installation-ID'))
+        key=request.headers.get('X-EG-Private-Key')
+        connectors.proof(client,key,bind=bool(key))
+        return client
     def push_key(request): return request.headers.get('X-EG-Push-Key')
+    install_scene_routes(app,scenes,personal_client)
     @app.get('/api/push/status')
     async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
     @app.put('/api/push/device')
@@ -225,17 +268,37 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def sdk_status(): return ingest.status()
     @app.get('/api/personal')
     async def personal_read(request: Request): return personal.snapshot(personal_client(request))
+    @app.get('/api/camera-observation')
+    async def observation_status(request: Request):
+        personal_client(request)
+        return await watch.snapshot()
+    @app.put('/api/camera-observation/{camera_id}')
+    async def observation_options(camera_id: str, body: WatchOptions, request: Request):
+        personal_client(request)
+        return await watch.configure(camera_id,body)
     @app.put('/api/personal/preferences')
     async def personal_preferences(request: Request, body: Preferences): return personal.preferences(personal_client(request), body)
     @app.post('/api/personal/memories', status_code=201)
     async def personal_remember(request: Request, body: MemoryInput): return personal.remember(personal_client(request), body)
     @app.delete('/api/personal/memories/{key}')
     async def personal_forget(request: Request, key: str): return personal.forget(personal_client(request), key)
+    @app.put('/api/personal/memory-options')
+    async def memory_options(request: Request, enabled: bool): return memory.configure(personal_client(request),enabled)
+    @app.post('/api/personal/memory-retry')
+    async def memory_retry(request: Request): return memory.retry(personal_client(request))
+    @app.post('/api/personal/tasks/{key}/cancel')
+    async def personal_cancel_task(request: Request, key: str):
+        client=personal_client(request)
+        personal.tasks.cancel(client,key)
+        return personal.snapshot(client)
     @app.post('/api/personal/inbox/{key}/read')
     async def personal_mark_read(request: Request, key: str): return personal.read(personal_client(request), key)
     @app.put('/api/personal/conversation')
     async def bind_personal_conversation(request: Request, body: BindConversation):
         return conversations.bind_main(personal_client(request),body.conversationId)
+    @app.get('/api/personal/messages/{key}')
+    async def personal_message(request: Request, key: str):
+        return proactive.message(personal_client(request), key)
     @app.post('/api/personal/messages/{key}/feedback')
     async def personal_feedback(request: Request, key: str, body: Feedback):
         return proactive.feedback(personal_client(request),key,body.action)
@@ -444,14 +507,16 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         if store.run(body.requestId): run_access(body.requestId,request)
         client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
         context=personal.context(client)
-        if context and proactive.owner(body.conversationId)==client:
+        main = conversations.root(body.conversationId)
+        if context and proactive.owner(main)==client:
+            context['mainConversationId'] = main
             # Independent assistant messages are actual history, not invented user prompts.
             context['proactiveMessages']=[{k:m.get(k) for k in ('id','body','why','createdAt','feedback')} for m in proactive.messages(client)[-8:]]
         if body.replyToMessageId:
-            reply=next((m for m in proactive.messages(client) if m['id']==body.replyToMessageId),None) if client else None
-            if not reply or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
+            if not client or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
+            reply=proactive.message(client,body.replyToMessageId)
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
-        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId)
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),guard_flow_version=body.guardFlowVersion)
         if client: value['clientId']=client; store.save_run(value)
         return value
     @app.get('/api/agent/conversations')

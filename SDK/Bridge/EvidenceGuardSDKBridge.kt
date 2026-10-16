@@ -16,11 +16,13 @@ import com.anker.esiotkit.event.model.EventCondition
 import com.anker.esiotkit.manager.MegaEventManager
 import com.anker.esiotkit.mega.category.Category
 import com.anker.esiotkit.sample.main.mega.login.business.BusinessLoginConfig
+import com.anker.esiotkit.sample.main.mega.login.business.BusinessLoginViewModel
 import com.anker.esiotkit.sample.model.isOnline
 import com.anker.esiotkit.sample.support.utils.domain.DomainProfileDefaults
 import com.anker.esiotkit.support.di.esInject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelChildren
@@ -28,6 +30,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
+import evidenceguard.tools.OfficialSdkBridge
+import evidenceguard.tools.HardwareToolJson
 import com.anker.esiotkit.media.live_stream.LiveMediaPlayer
 import com.anker.esiotkit.media.live_stream.LiveParams
 import com.anker.esiotkit.media.live_stream.LivePlayListener
@@ -64,19 +68,72 @@ class EvidenceGuardSDKBridge {
     private var generation = 0
     private var discoveredSn = emptySet<String>()
     private val eventCache = mutableMapOf<String, MegaEvent>()
-    private var activeLive: EvidenceGuardLiveBridge? = null
+    private val activeLive = mutableMapOf<String, EvidenceGuardLiveBridge>()
     private var officialHost: EvidenceGuardOfficialHost? = null
+    private val hardware = mutableMapOf<String, HardwareToolJson>()
+
+    private fun hardwareFor(sn: String): HardwareToolJson {
+        check(officialHost == null && sn in discoveredSn) { "device_not_in_current_sdk_session" }
+        return hardware.getOrPut(sn) {
+            val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) }
+                ?: error("device_not_available")
+            val manager = ESIotDeviceManagerImpl { id -> esInject<DeviceRepository>().getIotDeviceBy(id)?.let { MegaDevice(it) } }
+            HardwareToolJson(OfficialSdkBridge(manager, device, device.devicePn, ::currentTimeMillis), device.devicePn)
+        }
+    }
+
+    fun hardwareManifest(sn: String, completion: (String) -> Unit) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                val manager = ESIotDeviceManagerImpl { id -> esInject<DeviceRepository>().getIotDeviceBy(id)?.let { MegaDevice(it) } }
+                completion(withTimeout(8000) { hardwareFor(sn).manifest(manager.capability(sn).getCapabilities() != null) })
+            } catch (_: Exception) { completion(failure("hardware_manifest_unavailable")) }
+        }
+    }
+
+    fun executeHardware(sn: String, commandJSON: String, completion: (String) -> Unit) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try { completion(withTimeout(12000) { hardwareFor(sn).execute(commandJSON) }) }
+            catch (_: Exception) { completion("{\"status\":\"unknown\",\"sdkUsed\":false,\"simulated\":false,\"error\":{\"code\":\"DISPATCH_UNKNOWN\",\"message\":\"SDK operation interrupted or timed out\"}}") }
+        }
+    }
 
     /** Host the same SampleApp() used by the official MainViewController.
      * Keep its entire navigator, binding flows and capability-driven settings.
      * The disposable wrapper lets Swift await Compose cleanup before reconnecting.
      */
+    @Throws(Exception::class)
     fun openOfficialDemo(): UIViewController {
         check(officialHost == null) { "official_demo_already_open" }
         disconnect()
         InfoCache.tokenValid = false
         InfoCache.userConfig = ""
         startupEnvironment = null
+        return EvidenceGuardOfficialHost().also { officialHost = it }.controller
+    }
+
+    /** Configure the official login flow from the host's private build config.
+     * Credentials are not returned in receipts or rendered by the product UI.
+     */
+    @Throws(Exception::class)
+    fun openOfficialDemoWithAccount(userId: String, token: String, environment: String): UIViewController {
+        check(officialHost == null) { "official_demo_already_open" }
+        require(userId.isNotBlank() && token.isNotBlank() && environment in listOf("PR", "QA")) {
+            "invalid_configuration"
+        }
+        disconnect()
+        InfoCache.tokenValid = false
+        InfoCache.userConfig = ""
+        startupEnvironment = null
+        val login = BusinessLoginViewModel()
+        if (environment == "QA") login.switchToQA() else login.switchToPR()
+        login.clientId = if (environment == "QA") BusinessLoginConfig.EnvQA.CLIENT_ID else BusinessLoginConfig.EnvPR.CLIENT_ID
+        login.appName = if (environment == "QA") BusinessLoginConfig.EnvQA.APP_NAME else BusinessLoginConfig.EnvPR.APP_NAME
+        login.userId = userId.trim()
+        login.token = token.trim()
+        login.login()
+        // SampleApp's own supported auto-login path opens its device navigator.
+        // Actual account/device availability is still decided by SDK responses.
         return EvidenceGuardOfficialHost().also { officialHost = it }.controller
     }
 
@@ -99,13 +156,13 @@ class EvidenceGuardSDKBridge {
     fun createLive(sn: String): EvidenceGuardLiveBridge? {
         if (sn !in discoveredSn) return null
         val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) } ?: return null
-        activeLive?.stop()
-        return EvidenceGuardLiveBridge(device).also { activeLive = it }
+        activeLive.remove(sn)?.stop()
+        return EvidenceGuardLiveBridge(device).also { activeLive[sn] = it }
     }
 
     fun stopLive() {
-        activeLive?.stop()
-        activeLive = null
+        activeLive.values.toList().forEach { it.stop() }
+        activeLive.clear()
     }
 
     fun connect(userId: String, token: String, environment: String, completion: (String) -> Unit) {
@@ -116,6 +173,7 @@ class EvidenceGuardSDKBridge {
         scope.coroutineContext.cancelChildren()
         discoveredSn = emptySet()
         eventCache.clear()
+        hardware.clear()
         if (userId.isBlank() || token.isBlank() || environment !in listOf("PR", "QA")) {
             completion(failure("invalid_configuration")); return
         }
@@ -304,6 +362,7 @@ class EvidenceGuardSDKBridge {
         scope.coroutineContext.cancelChildren()
         discoveredSn = emptySet()
         eventCache.clear()
+        hardware.clear()
         if (startupEnvironment != null) runCatching { ESIotKit.logout() }
     }
 

@@ -22,11 +22,23 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>EGServiceBaseURL</key>
 	<string>$(EG_SERVICE_BASE_URL)</string>
+	<key>EGSDKArtifactHash</key>
+	<string>$(EG_SDK_ARTIFACT_HASH)</string>
+	<key>EGSDKManagedAccount</key>
+	<string>$(EG_SDK_MANAGED_ACCOUNT)</string>
+	<key>EGSDKUserID</key>
+	<string>$(EG_SDK_USER_ID)</string>
+	<key>EGSDKAuthToken</key>
+	<string>$(EG_SDK_AUTH_TOKEN)</string>
+	<key>EGSDKEnvironment</key>
+	<string>$(EG_SDK_ENVIRONMENT)</string>
 	<key>EGInternalDemo</key>
 	<string>$(EG_INTERNAL_DEMO)</string>
 	<key>EGDemoAccessToken</key>
 	<string>$(EG_DEMO_ACCESS_TOKEN)</string>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
@@ -42,7 +54,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>在添加摄像头时，用于发现附近的 Wi-Fi 网络并将摄像头连接到你选择的网络。</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>在添加摄像头时，用于扫描、连接并配置附近的摄像头设备。</string>
+	<string>用于发现并连接你选择的蓝牙设备，包括摄像头、门铃、除草机和平板中枢。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于发现和连接局域网内的摄像头、门铃及团队测试服务。</string>
 	<key>NSMicrophoneUsageDescription</key>
@@ -72,5 +84,20 @@
 	<string>把你按住说话的内容转成可编辑文字，确认发送后才交给 AI。</string>
 	<key>EGAPNSEnvironment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>预览未来 7 天的日历标题和日期。由你确认后才共享给 anker；不修改日历。</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>预览未完成提醒事项的标题和日期。由你确认后才共享给 anker；不修改提醒事项。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>个人应用连接授权</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.zhangmiao.evidenceguard.connect</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

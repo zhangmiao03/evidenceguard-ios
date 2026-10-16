@@ -11,21 +11,6 @@ import UIKit
 import SampleCore
 #endif
 
-struct SDKCredentials: Codable, Equatable {
-    var userID = ""
-    var token = ""
-    var environment = "PR"
-    var isComplete: Bool {
-        !userID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        ["PR", "QA"].contains(environment)
-    }
-    var normalized: SDKCredentials {
-        .init(userID: userID.trimmingCharacters(in: .whitespacesAndNewlines),
-              token: token.trimmingCharacters(in: .whitespacesAndNewlines), environment: environment)
-    }
-}
-
 struct SDKDiscoveredCamera: Decodable, Identifiable {
     var sn: String
     var model: String
@@ -103,13 +88,65 @@ enum SDKCredentialVault {
 }
 
 @MainActor final class OfficialSDKConnection: ObservableObject {
+    let toolExecutor = IOSToolExecutor()
     @Published private(set) var devices: [SDKDiscoveredCamera] = []
     @Published private(set) var officialDemoController: UIViewController?
     @Published private(set) var switchingWorkspace = false
     @Published private(set) var workspaceMessage = ""
-    weak var liveController: LiveCameraController?
+    @Published var workspaceError: String?
+    @Published private(set) var liveControllers: [String: LiveCameraController] = [:]
+    // Foreground connection is a product invariant, not an opt-out preference.
+    // Ignore the old cameraAutoConnect=false value when upgrading.
+    func controller(for id: String) -> LiveCameraController {
+        if let value = liveControllers[id] { return value }
+        let value = LiveCameraController(); liveControllers[id] = value; return value
+    }
+    func stopAllCameras() {
+        for value in liveControllers.values { value.stop(message: "画面连接已暂停") }
+    }
+    private var cameraOrigin: URL?
+    private var lastDiscovery = Date.distantPast
+    @Published private(set) var activeCameraID: String?
+    private var switchingCamera = false
+    private var preferredCamera: String?
+    // The vendor native video decoder is not safe for concurrent players.
+    // Keep exactly one player alive and switch it automatically on demand.
+    func selectCamera(_ camera: SDKDiscoveredCamera, client: APIClient) async {
+        while switchingCamera && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
+        guard !Task.isCancelled else { return }
+        switchingCamera = true; defer { switchingCamera = false }
+        let id = IOSToolExecutor.deviceID(camera.sn)
+        preferredCamera = id; activeCameraID = id
+        for (key, value) in liveControllers where key != id && (value.running || value.opening || value.closing) {
+            await value.stopForCameraSwitch()
+        }
+        guard !Task.isCancelled else { return }
+        await controller(for: id).start(camera: camera, connection: self, client: client)
+    }
+    func maintainCameras(client: APIClient, selectedID: String) async {
+        if cameraOrigin != client.baseURL {
+            if cameraOrigin != nil { stopAllCameras() }
+            cameraOrigin = client.baseURL
+        }
+        guard !switchingCamera, !switchingWorkspace, officialDemoController == nil, canDiscover else { return }
+        if devices.isEmpty && !checking && Date().timeIntervalSince(lastDiscovery) >= 15 {
+            lastDiscovery = Date(); discoverConfigured(client: client)
+        }
+        guard !checking else { return }
+        let cameras = devices.filter(\.isCompetitionCamera)
+        let demands = (try? await client.cameraDemands()) ?? []
+        let requested = demands.first ?? preferredCamera ?? selectedID
+        guard let camera = cameras.first(where: { IOSToolExecutor.deviceID($0.sn) == requested }) ?? cameras.first,
+              !switchingWorkspace, officialDemoController == nil, !Task.isCancelled else { return }
+        let value = controller(for: IOSToolExecutor.deviceID(camera.sn))
+        if !value.running && !value.opening && !value.closing,
+           Date().timeIntervalSince(value.lastAttempt) >= 10 {
+            await selectCamera(camera, client: client)
+        }
+    }
     @Published private(set) var checking = false
-    @Published private(set) var message = "等待主办方发放账号与 Token"
+    @Published private(set) var message = SDKConfiguration.current.usesManagedAccount
+        ? "已配置摄像头账号，等待连接设备" : "等待主办方发放账号与 Token"
     @Published private(set) var inspecting = false
     @Published private(set) var events: [SDKInspectionEvent] = []
     @Published private(set) var picture: UIImage?
@@ -135,6 +172,24 @@ enum SDKCredentialVault {
         #else
         false
         #endif
+    }
+    var usesManagedAccount: Bool { SDKConfiguration.current.usesManagedAccount }
+    func configuredCredentials() throws -> SDKCredentials? {
+        if usesManagedAccount {
+            guard let credentials = SDKConfiguration.current.credentials else {
+                throw APIProblem(message: "此版本的摄像头连接配置不完整，请更新 App 后重试。")
+            }
+            return credentials
+        }
+        return try SDKCredentialVault.load()
+    }
+    func discoverConfigured(client: APIClient) {
+        do {
+            guard let credentials = try configuredCredentials() else {
+                message = "请先配置摄像头账号"; return
+            }
+            discover(credentials, client: client)
+        } catch { message = error.localizedDescription }
     }
     var buildStatus: String {
         #if targetEnvironment(simulator)
@@ -174,7 +229,9 @@ enum SDKCredentialVault {
                 guard receipt.status == "success", let devices = receipt.devices else {
                     self.message = receipt.code == "environment_restart_required"
                         ? "切换 SDK 环境后请重新启动 App，再检查设备。"
-                        : "设备查询未完成（\(receipt.code ?? "unknown")），请检查主办方账号、Token 与网络。"
+                        : self.usesManagedAccount
+                            ? "设备连接未完成，请检查网络后重试；若仍失败，需要更新此版本的联调配置。"
+                            : "设备查询未完成，请检查账号配置与网络。"
                     return
                 }
                 self.devices = devices
@@ -271,9 +328,10 @@ enum SDKCredentialVault {
         resetInspection()
     }
     func disconnect() {
+        toolExecutor.invalidate()
         eventSyncOrigin = nil
         UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
-        liveController?.stop()
+        stopAllCameras()
         connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
@@ -294,7 +352,7 @@ enum SDKCredentialVault {
     }
     func restoreSession(client: APIClient) {
         guard syncEnabled(for: client), devices.isEmpty, !checking, canDiscover,
-              let credentials = try? SDKCredentialVault.load() else { return }
+              let credentials = try? configuredCredentials() else { return }
         discover(credentials, client: client)
     }
     func syncRecentEvents(client: APIClient) async {
@@ -306,14 +364,39 @@ enum SDKCredentialVault {
     }
     func enterOfficialWorkspace() async {
         guard canDiscover, officialDemoController == nil, !switchingWorkspace else { return }
+        // Compose 1.7.1 checks the host plist asynchronously and aborts on a
+        // missing flag. Check before stopping the current camera/session;
+        // Swift error handling cannot catch that Kotlin background failure.
+        if let issue = SDKConfiguration.workspaceIssue(info: Bundle.main.infoDictionary ?? [:],
+            resourceExists: { FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appendingPathComponent($0).path) }) {
+            workspaceError = issue
+            return
+        }
+        let managedCredentials: SDKCredentials?
+        do { managedCredentials = usesManagedAccount ? try configuredCredentials() : nil }
+        catch { workspaceError = error.localizedDescription; return }
+        workspaceError = nil
         switchingWorkspace = true
+        defer { switchingWorkspace = false }
         workspaceMessage = "正在停止本项目直播与取帧…"
-        await liveController?.stopForWorkspaceSwitch()
+        await toolExecutor.shutdown()
+        for value in liveControllers.values { await value.stopForWorkspaceSwitch() }
         disconnect()
         // EvidenceGuardLiveBridge releases the native player after 500 ms.
-        try? await Task.sleep(for: .milliseconds(650))
+        do { try await Task.sleep(for: .milliseconds(650)) }
+        catch { workspaceMessage = "已取消打开摄像头页面"; return }
         #if canImport(SampleCore) && !targetEnvironment(simulator)
-        officialDemoController = bridge.openOfficialDemo()
+        do {
+            if let credentials = managedCredentials {
+                officialDemoController = try bridge.openOfficialDemoWithAccount(
+                    userId: credentials.userID, token: credentials.token, environment: credentials.environment)
+            } else {
+                officialDemoController = try bridge.openOfficialDemo()
+            }
+        } catch {
+            workspaceError = "摄像头页面暂时未能启动，请重新打开 App 后重试。"
+            return
+        }
         officialOrientation = ToggleScreenOrientationKt.fullScreen.collectData { [weak self] value in
             Task { @MainActor in
                 guard self?.officialDemoController != nil else { return }
@@ -321,8 +404,7 @@ enum SDKCredentialVault {
             }
         }
         #endif
-        workspaceMessage = "官方原版 Demo · 请在原版登录页核对账号和环境"
-        switchingWorkspace = false
+        workspaceMessage = usesManagedAccount ? "已打开摄像头页面，正在使用内置联调账号" : "官方原版 Demo · 请在原版登录页核对账号和环境"
     }
 
     func leaveOfficialWorkspace() async {
@@ -348,6 +430,31 @@ enum SDKCredentialVault {
         let cameras = devices.filter(\.isCompetitionCamera)
         guard !cameras.isEmpty else { throw APIProblem(message: "官方账号下没有可导入的赛事设备") }
         return try await client.importDevices(account: credentials.userID, environment: credentials.environment, cameras: cameras)
+    }
+
+    func hardwareManifest(camera: SDKDiscoveredCamera) async throws -> HardwareValue {
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        let json: String = await withCheckedContinuation { continuation in
+            bridge.hardwareManifest(sn: camera.sn) { continuation.resume(returning: $0) }
+        }
+        return try HardwareValue.parse(json)
+        #else
+        throw APIProblem(message: "此构建未包含官方 arm64 SDK")
+        #endif
+    }
+
+    func executeHardware(camera: SDKDiscoveredCamera, command: HardwareValue) async throws -> HardwareValue {
+        guard officialDemoController == nil, !switchingWorkspace, devices.contains(where: { $0.sn == camera.sn }) else {
+            throw APIProblem(message: "设备执行会话已结束")
+        }
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        let json: String = await withCheckedContinuation { continuation in
+            bridge.executeHardware(sn: camera.sn, commandJSON: command.json) { continuation.resume(returning: $0) }
+        }
+        return try HardwareValue.parse(json)
+        #else
+        throw APIProblem(message: "此构建未包含官方 arm64 SDK")
+        #endif
     }
 
     #if canImport(SampleCore) && !targetEnvironment(simulator)
@@ -421,7 +528,9 @@ enum SDKCredentialVault {
                 guard syncGeneration == requestGeneration else { throw CancellationError() }
                 try Task.checkCancellation()
                 let items = returned[offset..<min(offset + 10, returned.count)].map { SDKCloudEvent(camera: camera, event: $0) }
-                _ = try await client.ingestSDKEvents(Array(items), review: false)
+                // Fresh human/doorbell metadata can produce a qualified notice
+                // even if the vendor has not made its thumbnail available yet.
+                _ = try await client.ingestSDKEvents(Array(items), review: recentOnly)
             }
             var images = 0
             for event in returned.filter({ $0.hasThumbnail && !syncedImages.contains(client.baseURL.absoluteString + ":" + camera.sn + ":" + $0.id) }).prefix(10) {

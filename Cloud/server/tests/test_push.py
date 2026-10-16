@@ -166,7 +166,14 @@ def test_api_requires_bearer_and_device_secret_and_does_not_cross_services(tmp_p
         assert http.post('/api/push/deliveries/'+key+'/open',headers=headers).status_code==404
 
 
-def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch):
+@pytest.mark.parametrize('kind,body', [
+    ('test','这是一条测试提醒，点开后可以查看结果。'),
+    ('run','这件事有结果了，点开看看。'),
+    ('draft','草案整理好了，等你看看。'),
+    ('message','有件事想提醒你，点开看看。'),
+    ('guard','你设置的守护发现了变化，点开查看画面。'),
+])
+def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch,kind,body):
     async def check():
         key=ec.generate_private_key(ec.SECP256R1()); path=tmp_path/'apns.p8'
         path.write_bytes(key.private_bytes(serialization.Encoding.PEM,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
@@ -180,11 +187,14 @@ def test_provider_http2_payload_is_generic_and_jwt_cached(tmp_path,monkeypatch):
             assert request.headers['apns-topic']==Provider.topic
             assert request.headers['apns-push-type']=='alert'
             payload=json.loads(request.content)
-            assert set(payload['eg'])=={'deliveryId','scope'}
+            assert set(payload['eg'])==({'deliveryId','scope','foreground'} if kind in {'test','guard'} else {'deliveryId','scope'})
+            if kind in {'test','guard'}: assert payload['eg']['foreground']==kind
+            assert payload['aps']['alert']=={'title':'anker','body':body}
+            assert payload['aps']['thread-id']=='evidenceguard-demo'
             assert 'private message' not in request.content.decode()
             return httpx.Response(200)
         provider.clients['production']=httpx.AsyncClient(transport=httpx.MockTransport(respond))
-        assert await provider.send({'environment':'production','token':TOKEN},{'id':str(uuid4()),'kind':'message','expires_at':time.time()+300,'private':'private message'},'demo')==(200,'')
+        assert await provider.send({'environment':'production','token':TOKEN},{'id':str(uuid4()),'kind':'message' if kind=='guard' else kind,'foregroundGuard':kind=='guard','expires_at':time.time()+300,'private':'private message'},'demo')==(200,'')
         await provider.close()
     asyncio.run(check())
 
@@ -215,4 +225,57 @@ def test_run_result_and_outbox_commit_together(tmp_path,monkeypatch):
         target=push.open(c,SECRET,row[0])
         assert target['conversationId']=='history-chat' and target['executionMode']=='history'
         s.close()
+    asyncio.run(check())
+
+
+def test_confirmed_guard_push_while_camera_app_visible(tmp_path,monkeypatch):
+    async def check():
+        *_,c,skill,push=fixture(tmp_path,monkeypatch)
+        now=time.time();push.presence(c,SECRET,True)
+        push.personal.preferences(c,Preferences(enabled=True,quietStart=0,quietEnd=0))
+        msg=dict(id='guard-message',jobId='guard-job',kind='visual_scene',sources=[dict(type='camera_evidence',evidenceId='guard-evidence')],read=False)
+        push.store.db.execute('INSERT INTO assistant_messages VALUES (?,?,?,?,?)',(msg['id'],c,msg['jobId'],now,json.dumps(msg)))
+        push.message(c,msg,{'expiresAt':now+300})
+        key=push.store.db.execute('SELECT id FROM push_outbox WHERE source=?',(msg['id'],)).fetchone()[0]
+        await push.step(now+1)
+        assert push.row(key)['state']=='accepted'
+        assert push.provider.send.call_args.args[1]['foregroundGuard'] is True
+        # No double delivery, and ordinary foreground results stay deferred.
+        assert not await push.step(now+2)
+        ordinary=push.enqueue(c,'run:foreground','run',{},now+3)
+        await push.step(now+3);assert push.row(ordinary)['reason']=='AppVisible'
+        push.store.close()
+    asyncio.run(check())
+
+
+def test_guard_health_notice_is_not_a_confirmed_event(tmp_path,monkeypatch):
+    async def check():
+        *_,c,skill,push=fixture(tmp_path,monkeypatch)
+        now=time.time();push.presence(c,SECRET,True)
+        push.personal.preferences(c,Preferences(enabled=True,quietStart=0,quietEnd=0))
+        msg=dict(id='guard-health',jobId='health-job',kind='visual_scene',sources=[dict(type='camera',cameraId='a')],read=False)
+        push.store.db.execute('INSERT INTO assistant_messages VALUES (?,?,?,?,?)',(msg['id'],c,msg['jobId'],now,json.dumps(msg)))
+        push.message(c,msg,{'expiresAt':now+300})
+        key=push.store.db.execute('SELECT id FROM push_outbox WHERE source=?',(msg['id'],)).fetchone()[0]
+        await push.step(now+1);assert push.row(key)['reason']=='AppVisible'
+        assert push.provider.send.await_count==0
+        push.store.close()
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('gate',['quiet','optout','read'])
+def test_confirmed_guard_respects_user_preferences(tmp_path,monkeypatch,gate):
+    async def check():
+        from datetime import datetime,timezone
+        *_,c,skill,push=fixture(tmp_path,monkeypatch)
+        now=time.time(); hour=datetime.now(timezone.utc).hour
+        prefs=Preferences(enabled=gate!='optout',quietStart=hour if gate=='quiet' else 0,quietEnd=(hour+1)%24 if gate=='quiet' else 0,timezone='UTC')
+        push.personal.preferences(c,prefs);push.presence(c,SECRET,True)
+        msg=dict(id='guard-gated',jobId='guard-job',kind='visual_scene',sources=[dict(id='evidence:guard',type='camera_evidence',evidenceId='guard')],read=gate=='read')
+        push.store.db.execute('INSERT INTO assistant_messages VALUES (?,?,?,?,?)',(msg['id'],c,msg['jobId'],now,json.dumps(msg)))
+        push.message(c,msg,{'expiresAt':now+300})
+        key=push.store.db.execute('SELECT id FROM push_outbox WHERE source=?',(msg['id'],)).fetchone()[0]
+        await push.step(now+1)
+        assert push.row(key)['reason']==('QuietHours' if gate=='quiet' else 'NoLongerNeeded')
+        push.provider.send.assert_not_awaited();push.store.close()
     asyncio.run(check())

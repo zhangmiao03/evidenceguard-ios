@@ -13,16 +13,31 @@ private struct ProductRootView: View {
     @EnvironmentObject private var store: AppStore
     @AppStorage("showFeedback") private var showFeedback = true
     var body: some View {
+        ZStack {
+            CameraRenderHost(connection: store.officialSDK).allowsHitTesting(false).accessibilityHidden(true)
+            Color(.systemBackground).ignoresSafeArea()
         TabView(selection: $store.selectedTab) {
             tab(.assistant) { TeachAIView() }.tabItem { Label("助手", systemImage: "bubble.left.and.bubble.right.fill") }.badge(store.unreadAssistantCount).tag(AppTab.assistant)
-            tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头Skill", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
-            tab(.tasks) { TasksView() }.tabItem { Label("任务", systemImage: "checklist") }.tag(AppTab.tasks)
+            tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头守护", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
+            tab(.tasks) { DevicesHomeView() }.tabItem { Label("设备", systemImage: "sensor.tag.radiowaves.forward.fill") }.tag(AppTab.tasks)
             tab(.memory) { MemoryView() }.tabItem { Label("记忆", systemImage: "brain.head.profile") }.tag(AppTab.memory)
             tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
+        }
         .tint(Brand.blue)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { store.officialSDK.stopAllCameras() }
+        }
+        .task(id: "\(scenePhase == .active)-\(store.client.baseURL)") {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await store.officialSDK.maintainCameras(client: store.client, selectedID: store.selectedCameraID)
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            }
+        }
         .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
                                         active: scenePhase == .active) { await store.refresh() } }
+        .background { HardwareExecutorWorker(connection: store.officialSDK, client: store.client, active: scenePhase == .active) }
         .sheet(item: $store.editor, onDismiss: { store.editorRegionCameraID = nil }) { skill in CreateSkillView(skill: skill, initialRegionCameraID: store.editorRegionCameraID).environmentObject(store) }
         .alert("操作未完成", isPresented: Binding(get: { store.errorMessage != nil }, set: { if !$0 { store.errorMessage = nil } })) { Button("知道了") { store.errorMessage = nil } } message: { Text(store.errorMessage ?? "") }
         .overlay(alignment: .top) {
@@ -38,10 +53,15 @@ private struct ProductRootView: View {
     }
     @ViewBuilder private func destination(_ route: AppRoute) -> some View {
         switch route {
+        case .legacyTasks: TasksView()
+        case .connectedApps: ConnectedAppsView()
+        case .cameraObservation: CameraObservationSettingsView()
         case .pushDelivery(let id, let scope): PushDeliveryView(id: id, scope: scope)
         case .pushConversation(let id, let skill, let mode): ConversationView(conversationID: id, skillID: skill, initialMode: mode)
         case .demoScene: DemoSceneView()
         case .skill(let id): SkillDetailView(id: id)
+        case .cameraGuard(let id): CameraGuardDestination(id: id)
+        case .newCameraGuard(let camera): VisualSceneEditor(initialCameraID: camera)
         case .evidence(let id): EvidenceDetailView(id: id)
         case .evidenceList(let skill): EvidenceView(skillID: skill)
         case .cameras: CameraListView()
@@ -50,11 +70,12 @@ private struct ProductRootView: View {
         case .personalInbox: PersonalInboxView()
         case .camera(let id): CameraDetailView(id: id)
         case .alerts: AlertsView()
-        case .conversation(let id, let skill): ConversationView(conversationID: id, skillID: skill)
+        case .conversation(let id, let skill): ConversationView(conversationID: id, skillID: skill, allowsConversationSwitching: skill == nil, initialMode: store.conversationModes[id] ?? "live")
         case .evidenceConversation(let id): ConversationView(conversationID: "evidence-" + id, skillID: nil, historyEvidenceID: id)
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)
         case .cameraEvents: CameraSkillsView()
+        case .liveCamera(let id): CameraLiveDestination(id: id)
         case .notificationSettings: NotificationSettingsView()
         case .voiceSettings: VoiceSettingsView()
         case .privacy: PrivacyView()
@@ -74,38 +95,32 @@ private struct SDKWorkspaceContainer<Content: View>: View {
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var connection: OfficialSDKConnection
     @ObservedObject private var push = PushNotifications.shared
-    @State private var guide = false
     @State private var returningToProduct = false
     @ViewBuilder var content: () -> Content
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: connection.officialDemoController == nil ? "shield.lefthalf.filled" : "wrench.and.screwdriver")
-                Text(connection.officialDemoController == nil ? "EvidenceGuard" : "官方 SDK 原版").font(.subheadline.bold())
-                Spacer()
-                Button { guide = true } label: { Image(systemName: "checklist") }.accessibilityLabel("硬件检查指引")
-                Button(connection.officialDemoController == nil ? "切换官方 SDK" : "返回本项目") {
-                    if connection.officialDemoController == nil {
-                        if connection.canDiscover { Task { await connection.enterOfficialWorkspace() } }
-                        else { guide = true }
-                    } else {
+            // The vendor workspace is an explicit developer destination. Product
+            // pages retain their own navigation without a global mode switch.
+            if connection.officialDemoController != nil {
+                HStack {
+                    Label("摄像头调试", systemImage: "wrench.and.screwdriver").font(.subheadline.bold())
+                    Spacer()
+                    Button("返回设置") {
                         Task {
                             returningToProduct = true
                             await connection.leaveOfficialWorkspace()
-                            // SDK device routes need a fresh account check; keep
-                            // assistant, task and memory navigation intact.
                             store.tabPaths[AppTab.cameraSkills.rawValue] = []
                             store.selectedTab = .profile
-                            store.tabPaths[AppTab.profile.rawValue] = [.officialSDK]
+                            store.tabPaths[AppTab.profile.rawValue] = [.settings]
                             returningToProduct = false
                             routePush()
                             await store.refresh()
                         }
-                    }
-                }.font(.caption.bold()).buttonStyle(.bordered)
-                    .accessibilityIdentifier("workspace.switch")
-            }.padding(.horizontal, 16).padding(.vertical, 7).background(.regularMaterial)
-                .disabled(connection.switchingWorkspace || returningToProduct || store.editor != nil)
+                    }.font(.caption.bold()).buttonStyle(.bordered)
+                        .accessibilityIdentifier("workspace.return")
+                }.padding(.horizontal, 16).padding(.vertical, 7).background(.regularMaterial)
+                    .disabled(connection.switchingWorkspace || returningToProduct)
+            }
             if connection.switchingWorkspace {
                 HStack { ProgressView(); Text(connection.workspaceMessage).font(.caption) }.padding(10)
             }
@@ -130,15 +145,20 @@ private struct SDKWorkspaceContainer<Content: View>: View {
         }
         .onChange(of: push.pending) { _, _ in routePush() }
         .onChange(of: store.editor == nil) { _, _ in routePush() }
-        .onChange(of: guide) { _, _ in routePush() }
+        .onChange(of: connection.workspaceError) { _, _ in routePush() }
         .onChange(of: connection.switchingWorkspace) { _, _ in routePush() }
         .onChange(of: connection.officialDemoController == nil) { _, _ in routePush() }
-        .sheet(isPresented: $guide) { OfficialWorkspaceGuide(connection: connection) }
+        .alert("暂时无法打开官方页面", isPresented: Binding(
+            get: { connection.workspaceError != nil },
+            set: { if !$0 { connection.workspaceError = nil } }
+        )) {
+            Button("知道了") { connection.workspaceError = nil }
+        } message: { Text(connection.workspaceError ?? "") }
     }
     private func routePush() {
         PushNavigation.consume(&push.pending, selection: &store.selectedTab, paths: &store.tabPaths,
             productVisible: connection.officialDemoController == nil && !connection.switchingWorkspace && !returningToProduct,
-            presentationBlocked: guide || store.editor != nil || scenePhase != .active)
+            presentationBlocked: connection.workspaceError != nil || store.editor != nil || scenePhase != .active)
     }
 }
 
@@ -148,16 +168,20 @@ private struct OfficialDemoControllerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
 }
 
-private struct OfficialWorkspaceGuide: View {
+struct OfficialSDKDeveloperView: View {
     @ObservedObject var connection: OfficialSDKConnection
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
-        NavigationStack {
-            List {
-                Section("工作区切换") {
-                    Text(connection.buildStatus)
+        List {
+                Section("开发调试") {
+                    Text("用于核对配网、绑定和设备设置。日常聊天、任务与提醒不需要打开此页面。")
+                    Text(connection.buildStatus).font(.caption).foregroundStyle(Brand.muted)
+                    Button("打开官方设备调试页") { Task { await connection.enterOfficialWorkspace() } }
+                        .disabled(!connection.canDiscover || connection.switchingWorkspace)
+                        .accessibilityIdentifier("settings.openOfficialWorkspace")
                     Text("官方模式加载赛事 Demo 的完整 SampleApp 导航，用于绑定、配网、直播与设备配置。返回后重新查询并同步设备；不会自动恢复直播。")
-                    Text("切换的是界面与会话，不会下载或更换底层 SDK 二进制。官方模式采用自己的登录表单与缓存，请核对账号及 PR / QA。")
+                    Text(connection.usesManagedAccount
+                         ? "此版本自动使用已配置的联调账号打开官方页面，设备连接状态以页面回执为准。"
+                         : "官方模式采用自己的登录表单与缓存，请核对账号及 PR / QA。")
                 }
                 Section("T8171 · 云台摄像头") {
                     Label("添加设备：按型号完成官方配网和绑定", systemImage: "wifi")
@@ -179,8 +203,6 @@ private struct OfficialWorkspaceGuide: View {
                 Section("Web 对照") {
                     Text("Web 也可切换到资料包原版 Demo：鉴权表单、官方直播组件、重连和 AI 裸帧面板。当前交付的 Web Demo 没有手机端的完整配网及设置导航；未露出的项目在此 iOS 原版工作区核验。")
                 }
-            }.navigationTitle("官方 SDK 检查指引").navigationBarTitleDisplayMode(.inline)
-                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-        }
+        }.pageStyle("摄像头调试")
     }
 }
