@@ -24,7 +24,7 @@ def valid_bytes(raw, mime):
     return False
 
 
-def put(root, raw, mime):
+def put(root, raw, mime, *, protected=()):
     if mime not in MIMES or not 0 < len(raw) <= (MAX_VIDEO if mime == 'video/mp4' else MAX_IMAGE) or not valid_bytes(raw, mime):
         return None
     root = Path(root)
@@ -39,7 +39,9 @@ def put(root, raw, mime):
         total = sum(p.stat().st_size for p in files)
         for p in files:
             if total + len(raw) <= MAX_CACHE: break
+            if p.stem in protected: continue
             total -= p.stat().st_size; p.unlink()
+        if total + len(raw) > MAX_CACHE: return None
         tmp = root / (digest + '.tmp')
         tmp.write_bytes(raw); tmp.chmod(0o644); tmp.replace(target)
     return {'assetId': digest, 'mime': mime, 'bytes': len(raw), 'kind': 'video' if mime.startswith('video/') else 'image'}
@@ -87,8 +89,11 @@ class PublicMedia:
         self.bytes=0
 
     def add(self, raw, mime, **metadata):
-        if self.bytes+len(raw)>160_000_000 or len(self.manifest)>=160: return None
-        item=put(self.root,raw,mime)
+        digest=hashlib.sha256(raw).hexdigest()
+        if digest in self.manifest:
+            return dict(self.manifest[digest], **metadata, previewUrl=f"/dashboard/api/media/{self.environment}/{digest}")
+        if self.bytes+len(raw)>160_000_000: return None
+        item=put(self.root,raw,mime,protected=self.manifest)
         if not item:return None
         if item['assetId'] not in self.manifest:self.bytes+=len(raw)
         self.manifest[item['assetId']]=item

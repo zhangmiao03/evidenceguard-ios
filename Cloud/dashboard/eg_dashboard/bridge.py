@@ -48,6 +48,11 @@ def summary(value):
 
 
 def instrument(ops, native):
+    try:
+        from .trace_retention import install as install_retention
+    except ImportError:
+        from evidenceguard.trace_retention import install as install_retention
+    install_retention(ops)
     runtime = importlib.import_module('evidenceguard.harness.runtime')
     providers = importlib.import_module('evidenceguard.harness.providers')
     tools = importlib.import_module('evidenceguard.harness.tools')
@@ -188,6 +193,11 @@ def attach(app, ops, native):
     recorder = getattr(store, 'ops', None)
     if not recorder:
         raise RuntimeError('Observer enabled without recorder')
+    try:
+        from .display_receipts import install as install_receipts
+    except ImportError:
+        from evidenceguard.display_receipts import install as install_receipts
+    install_receipts(app, store)
     for name in ('evidenceguard.harness.providers', 'evidenceguard.video.providers'):
         module = importlib.import_module(name)
         for item in vars(module).values():

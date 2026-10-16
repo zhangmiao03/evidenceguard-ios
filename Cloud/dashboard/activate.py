@@ -121,7 +121,8 @@ def activate(release, capture_content=False):
         config={'output':'/var/lib/evidenceguard-dashboard','reference':str(release/'reference.json'),'revision':release.name,
             'environments':{label:{'title':titles[label],'service':service,'source':source+'/evidenceguard',
                 'state':'/var/lib/'+service+'/observer-state.json','observations':'/var/lib/'+service+'/observability.sqlite3',
-                'database':'/var/lib/'+service+'/evidenceguard.sqlite3'} for label,(service,port,source,venv) in services.items()}}
+                'database':'/var/lib/'+service+'/evidenceguard.sqlite3',
+                'secretFiles':['/etc/'+service+'/cloud.env']} for label,(service,port,source,venv) in services.items()}}
         CONFIG.write_text(json.dumps(config,ensure_ascii=False));CONFIG.chmod(0o644)
         for label,(service,port,source,venv) in services.items():
             target=Path('/etc/systemd/system')/(service+'.service.d/40-dashboard-observer.conf')

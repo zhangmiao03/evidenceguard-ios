@@ -135,7 +135,8 @@ def visual_traces(db):
 
     Read a bounded supplement of real rows, never recreate missing content.
     """
-    traces=[r[0] for r in db.execute("""SELECT json_extract(payload,'$.traceId') FROM records
+    source = 'critical_records' if db.execute("SELECT 1 FROM sqlite_master WHERE name='critical_records'").fetchone() else 'records'
+    traces=[r[0] for r in db.execute(f"""SELECT json_extract(payload,'$.traceId') FROM {source}
         WHERE json_extract(payload,'$.kind')='model'
         OR json_extract(payload,'$.name') IN ('agent.result','vector.search')
         OR (json_extract(payload,'$.kind')='prompt' AND json_array_length(payload,'$.data.inputMedia')>0)
@@ -143,9 +144,14 @@ def visual_traces(db):
     if not traces:return [],{'traces':0,'returned':0,'truncated':False,'traceLimit':20,'recordLimit':240,'byteLimit':2500000}
     placeholders=','.join('?' for _ in traces)
     values=[];size=0;cut=False
-    for (raw,) in db.execute(f"SELECT payload FROM records WHERE json_extract(payload,'$.traceId') IN ({placeholders}) ORDER BY at DESC LIMIT 241",traces):
+    for (raw,) in db.execute(f"SELECT payload FROM {source} WHERE json_extract(payload,'$.traceId') IN ({placeholders}) ORDER BY at DESC LIMIT 241",traces):
         if len(values)>=240:cut=True;break
         # A large prompt must not hide all other tasks and final receipts.
         if size+len(raw.encode())>2500000:cut=True;continue
         size+=len(raw.encode());values.append(json.loads(raw))
     return values,{'traces':len(traces),'returned':len(values),'truncated':cut,'traceLimit':20,'recordLimit':240,'byteLimit':2500000}
+
+
+def is_critical(row):
+    name=row.get('name','')
+    return row.get('kind') in {'model','prompt'} or name.startswith(('agent.','tool.','codex.','context.','model.')) or name in {'camera_completed','camera_failed','vector.search'}

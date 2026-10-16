@@ -7,6 +7,7 @@ Run on the EC2 with its existing venv. Do not schedule this as a health probe.
 import argparse
 import hashlib
 import json
+import secrets
 from pathlib import Path
 import time
 import uuid
@@ -22,7 +23,8 @@ def main():
     config=dotenv_values('/etc/'+service+'/cloud.env')
     installation=str(uuid.uuid4());request_id='dashboard-smoke-'+uuid.uuid4().hex
     with httpx.Client(base_url=f'http://127.0.0.1:{port}',timeout=10,trust_env=False,
-        headers={'Authorization':'Bearer '+config['EG_ACCESS_TOKEN'],'X-EG-Installation-ID':installation}) as client:
+        headers={'Authorization':'Bearer '+config['EG_ACCESS_TOKEN'],'X-EG-Installation-ID':installation,
+                 'X-EG-Private-Key':secrets.token_urlsafe(32)}) as client:
         conversation=client.post('/api/agent/conversations',json={'requestId':str(uuid.uuid4())})
         if conversation.status_code==404:
             # Older team builds create a conversation implicitly with the run.

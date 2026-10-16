@@ -168,6 +168,39 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(diagnostics.all.allSatisfy { $0.value(forHTTPHeaderField: "X-EG-Media-Session") == nil })
     }
 
+    func testDisplayReceiptUsesSeparateTransportAndHashesOnly() async throws {
+        let received = expectation(description: "display hashes delivered")
+        let diagnostics = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path == "/api/ops/display-receipts" {
+                diagnostics.append(item.request)
+                item.reply("{}", status: 404) // Older servers may not support the optional receipt.
+                received.fulfill()
+            } else if item.request.url!.path == "/api/ops/client-events" { item.reply("{}") }
+            else { item.reply(#"{"id":"live-test","deviceId":"sdk-test","token":"synthetic-media-token"}"#) }
+        }
+        let api = client()
+        api.observeDisplay(runID: "run-test", status: "completed", backendHash: String(repeating: "a", count: 64), displayHash: String(repeating: "b", count: 64))
+        await fulfillment(of: [received], timeout: 2)
+        let live = try await api.startMedia("sdk-test")
+        XCTAssertEqual(live.id, "live-test")
+        let request = try XCTUnwrap(diagnostics.all.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-EG-Installation-ID"))
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-EG-Media-Session"))
+        var data = request.httpBody ?? Data()
+        if let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable { let count = stream.read(&buffer, maxLength: buffer.count); if count <= 0 { break }; data.append(contentsOf: buffer.prefix(count)) }
+        }
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(body["backendTextHash"] as? String, String(repeating: "a", count: 64))
+        XCTAssertEqual(body["displayTextHash"] as? String, String(repeating: "b", count: 64))
+        XCTAssertEqual(body["presentationVersion"] as? String, ChatPresentation.version)
+        XCTAssertNil(body["text"]); XCTAssertNil(body["answer"])
+    }
+
     func testUnavailableCollectorDoesNotReplaceBusinessErrors() async throws {
         let diagnostics = Requests()
         for scenario in 0..<4 {

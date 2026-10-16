@@ -346,6 +346,23 @@ struct APIClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
+    func observeDisplay(runID: String, status: String, backendHash: String, displayHash: String) {
+        struct Receipt: Encodable {
+            var id = UUID().uuidString
+            var runId: String; var status: String; var backendTextHash: String; var displayTextHash: String
+            var presentationVersion = ChatPresentation.version
+            var platform = "ios"
+            var appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown") + "/" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
+        }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/ops/display-receipts"))
+        guard (try? authorize(&request)) != nil else { return }
+        request.httpMethod = "POST"; request.timeoutInterval = 2.5
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(Receipt(runId: runID, status: status, backendTextHash: backendHash, displayTextHash: displayHash))
+        guard request.httpBody != nil else { return }
+        Task(priority: .background) { await observations.send(request) }
+    }
+
     // The dashboard secret never enters the mobile app. This narrow endpoint
     // accepts only client-reported metadata and cannot write model/prompt data.
     func observe(name: String, traceID: String, parentSpanID: String? = nil, status: String = "observed", durationMS: Double? = nil, deviceID: String? = nil, requestID: String? = nil, route: String? = nil) {

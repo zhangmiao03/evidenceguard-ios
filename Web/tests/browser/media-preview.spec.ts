@@ -16,6 +16,7 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
  await page.route('**/dashboard/api/media/demo/*',r=>r.fulfill({contentType:'image/jpeg',body:readFileSync(new URL('../../src/dashboard/assets/PetThumb.jpg',import.meta.url))}));
  await page.goto('/dashboard?view=images');
  await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+ await page.getByText('视觉分析、事件核验与模型实际输入',{exact:true}).click();
  await expect(page.getByText('真实调用结果测试',{exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'云台摄像头 1'})).toBeVisible();
  await page.getByRole('button',{name:'豆包识图实际输入 · 放大图片 1'}).click();
