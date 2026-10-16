@@ -142,6 +142,8 @@ def test_ingest_to_proactive_message_reuses_review_and_has_openable_evidence(tmp
     with TestClient(app) as client:
         client.headers['X-EG-Installation-ID']=client_id
         client.put('/api/personal/preferences',json=dict(enabled=True,quietStart=0,quietEnd=0))
+        app.state.personal.tasks.create(client_id,dict(id='task-request',clientId=client_id,executionMode='live',conversationId='watch-chat',message='有画面活动提醒我'),
+            '关注画面活动','motion',app.state.ingest.camera_id('T8214-TEST'),'today','Asia/Shanghai',now=now-60)
         response=client.post('/api/sdk/events',json=dict(events=[event()],reviewRequested=True))
         assert response.status_code==202
         evidence_id=response.json()['receipts'][0]['id']
@@ -151,7 +153,7 @@ def test_ingest_to_proactive_message_reuses_review_and_has_openable_evidence(tmp
         client.portal.call(app.state.proactive.step,now+13)
         snapshot=client.get('/api/personal').json()
         assert len(snapshot['messages'])==1
-        assert snapshot['messages'][0]['sources'][0]['evidenceId']==evidence_id
+        assert any(x.get('evidenceId')==evidence_id for x in snapshot['messages'][0]['sources'])
         assert snapshot['messages'][0]['skillId'] is None
         evidence=app.state.store.evidence()[0]
         assert client.get(evidence['imageUrl']).status_code==200
@@ -170,7 +172,7 @@ def test_unselected_images_never_claim_to_have_been_reviewed(tmp_path):
         assert len(unread)==2 and all('未完成视觉核验' in e['reason'] for e in unread)
         timeline=i.timeline()['events']
         assert {e['id'] for e in timeline if e['reviewStatus']=='completed'}==set(ep['reviewedEvidenceIds'])
-        assert {x['evidenceId'] for x in i.sources(ep['id']) if x['type']=='camera_evidence'}==set(ep['reviewedEvidenceIds'])
+        assert {x['evidenceId'] for x in i.sources(ep['id']) if x['type']=='camera_evidence' and x.get('visualReview')}==set(ep['reviewedEvidenceIds'])
         s.close()
     asyncio.run(check())
 

@@ -136,9 +136,18 @@ class ProactiveEngine:
         start,end = preferences['quietStart'],preferences['quietEnd']
         return start <= hour < end if start < end else (hour >= start or hour < end) if start != end else False
 
+    def event_tasks(self, job, now):
+        episode=self.ingest.episode(job.get('cameraEpisodeId') or job['dedupe']) if self.ingest else None
+        if not episode: return []
+        events=self.ingest.events(episode['id'])
+        latest=max((e['metadata']['startMs']/1000 for e in events),default=0)
+        return self.personal.tasks.matching(job['client'],episode,latest,now)
+
     def gate(self, job, now, publication=True):
         p = self.personal.profile(job['client'])['preferences']
         if not p['enabled']: return 'cancelled',None,'用户已关闭主动提醒'
+        if job.get('report') and now >= job['report']['endAt'] + briefings.REPORT_GRACE_SECONDS:
+            return 'expired',None,'已超过报告时段，不再补发旧的早晚报告'
         if now >= job['expiresAt']: return 'expired',None,'触发已过期，未发送旧提醒'
         if job['kind']=='schedule' and not p['dailySummary']: return 'cancelled',None,'每日概况已关闭'
         if job['kind']=='schedule' and not job.get('report') and job['dedupe'].startswith('daily:'):
@@ -171,6 +180,8 @@ class ProactiveEngine:
             events=self.ingest.events(episode['id'])
             if not events or now-max(e['metadata']['startMs']/1000 for e in events)>3600:
                 return 'expired',None,'事件已超过即时提醒时效，证据仍保留'
+            if not self.event_tasks(job,now):
+                return 'cancelled',None,'事件已保存，没有匹配用户交代的关注事项，不打断聊天'
         skill = self.store.skill(job['skillId']) if job['skillId'] else None
         if skill and official_mode(getattr(self.runtime,'cameras',None)):
             ids=registered_device_ids(self.store)
@@ -232,7 +243,9 @@ class ProactiveEngine:
         if job.get('sourceKind',job['kind'])=='demo_event' and self.demo:
             return self.demo.sources(job['dedupe'])
         if job.get('sourceKind',job['kind'])=='camera_event' and self.ingest:
-            return self.ingest.sources(job.get('cameraEpisodeId') or job['dedupe'])
+            return self.ingest.sources(job.get('cameraEpisodeId') or job['dedupe']) + [
+                dict(id=t['id'],type='requested_task',title=t['title'],cameraId=t['cameraId'],
+                     observedAt=t['createdAt'],reason='用户主动交代的事件关注') for t in self.event_tasks(job,now)]
         skills = [s for s in self.store.skills() if not job['skillId'] or s['id']==job['skillId']][:20]
         if official_mode(getattr(self.runtime,'cameras',None)):
             ids=registered_device_ids(self.store)
@@ -300,7 +313,18 @@ class ProactiveEngine:
         try:
             source_fingerprint=hashlib.sha256(json.dumps(sources,sort_keys=True).encode()).hexdigest()
             cached=job.get('assessment')
-            if cached and job.get('assessmentContext')==fingerprint and job.get('assessmentSources')==source_fingerprint:
+            if job.get('sourceKind',job['kind'])=='camera_event' and self.event_tasks(job,now):
+                from .personal_tasks import EVENT_LABELS
+                ep=self.ingest.episode(job.get('cameraEpisodeId') or job['dedupe'])
+                events=self.ingest.events(ep['id'])
+                observed=max(e['metadata']['startMs']/1000 for e in events)
+                stamp=datetime.fromtimestamp(observed,ZoneInfo(profile['preferences']['timezone'])).strftime('%m月%d日 %H:%M')
+                label=EVENT_LABELS[ep['kind']]
+                body=f'你交代的关注事项有新记录。摄像头在 {stamp} 报告了{label}。'
+                body+= '可以打开事件画面核对；设备检测标签不等于已确认现场动作。' if any(e.get('imageUrl') for e in events) else '暂未取得事件图片，现场细节还需要核对。'
+                decision=Decision(valueScore=100,title='关注的事件有新记录',body=body,
+                                  reason='匹配用户明确交代的摄像头和事件类型',sourceIds=[s['id'] for s in sources[:12]])
+            elif cached and job.get('assessmentContext')==fingerprint and job.get('assessmentSources')==source_fingerprint:
                 decision=Decision.model_validate(cached)
             else:
                 job['runId']=job['id']+f"-attempt-{job['attempts']}"
@@ -333,7 +357,7 @@ class ProactiveEngine:
             fixture=any(s.get('sourceType') in {'fixture','replay','synthetic_demo'} for s in sources)
             body=decision.body
             if fixture and '测试' not in body: body='测试场景：'+body
-            message=dict(id='message-'+job['id'],jobId=job['id'],runId=job['runId'],role='assistant',
+            message=dict(id='message-'+job['id'],jobId=job['id'],runId=job.get('runId'),role='assistant',
                          origin='proactive',kind=job['kind'],title=decision.title,body=body,
                          why=decision.reason,sources=refs,createdAt=current,read=False,feedback=None,
                          skillId=job['skillId'],triggerKey=job['dedupe'],delivery='in_app',valueScore=decision.valueScore,mergeKey=self.merge_key(job))
@@ -384,7 +408,7 @@ class ProactiveEngine:
                 selected = []
                 generation = 'facts_refreshed'
             rendered = briefings.render(job['report'], fresh, selected)
-            message = dict(id='message-'+job['id'],jobId=job['id'],runId=job['runId'],role='assistant',
+            message = dict(id='message-'+job['id'],jobId=job['id'],runId=job.get('runId'),role='assistant',
                            origin='proactive',kind='schedule',createdAt=current,read=False,feedback=None,
                            skillId=None,triggerKey=job['dedupe'],delivery='in_app',valueScore=None,
                            report=job['report'],generation=generation, **rendered)

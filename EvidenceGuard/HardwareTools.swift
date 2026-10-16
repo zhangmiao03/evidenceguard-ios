@@ -75,6 +75,7 @@ struct HardwareExecutorSession: Sendable { var id: String; var token: String; va
                             } else if op["tool"].string == "camera_observe", command["command"].string == "execute" {
                                 let fresh = try await connection.hardwareManifest(camera: camera)
                                 guard fresh["privacy"].string == "off" else { throw APIProblem(message: "设备隐私开启或无法读取") }
+                                try await connection.prepareAssistantCamera(session.deviceID, client: client)
                                 _ = try await client.hardware("executors/\(session.id)/observe", body: .object([
                                     "operationId": op["id"], "leaseToken": op["leaseToken"]]), executor: session)
                                 self.active[key] = nil

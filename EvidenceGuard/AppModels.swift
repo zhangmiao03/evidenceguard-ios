@@ -1,5 +1,13 @@
 import Foundation
 
+enum CameraQuestion {
+    static func needsLiveFrame(_ message: String) -> Bool {
+        let text = message.lowercased()
+        if ["录像", "回放", "昨天", "历史", "提醒我", "通知我", "不要看", "不用看"].contains(where: text.contains) { return false }
+        return ["画面", "看一眼", "看一下摄像头", "看看摄像头", "现在门口", "快递到没到", "live", "snapshot"].contains(where: text.contains)
+    }
+}
+
 enum HardwareValue: Codable, Equatable, Sendable {
     case object([String: HardwareValue]), array([HardwareValue]), string(String), number(Double), bool(Bool), null
     init(from decoder: Decoder) throws {
@@ -49,6 +57,7 @@ enum ChatPresentation {
         "camera_talk_stop":"结束对讲", "camera_light_set":"调整摄像头灯光", "camera_dual_mode_set":"调整双摄画面",
         "camera_ptz_mode_set":"调整摄像头跟踪模式", "camera_panorama_generate":"生成全景画面", "operation_cancel":"取消操作",
         "list_camera_capabilities":"查看摄像头能力", "request_camera_snapshot":"查看摄像头新画面", "list_tasks":"查看任务",
+        "save_personal_task":"保存你交代的事项",
         "get_task_state":"查看任务进度", "search_evidence":"查找事件资料", "read_stored_image":"查看已保存的图片",
         "search_recordings":"查找并核对录像", "draft_visual_skill":"整理守护草案", "list_skill_capabilities":"查看可用守护能力",
         "list_camera_events":"查看摄像头事件", "request_recheck":"重新查看现场", "read_home_report":"整理家庭报告",
@@ -220,6 +229,7 @@ struct ToolReceipt: Codable, Equatable { var tool: String; var status: String }
 struct CameraCapture: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var skillId: String?; var status: String; var reason: String
     var requestedAt: Double; var capturedAt: Double?; var imageUrl: String?; var sourceType: String?
+    var sampledAt: Double? = nil; var timestampMeaning: String? = nil
     var historical: Bool?
 }
 struct CameraOccupancy: Codable, Identifiable, Equatable {
@@ -306,6 +316,7 @@ enum AppTab: Int, CaseIterable {
 enum AppRoute: Hashable {
     case connectedApps, cameraObservation
     case pushDelivery(String, String)
+    case liveCamera(String)
     case pushConversation(String, String?, String)
     case demoScene
     case skill(String), evidence(String), evidenceList(String?), cameras, camera(String), alerts
@@ -488,12 +499,22 @@ struct PersonalSnapshot: Codable, Equatable {
     var messages: [AssistantMessage]?
     var activity: [ProactiveActivity]?
     var automaticMemory: AutomaticMemoryStatus?
+    var tasks: [PersonalTask]?
+}
+
+struct PersonalTask: Codable, Equatable, Identifiable {
+    var id: String; var title: String; var instruction: String; var conversationId: String
+    var status: String; var reason: String; var createdAt: Double; var expiresAt: Double?
+    var cameraId: String?; var eventType: String?
+    var statusLabel: String { ["waiting_events":"等待新事件", "needs_setup":"待配置", "expired":"已到期", "cancelled":"已结束"][status] ?? "待确认" }
+    var isOpen: Bool { status == "waiting_events" || status == "needs_setup" }
 }
 
 struct ProactiveSource: Codable, Identifiable, Equatable {
     var id: String; var type: String
     var name: String?; var title: String?; var reason: String?; var limitation: String?
     var observedAt: Double?; var skillId: String?; var evidenceId: String?; var sourceType: String?
+    var cameraId: String?; var imageUrl: String?
 }
 struct AssistantMessage: Codable, Identifiable, Equatable {
     var id: String; var title: String; var body: String; var why: String

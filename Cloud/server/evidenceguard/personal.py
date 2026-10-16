@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .camera.sources import official_mode, registered_device_ids
 from .briefings import normalize_preferences, due_report, LABELS
+from .personal_tasks import PersonalTasks
 
 
 class Preferences(BaseModel):
@@ -65,6 +66,7 @@ class PersonalAgent:
         self.last_error = None
         self.engine = None
         self.memory = None
+        self.tasks = PersonalTasks(store)
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_profiles (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
             store.db.execute('CREATE TABLE IF NOT EXISTS personal_memories (id TEXT PRIMARY KEY, client TEXT NOT NULL, payload TEXT NOT NULL)')
@@ -134,12 +136,12 @@ class PersonalAgent:
         return self.snapshot(client)
 
     def snapshot(self, client):
-        return self.profile(client) | dict(memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error, messages=self.engine.messages(client) if self.engine else [], activity=self.engine.activity(client) if self.engine else [], automaticMemory=self.memory.status(client) if self.memory else None)
+        return self.profile(client) | dict(tasks=self.tasks.list(client), memories=self.memories(client), inbox=self.inbox(client), delivery='in_app', lastError=self.last_error, messages=self.engine.messages(client) if self.engine else [], activity=self.engine.activity(client) if self.engine else [], automaticMemory=self.memory.status(client) if self.memory else None)
 
     def context(self, client):
         if not client: return None
         profile = self.profile(client)
-        return dict(revision=profile['revision'], preferences=profile['preferences'], memories=self.memories(client),
+        return dict(revision=profile['revision'], preferences=profile['preferences'], memories=self.memories(client), tasks=self.tasks.list(client),
                     scope='installation preferences; shared demo household observations', grantsPermissions=False)
 
     def emit(self, client, dedupe, kind, title, body, now, skill_id=None):

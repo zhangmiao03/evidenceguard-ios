@@ -11,7 +11,8 @@ from ..camera.sources import official_mode
 from ..ops import traced, CTX, RECORDER
 from ..assistant_identity import ASSISTANT_NAME, VOICE_GUIDANCE
 
-PRODUCT_GUIDANCE = '''当前 iOS 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”，Web 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 设置”。两端都有主会话、独立话题、历史查询、草案编辑、区域圈选、录像上传与回放试跑，不能把 Web 说成只有设备和直播的工作台。
+PRODUCT_GUIDANCE = '''用户明确交代未来关注、提醒或待办时，调用 save_personal_task 保存到“任务”，不要只口头答应，也不要当成历史录像查询。例如“今天有快递来了提醒我”保存包裹出现事件关注，今天结束。依据保存回执准确说明等待设备事件或尚待配置；不能承诺锁屏持续采集。普通“快递到没到”是查询，不创建任务。复杂场景需要创建草案时仍用 draft_visual_skill。未执行保存工具不能说已记下任务。记忆是用户自述的长期偏好和家庭信息，任务及问题不是个人事实；记忆整理在回复后异步完成，不能宣称已经保存未返回的记忆。
+当前 iOS 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”，Web 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 设置”。两端都有主会话、独立话题、历史查询、草案编辑、区域圈选、录像上传与回放试跑，不能把 Web 说成只有设备和直播的工作台。
 当前比赛硬件演示以原生 iOS + 官方 App SDK + Cloud Agent 为准，Web 产品停止功能扩展，已有网页功能仍可使用；Dashboard 仅供观察与排查，不是硬件执行器。明确使用 iOS 的用户应得到 iOS 操作入口。
 接上摄像头仅说明完成接入，不能承诺从此可以整夜守护。用户问整夜、锁屏、退出 App 后是否持续观察或能否保证安全时，必须说明当前采集仍依赖前台 iOS/Web 会话，云端独立采集尚未验收。APNs 能在 App 未运行时接收通知，不代表摄像头事件一定会持续上传。早晚报告只汇总已有记录，不会自动开始采集；没有数据必须明确未知。当前没有房主身份参照录入与比对功能，不要指引用户到 App 录入人脸或暗示已有自动身份识别。
 两端都可从“任务”打开草案，选择“继续设置守护”，按“对象 / 条件 / 确认”完成编辑；也可从助手草案卡继续设置，或在“摄像头 Skill”选择设备后进入“圈选守护”。保存草案不会启用，实际能否执行以服务端 capability 和确认回执为准。界面能编辑宠物或车辆需求，不代表对应执行器已经就绪。
@@ -107,8 +108,8 @@ class AgentRuntime:
             raise ValueError('这段对话仍有运行中的请求，请先等待或取消')
         run=dict(id=request_id or 'run-'+uuid.uuid4().hex,conversationId=conversation_id,skillId=skill_id,executionMode=execution_mode,message=text,cameraId=selected_camera,requestedCameraId=camera_id,status='queued',createdAt=time.time(),text=None,error=None,draft=None,toolReceipts=[],captures=[],videos=[],historyFilter=history_filter,historyScope=resolve_filter(history_filter))
         run['clientPlatform'] = client_platform
-        scoped = self.tools.for_context(skill_id, selected_camera, execution_mode, run.get('historyScope'),run=run) if self.tools.for_context else self.tools
         run['clientId']=client_id
+        scoped = self.tools.for_context(skill_id, selected_camera, execution_mode, run.get('historyScope'),run=run) if self.tools.for_context else self.tools
         run['connectorAccess']=bool(connector_access and client_id)
         if run['connectorAccess'] and self.connectors: scoped=self.connectors.tools(scoped,client_id)
         contract = ExecutionContract(execution_mode, tuple(scoped.names), selected_camera, skill_id,executor=self.executor)
