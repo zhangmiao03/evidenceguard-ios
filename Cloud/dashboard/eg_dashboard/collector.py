@@ -193,7 +193,9 @@ class Collector:
         now=time.time();records=[];coverage={'readOnly':True,'publicProjection':True,'contentCapture':False,
             'environment':label,'sampledAt':now,'clock':'server receive wall clock; durations use monotonic clocks',
             'limitations':['No historical model backfill','Full text only for explicitly captured records; older records remain metadata-only',
-                'No model private reasoning, credentials, camera images or video URLs','No inference that missing events mean success']}
+                'No model private reasoning or credentials; public media limited to referenced bounded copies','No inference that missing events mean success']}
+        from .media_assets import PublicMedia
+        assets=PublicMedia(self.output,label,Path(environment['observations']).parent/'observer-media')
         try:
             state=json.loads(Path(environment['state']).read_text())
         except (OSError,ValueError):state={}
@@ -241,7 +243,8 @@ class Collector:
         except (OSError,ValueError,sqlite3.Error) as exc:coverage['resourceErrorType']=type(exc).__name__
         try:
             from .media import read_media
-            media,media_coverage=read_media(environment['database'],now,state.get('embeddingSignature') if same_process else None)
+            video_root=state.get('videoRoot') or str(Path(environment['database']).parent/'recordings')
+            media,media_coverage=read_media(environment['database'],now,state.get('embeddingSignature') if same_process else None,assets,video_root)
             records.extend(media)
             coverage['mediaIndex']=media_coverage
         except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
@@ -259,6 +262,10 @@ class Collector:
             selected.append(row)
         selected.reverse()
         selected.sort(key=lambda r:r['at'])
+        for row in selected:
+            inputs=row.get('data',{}).get('inputMedia')
+            if isinstance(inputs,list):row['data']['inputMedia']=[assets.reference(m) for m in inputs[:6]]
+        assets.finish()
         count=sum(r['kind']!='resource' for r in selected)
         coverage['contentRecords']=sum(r['data'].get('capture',{}).get('mode') in {'full_redacted','truncated'} for r in selected)
         coverage.update(returned=len(selected),truncated=coverage.get('totalStored',0) is not None and coverage.get('totalStored',0)>count,

@@ -7,6 +7,10 @@ feat/anker-assistant@ce8204d2809a758eb65a286abb860ab54b7efbc7。
 main@cc16c985b2686efb520f375247993fd63c80c7e7 已在历史中。
 本轮不发布云端服务、不构建或上传 TestFlight。
 
+推送前远端新增 dongrunze@0993957，已另行合并其 Dashboard 实际模型输入图、
+检索证据与图片展示改动。保留新版展示样式，同时保留 iOS 为硬件演示端的
+说明；这些观察页面不扩展已停止开发的 Web 硬件产品。
+
 iOS 合入助手时间线、来源消息定位、聊天记忆管理、早晚报告、连接应用、
 摄像头观察设置、SDK 托管账号与宿主安装包检查。保持原有五栏和工具执行器。
 保留 dongrunze 的诊断会话隔离、Token 复用、门铃双摄描述、服务兼容测试、
@@ -49,7 +53,7 @@ Cloud/server/evidenceguard/harness/runtime.py：
    提示词和画面到 Agent 的替身测试；不代表真实模型质量或真机验收。
 2. Windows Python，发布/回滚检查：24 passed。
    python -m pytest -q -p no:cacheprovider Cloud/demo_release
-3. Dashboard Python unittest：23 passed。
+3. Dashboard Python unittest：初次整合 23 passed，合入 0993957 后 27 passed。
    PYTHONPATH=Cloud/dashboard python -m unittest discover -s Cloud/dashboard/tests -q
 4. Git 跟踪的 Web Node 单元测试：16 passed；未纳入本地未提交 hardware-lab。
 5. Web TypeScript / Vite 生产构建通过。原生 iOS 的编译不包含在这一结果内。
@@ -57,6 +61,8 @@ Cloud/server/evidenceguard/harness/runtime.py：
    iOS 网站交互展示、自动记忆兼容、单次概况不回写隐藏早晚报告字段。
    npx playwright test tests/browser/showcase.spec.ts tests/browser/product.spec.ts \
      --grep 'iOS tour|cloud automatic memory|legacy summary'
+   合入 0993957 后重新构建通过，并对 dashboard.spec.ts、showcase.spec.ts、
+   media-preview.spec.ts 进行四浏览器回归：36 passed，覆盖新图片与检索展示。
 7. SDK/typecheck_tools.py：三个共享 Kotlin facade 文件对官方 Android AAR
    类型检查通过。AAR SHA-256 为
    27916001d9f973361910e2a59da3a870f540f3038816dfc6141b3d33c633f87a。

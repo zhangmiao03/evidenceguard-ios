@@ -131,6 +131,7 @@ Environment=PYTHONPATH={release}
 Environment=EG_OPS_ENABLED=1
 Environment=EG_OPS_CAPTURE_CONTENT=0
 Environment=EG_DASHBOARD_CAPTURE_CONTENT={int(capture_content)}
+Environment=EG_DASHBOARD_CAPTURE_MEDIA={int(capture_content)}
 Environment=EG_OPS_DATABASE=/var/lib/{service}/observability.sqlite3
 Environment=EG_DASHBOARD_ENVIRONMENT={label}
 Environment=EG_DASHBOARD_REVISION={release.name}

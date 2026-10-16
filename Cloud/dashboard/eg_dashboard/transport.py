@@ -36,8 +36,11 @@ def install(ops):
         trace = dict(ctx, spanId=uuid.uuid4().hex, parentSpanId=ctx.get('spanId'))
         pid = uuid.uuid4().hex
         try:
+            from .media_assets import capture_inputs
+            inputs = await asyncio.to_thread(capture_inputs, json, recorder)
             request, capture = content.clean(json)
             snapshot = {'request': request, 'capture': capture, 'contentCapture': True,
+                        'inputMedia': inputs,
                         'hashMeaning': 'secret-filtered request snapshot; not wire bytes'}
             snapshot['sha256'] = ops.digest(request)
             recorder.emit('request.snapshot', kind='prompt', record_id=pid, trace=trace, data=snapshot)

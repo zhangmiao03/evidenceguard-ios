@@ -16,6 +16,7 @@ import { RecordContent } from "./RecordContent";
 import { cloudJSON } from "./cloud.mjs";
 import { ImageAnalysis, VideoIndex } from "./MediaPanels";
 import { Showcase } from "./Showcase";
+import {deviceLabel,eventLabel,recordLabel,traceLabel} from './labels';
 
 type Row = {
   id: string;
@@ -393,11 +394,11 @@ export default function Dashboard() {
                             setTrace(null);
                           }}
                         >
-                          {String(r.data.model || r.data.name || r.name)}
+                          {r.data.model || recordLabel(r,bundle.records)}
                           <small>
                             {r.kind === "model"
-                              ? r.name
-                              : r.data.id || r.traceId}
+                              ? eventLabel(r.name)
+                              : eventLabel(r.name)}
                           </small>
                         </button>
                       </td>
@@ -448,7 +449,7 @@ export default function Dashboard() {
                 >
                   <span className={`eg-ops-dot ${bad ? "bad" : ""}`} />
                   <span>
-                    <strong>{id}</strong>
+                    <strong>{traceLabel(id,bundle.records)}</strong>
                     <small>
                       {events.length} 条记录 ·{" "}
                       {[...new Set(events.map((r) => r.platform))].join(" / ")}
@@ -985,7 +986,7 @@ export default function Dashboard() {
             >
               <option value="">全部设备</option>
               {devices.map((s) => (
-                <option key={s}>{s}</option>
+                <option key={s} value={s}>{deviceLabel(s,bundle.records)}</option>
               ))}
             </select>
           </label>
@@ -1039,11 +1040,11 @@ export default function Dashboard() {
               关闭详情 ×
             </button>
             <p className="eg-ops-nav-label">INSPECT / READ ONLY</p>
-            <h2>{selected?.name || "Trace 时间线"}</h2>
+            <h2>{selected?eventLabel(selected.name):"任务运行时间线"}</h2>
             {trace && (
               <>
                 <p className="eg-ops-note">
-                  {trace} · 同一关联 ID
+                  {traceLabel(trace,bundle.records)} · 同一任务
                   的全部记录（包含筛选外上下文）；仅同一进程内的 duration
                   可直接比较。
                 </p>
@@ -1064,10 +1065,10 @@ export default function Dashboard() {
                           {fmtTime(r.at)} · {r.platform}
                         </small>
                         <strong>
-                          {r.name} {badge(r.status)}
+                          {eventLabel(r.name)} {badge(r.status)}
                         </strong>
                         <span>
-                          {r.spanId} ← {r.parentSpanId || "root / unknown"}
+                          {r.parentSpanId ? '关联到上一步执行' : '任务起点 / 未记录上游'}
                         </span>
                       </button>
                     ))}

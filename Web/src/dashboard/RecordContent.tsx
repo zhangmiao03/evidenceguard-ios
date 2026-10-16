@@ -1,3 +1,4 @@
+import {MediaPreview} from './MediaPreview';
 type RecordItem = { id: string; kind: string; name: string; data: Record<string, any> };
 const show = (value: unknown) => typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
@@ -10,7 +11,7 @@ function Messages({ messages }: { messages: unknown }) {
   if (!Array.isArray(messages)) return <Body title="消息" value={messages} />;
   return <div className="eg-ops-messages">{messages.map((message, i) =>
     <section className="eg-ops-message" key={i}>
-      <h4><span>{i + 1}</span> {message.role || "unknown"}{message.tool_call_id && <small> · 工具回执 {message.tool_call_id}</small>}</h4>
+      <h4><span>{i + 1}</span> {message.role || "unknown"}{message.tool_call_id && <small> · 工具回执</small>}</h4>
       <pre>{show(message.content) ?? "本轮无文本；查看工具调用"}</pre>
       <Body title="模型请求的工具调用" value={message.tool_calls} />
       <Body title="附加消息字段" value={Object.keys(message).some(k => !["role", "content", "tool_calls", "tool_call_id"].includes(k)) ? Object.fromEntries(Object.entries(message).filter(([k]) => !["role", "content", "tool_calls", "tool_call_id"].includes(k))) : undefined} />
@@ -36,9 +37,12 @@ export function RecordContent({ record, records }: { record: RecordItem; records
   const codex = data.transport === "codex_app_server";
   return <div className="eg-ops-record-content" data-testid="record-content">
     <p className={`eg-ops-content-status ${capture?.truncated ? "limited" : ""}`}>
-      {full ? capture.truncated ? "正文已达采集上限 · 截断位置有标记" : "已采集正文 · 密钥与媒体已脱敏" : capture?.mode === "unavailable" ? "本条正文采集失败 · 原业务调用不受影响" : "本条没有完整正文 · 历史摘要不能还原为原文"}
+      {full ? capture.truncated ? "正文已达采集上限 · 截断位置有标记" : "已采集正文 · 密钥已隐藏 · 可用媒体在下方单独展示" : capture?.mode === "unavailable" ? "本条正文采集失败 · 原业务调用不受影响" : "数据库快照 / 历史记录：未采集的输入不能还原"}
     </p>
     {codex && <p className="eg-ops-note">真实 Codex 执行器记录：输入为主程序提供的上下文，输出为执行器返回值。底层 HTTP 次数、原始模型报文和执行器内置提示词不可见；此步骤不计作 HTTP 请求。实际下发的 baseInstructions 与工具回执请查看同一 Trace 的 Codex 协议记录。</p>}
+    {(data.media || data.inputMedia || prompt?.data.inputMedia) && <><h3>{data.media?'记录的来源媒体':'本次提交给模型的媒体'}</h3><MediaPreview items={data.media||data.inputMedia||prompt?.data.inputMedia} title="记录媒体预览"/></>}
+    {record.name==='vector.search'&&<><Body title="查询内容" value={data.query}/><Body title="检索范围与参数" value={body.arguments}/><Body title="候选片段与复核结果" value={body.result}/></>}
+    {record.kind==='resource'&&record.name.startsWith('media_')&&<Body title="记录结论" value={data.review||data.visualReview||data.reason||data.title}/>}
     {record.kind === "prompt" && data.request && <Request request={data.request} />}
     {record.kind === "model" && <>
       {prompt?.data.request ? <Request request={prompt.data.request} /> : <p className="eg-ops-note">关联的输入快照不在当前数据包中。</p>}
