@@ -501,7 +501,7 @@ export default function Dashboard() {
           <div className="eg-ops-kpis">
             {[
               ["关联追踪", stats.traces, "按 traceId 去重，含非 Agent 操作"],
-              ["模型请求", stats.calls, "每次 HTTP 尝试单独计数"],
+              ["模型 HTTP 请求", stats.calls, "仅统计实际观测的 HTTP 尝试"],
               [
                 "HTTP 成功率",
                 stats.httpSuccess == null
@@ -526,11 +526,12 @@ export default function Dashboard() {
               </section>
             ))}
           </div>
+          <p className="eg-ops-note">Codex 执行步骤：{stats.codexSteps}。步骤指主程序与执行器的一次输入输出往返，不代表底层 HTTP 请求次数；其 Token 快照不重复计入 HTTP 用量。</p>
           <div className="eg-ops-grid">
             <section className="eg-ops-panel">
               <div className="eg-ops-panel-head">
-                <h2>模型请求耗时</h2>
-                <small>最近 24 次 · ms · 按记录时间</small>
+                <h2>模型与执行器步骤耗时</h2>
+                <small>最近 24 条 · ms · 点击查看调用边界</small>
               </div>
               {calls.length ? (
                 <div
@@ -582,7 +583,8 @@ export default function Dashboard() {
     if (page === 3)
       return (
         <>
-          {table(calls, "模型 HTTP 调用", "点击查看实际模型、Usage 与请求快照")}
+          {table(calls, "模型与执行器调用", "HTTP 请求与 Codex 步骤分别标明；点击查看实际输入输出")}
+          {table(rows.filter(r => r.name.startsWith("codex.")), "Codex 协议记录", "实际发送的指令、工具回执、返回文本和用量快照；不含内部推理")}
           {table(
             rows.filter(
               (r) =>

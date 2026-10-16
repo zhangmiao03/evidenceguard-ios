@@ -44,18 +44,22 @@ def main():
         if any(r['name']=='agent.finished' for r in rows):break
         time.sleep(1)
     calls=[r for r in rows if r['kind']=='model']
+    http_calls=[r for r in calls if r['data'].get('transport')!='codex_app_server']
+    codex_steps=[r for r in calls if r['data'].get('transport')=='codex_app_server']
     tools=[r['data'].get('tool') for r in rows if r['name']=='tool.finished']
     prompts=[r for r in rows if r['kind']=='prompt']
     result={'environment':args.environment,'runId':run['id'],'status':run['status'],
-        'realModelCalls':len(calls),'models':sorted({r['data']['model'] for r in calls}),
-        'httpStatuses':[r['data'].get('httpStatus') for r in calls], 'tools':tools,
+        'observedHttpCalls':len(http_calls),'codexSteps':len(codex_steps),
+        'models':sorted({r['data']['model'] for r in calls}),
+        'httpStatuses':[r['data'].get('httpStatus') for r in http_calls], 'tools':tools,
         'promptSnapshots':len(prompts),'traceRecords':len(rows),'usageReceived':sum(bool(r['data'].get('usage')) for r in calls),
         'snapshotFresh':time.time()-data['dataset']['exportedAt']<20}
     print(json.dumps(result,ensure_ascii=True))
     assert run['status']=='completed', 'Live model run did not complete'
     assert len(calls)>=2 and len(prompts)==len(calls), 'Incomplete model-tool-model trace'
     assert {'list_camera_capabilities','list_tasks'}<=set(tools), 'Expected read-only tool receipts missing'
-    assert all(r['data'].get('httpStatus')==200 for r in calls)
+    assert all(r['data'].get('httpStatus')==200 for r in http_calls)
+    assert all(r['status']=='executor_ok' for r in codex_steps)
     if args.require_content:
         from eg_dashboard.content import clean
         from eg_dashboard.collector import public_record, readonly
@@ -67,6 +71,14 @@ def main():
         assert all(c['data'].get('content',{}).get('response') is not None for c in calls), 'Model output missing'
         prompt_ids={p['id'] for p in prompts}
         assert all(c['data'].get('promptId') in prompt_ids for c in calls), 'Missing prompt linkage'
+        if codex_steps:
+            protocol=[r['data'] for r in rows if r['name']=='codex.request']
+            assert {'thread/start','turn/start','item/tool/call:response'} <= {r['method'] for r in protocol}, 'Codex protocol inputs missing'
+            instructions=next(r['content']['message']['params']['baseInstructions'] for r in protocol if r['method']=='thread/start')
+            assert instructions, 'Actual Codex base instructions missing'
+            replies=[r['data']['content']['message'] for r in rows if r['name']=='codex.response' and r['data']['method']=='item/completed']
+            assert any(m['params']['item'].get('text') for m in replies), 'Actual Codex output notification missing'
+            assert all(c['data'].get('wireHttpVisible') is False and c['data'].get('usage') is None for c in codex_steps), 'Codex steps mislabeled as HTTP or cumulative usage'
         assert any(any(m.get('role')=='tool' and m.get('tool_call_id') for m in p['data']['request'].get('messages',[])) for p in prompts), 'Tool results did not enter next model request'
         tool_rows=[r for r in rows if r['name']=='tool.finished']
         assert all('arguments' in r['data'].get('content',{}) and 'result' in r['data']['content'] for r in tool_rows), 'Tool body missing'

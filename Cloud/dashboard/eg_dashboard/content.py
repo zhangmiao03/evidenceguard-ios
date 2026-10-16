@@ -18,9 +18,9 @@ MAX_ITEMS = 2000
 REDACTED = '[redacted]'
 TRUNCATED = '[truncated: capture limit]'
 SECRET = re.compile(r'authorization|cookie|api.?key|secret|password|passwd|credential|(?:access|refresh|session|security|id)[_-]?token|^token$|private.?key|tokenhash|^sn$|devicesn|serialnumber|accountid|clientid|importedby', re.I)
-ENV_SECRET = re.compile(r'api.?key|secret|password|credential|(?:access|refresh|session|security|id)[_-]?token|private.?key', re.I)
+ENV_SECRET = re.compile(r'api.?key|(?:^|_)key$|secret|password|credential|(?:access|refresh|session|security|id)[_-]?token|private.?key', re.I)
 PRIVATE_REASONING = {'reasoning_content', 'reasoning', 'thinking', 'chain_of_thought'}
-MEDIA = {'imagebase64', 'image_base64', 'image_url', 'input_audio', 'audio_base64'}
+MEDIA = {'imagebase64', 'image_base64', 'image_url', 'imageurl', 'input_audio', 'audio_base64'}
 
 
 def enabled():

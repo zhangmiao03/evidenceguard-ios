@@ -33,17 +33,20 @@ export function RecordContent({ record, records }: { record: RecordItem; records
   const capture = data.capture;
   const full = capture?.version === 1 && ["full_redacted", "truncated"].includes(capture?.mode);
   const prompt = data.promptId ? records.find(r => r.id === data.promptId && r.kind === "prompt") : undefined;
+  const codex = data.transport === "codex_app_server";
   return <div className="eg-ops-record-content" data-testid="record-content">
     <p className={`eg-ops-content-status ${capture?.truncated ? "limited" : ""}`}>
       {full ? capture.truncated ? "正文已达采集上限 · 截断位置有标记" : "已采集正文 · 密钥与媒体已脱敏" : capture?.mode === "unavailable" ? "本条正文采集失败 · 原业务调用不受影响" : "本条没有完整正文 · 历史摘要不能还原为原文"}
     </p>
+    {codex && <p className="eg-ops-note">真实 Codex 执行器记录：输入为主程序提供的上下文，输出为执行器返回值。底层 HTTP 次数、原始模型报文和执行器内置提示词不可见；此步骤不计作 HTTP 请求。实际下发的 baseInstructions 与工具回执请查看同一 Trace 的 Codex 协议记录。</p>}
     {record.kind === "prompt" && data.request && <Request request={data.request} />}
     {record.kind === "model" && <>
       {prompt?.data.request ? <Request request={prompt.data.request} /> : <p className="eg-ops-note">关联的输入快照不在当前数据包中。</p>}
-      <Body title="模型原始输出（脱敏）" value={body.response} />
+      <Body title={codex ? "Codex 返回主程序的输出（脱敏）" : "模型原始输出（脱敏）"} value={body.response} />
       <Body title="模型错误" value={body.error} />
-      <Body title="调用与用量" value={{ model: data.model, operation: data.operation, httpStatus: data.httpStatus, providerRequestId: data.providerRequestId, usage: data.usage }} />
+      <Body title="调用与用量" value={{ model: data.model, operation: data.operation, transport: data.transport, threadId: data.threadId, turnId: data.turnId, httpStatus: data.httpStatus, providerRequestId: data.providerRequestId, usage: data.usage }} />
     </>}
+    {record.name.startsWith("codex.") && <><Body title={`Codex 协议：${data.method || record.name}`} value={body.message} />{record.name === "codex.usage" && <p className="eg-ops-note">执行器报告的用量快照。同一轮可能多次更新，不应相加，也不能据此推断 HTTP 请求次数。</p>}</>}
     {record.name === "context.prepared" && <><h3>本轮组装的上下文</h3><Messages messages={body.messages} /><Body title="本轮可用工具" value={body.tools} /></>}
     {record.name === "model.output" && <Body title="交给 Agent 的模型输出" value={body.output} />}
     {["tool.started", "tool.finished"].includes(record.name) && <>

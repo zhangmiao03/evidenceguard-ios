@@ -16,7 +16,7 @@ from pathlib import Path
 import time
 from types import SimpleNamespace
 import uuid
-from . import content, transport
+from . import content, transport, codex_adapter
 
 
 def load_ops():
@@ -55,6 +55,7 @@ def instrument(ops, native):
     if getattr(runtime.AgentRuntime, '_dashboard_instrumented', False):
         return
     transport.install(ops)
+    codex_adapter.install(ops)
 
     original_execute = runtime.AgentRuntime._execute
     @functools.wraps(original_execute)
@@ -133,7 +134,9 @@ def instrument(ops, native):
             recorder = getattr(self, 'ops', None)
             if recorder:
                 fields = {'step','name','tool','status','cameraId','deviceId','requestId','sourceType',
-                          'sampledAt','receivedAt','timestampMeaning','mediaId','inputKind','code','reasonCode'}
+                          'sampledAt','receivedAt','timestampMeaning','mediaId','inputKind','code','reasonCode',
+                          'executor','version','threadId','turnId','inputTokens','cachedInputTokens',
+                          'outputTokens','reasoningOutputTokens','totalTokens'}
                 data = {k:v for k,v in payload.items() if k in fields} if isinstance(payload,dict) else {}
                 data.update(legacySubjectId=run_id, sequence=value.get('sequence'))
                 recorder.emit(event_type, status=data.get('status') or ('failed' if event_type.endswith('failed') else 'observed'),
@@ -202,6 +205,7 @@ def attach(app, ops, native):
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
              'nativeOps': native, 'files': source_files(source),
              'contentCapture': content.enabled(),
+             'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
              'tools': ops.safe(app.state.tools.schemas)}
