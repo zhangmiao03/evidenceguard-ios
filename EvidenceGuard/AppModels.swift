@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum CameraQuestion {
     static func needsLiveFrame(_ message: String) -> Bool {
@@ -45,6 +46,12 @@ enum AssistantIdentity {
 
 // Presentation only. Raw requests and receipts remain intact for diagnostics.
 enum ChatPresentation {
+    // Bump when the display transformation below changes. Hash UTF-8 exactly;
+    // the receipt contains neither the private body nor any credentials.
+    static let version = "chat-presentation-v1"
+    static func textHash(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
     static let actions = [
         "devices_list":"查看摄像头列表", "device_inspect":"查看摄像头能力", "camera_observe":"查看摄像头新画面",
         "camera_events_query":"查看摄像头事件", "camera_ptz_step":"移动摄像头", "camera_goto_preset":"转到选定位置",

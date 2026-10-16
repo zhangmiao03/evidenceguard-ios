@@ -408,11 +408,16 @@ struct ConversationView: View {
             }
             if let raw = run.text {
                 let text = ChatPresentation.text(raw, fallback: run.isRunning ? "正在整理处理结果…" : "本次回复未能完整显示，请查看操作状态或重试。")
-                Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).textSelection(.enabled)
-                    .onAppear {
-                        if reportedRuns.insert(run.id).inserted {
-                            store.client.observe(name: "agent.displayed", traceID: run.id, status: run.status)
-                        }
+                let rendered = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+                let backendHash = ChatPresentation.textHash(raw)
+                let displayHash = ChatPresentation.textHash(String(rendered.characters))
+                let receiptKey = [run.id, run.status, backendHash, displayHash, ChatPresentation.version].joined(separator: ":")
+                Text(rendered).textSelection(.enabled)
+                    .task(id: receiptKey) {
+                        // A placeholder must not consume the final reply receipt.
+                        // Re-report when final content changes while the view stays visible.
+                        guard !run.isRunning, !raw.isEmpty, reportedRuns.insert(receiptKey).inserted else { return }
+                        store.client.observeDisplay(runID: run.id, status: run.status, backendHash: backendHash, displayHash: displayHash)
                     }
             }
             if let error = run.error {

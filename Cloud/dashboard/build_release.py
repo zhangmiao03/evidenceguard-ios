@@ -48,6 +48,8 @@ def build(output, revision=None):
         for p in sorted((ROOT/'Cloud/dashboard/eg_dashboard').glob('*.py')):
             put(archive,'eg_dashboard/'+p.name,p.read_bytes())
         put(archive,'eg_dashboard/_ops_runtime.py',(ROOT/'Cloud/server/evidenceguard/ops.py').read_bytes())
+        for name in ('trace_retention', 'display_receipts'):
+            put(archive,'eg_dashboard/'+name+'.py',(ROOT/'Cloud/server/evidenceguard'/ (name+'.py')).read_bytes())
         put(archive,'web/downloads/evidenceguard-website.zip',website.getvalue())
         for p in sorted((ROOT/'Web/dist').rglob('*')):
             # Deliberately exclude official SDK binaries, user files and media.

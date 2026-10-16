@@ -265,6 +265,12 @@ class Collector:
         for row in selected:
             inputs=row.get('data',{}).get('inputMedia')
             if isinstance(inputs,list):row['data']['inputMedia']=[assets.reference(m) for m in inputs[:6]]
+        try:
+            from .archive import project, load_secrets
+            coverage['archive']=project(environment['database'],environment['observations'],self.output,label,now,assets,
+                secrets=load_secrets(environment,state.get('pid') if same_process else None),capture=coverage['contentCapture'] and same_process)
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['archive']={'status':'unavailable','errorType':type(exc).__name__}
         assets.finish()
         count=sum(r['kind']!='resource' for r in selected)
         coverage['contentRecords']=sum(r['data'].get('capture',{}).get('mode') in {'full_redacted','truncated'} for r in selected)

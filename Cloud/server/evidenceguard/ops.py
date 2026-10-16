@@ -139,19 +139,8 @@ class Recorder:
         except Exception: self.write_errors += 1  # telemetry cannot fail a business request
 
     def _write(self):
-        while True:
-            row = self.q.get()
-            try:
-                if row is None: return
-                with self.lock, self.db:
-                    self.db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)', (row['id'], row['at'], canonical(row)))
-                    count = self.db.execute('SELECT COUNT(*) FROM records').fetchone()[0]
-                    if count > self.retention:
-                        n = count - self.retention
-                        self.db.execute('DELETE FROM records WHERE id IN (SELECT id FROM records ORDER BY at LIMIT ?)', (n,))
-                        self.evicted += n
-            except Exception: self.write_errors += 1
-            finally: self.q.task_done()
+        from .trace_retention import write_records
+        write_records(self)
 
     def flush(self, timeout=3):
         end = time.monotonic()+timeout
@@ -463,4 +452,6 @@ def install_ops(app, store):
                 data={k:v for k,v in data.items() if k in {'deviceId','requestId','route','appVersion'}})
         return {'accepted':len(items),'enabled':True}
 
+    from .display_receipts import install as install_display_receipts
+    install_display_receipts(app, store)
     return recorder

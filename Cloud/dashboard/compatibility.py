@@ -84,6 +84,14 @@ def main():
         bootstrap=client.get('/api/bootstrap',headers={'Authorization':'Bearer '+os.environ['EG_ACCESS_TOKEN']})
         assert bootstrap.status_code==200
         assert isinstance(bootstrap.json()['cameras'],list)
+        display_path='/api/ops/display-receipts'
+        receipt=dict(id='display-check',runId='compatibility-run',backendTextHash='a'*64,displayTextHash='b'*64,
+                     presentationVersion='test-v1',appVersion='compatibility',platform='ios',status='completed')
+        assert client.post(display_path,json=receipt).status_code==401, 'Display receipt lost App authentication'
+        headers={'Authorization':'Bearer '+os.environ['EG_ACCESS_TOKEN'],'X-EG-Installation-ID':'compatibility-client'}
+        assert client.post(display_path,json={**receipt,'body':'forbidden'},headers=headers).status_code==422
+        receipt['runId']='display-only-test'
+        assert client.post(display_path,json=receipt,headers=headers).json()['accepted']==1
         asyncio.run(checks());app.state.store.ops.flush()
         rows=app.state.store.ops.bundle()['records']
         linked=[r for r in rows if r['traceId']=='compatibility-run']
@@ -94,6 +102,9 @@ def main():
         assert any(r['name']=='agent.result' for r in linked)
         assert any(r['name']=='agent.finished' and r['status']=='completed' for r in linked)
         assert 'compatibility-placeholder' not in json.dumps(rows)
+        with app.state.store.ops.lock:
+            critical=app.state.store.ops.db.execute('SELECT count(*) FROM critical_records').fetchone()[0]
+        assert critical>0, 'Separate Agent retention unavailable'
         if capture:
             from eg_dashboard.collector import public_record
             public=[public_record(r) for r in linked]
