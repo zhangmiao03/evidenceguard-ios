@@ -366,7 +366,10 @@ struct APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONEncoder().encode(Receipt(runId: runID, status: status, backendTextHash: backendHash, displayTextHash: displayHash))
         guard request.httpBody != nil else { return }
-        Task(priority: .background) { await observations.send(request) }
+        // Optional diagnostics still have a short foreground delivery deadline.
+        // Utility priority avoids deferring them behind background scheduling;
+        // the independent session and two-slot bound keep business calls free.
+        Task(priority: .utility) { await observations.send(request) }
     }
 
     // The dashboard secret never enters the mobile app. This narrow endpoint
@@ -385,6 +388,6 @@ struct APIClient {
         request.httpBody = try? JSONEncoder().encode([Event(name: name, traceId: traceID, parentSpanId: parentSpanID, status: status,
             durationMs: durationMS, deviceId: deviceID, requestId: requestID, route: route)])
         guard request.httpBody != nil else { return }
-        Task(priority: .background) { await observations.send(request) }
+        Task(priority: .utility) { await observations.send(request) }
     }
 }

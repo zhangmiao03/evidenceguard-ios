@@ -111,7 +111,7 @@
 
 - 最终合并版本：Linux 后端 453 通过；Windows 443 通过、10 项 POSIX 专用跳过，已由 Linux 覆盖。
 - 发布工具 30 通过；Web 单元 20 通过；TypeScript / Vite 构建通过。
-- 本机 Chromium / Firefox / WebKit / mobile WebKit：200 通过、8 跳过。跳过涉及本机缺少可运行的官方 Web 构件/媒体测试条件；完整浏览器/系统兼容性仍看 CI，不把跳过算成通过。
+- 本机 Chromium / Firefox / WebKit / mobile WebKit：200 通过、8 跳过。其中 4 项需要未公开的官方 Web 构件；另 4 项为两个 WebKit 项目缺少 `requestVideoFrameCallback` 时跳过的双帧测试。完整浏览器/系统兼容性仍看 CI，不把跳过算成通过。
 - 修复 Dashboard 折叠内容检查、WebKit 媒体错误触发、长哈希换行及记忆测试启动重载竞态；保留团队新增的 iOS 脚本演示。未恢复产品 Web 的硬件开发路线。
 - 本机没有 Xcode；新增 Swift/Kotlin 源码未在本机生成 iOS Framework。普通 iOS 模拟器 CI 只验证无官方 SDK 的产品 target，不能证明 arm64 桥接、真实事件下载或后台行为。
 

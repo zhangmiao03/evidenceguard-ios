@@ -253,6 +253,7 @@ final class APIClientTests: XCTestCase {
         let request = try XCTUnwrap(diagnostics.all.first)
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertNotNil(request.value(forHTTPHeaderField: "X-EG-Installation-ID"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
         XCTAssertNil(request.value(forHTTPHeaderField: "X-EG-Media-Session"))
         var data = request.httpBody ?? Data()
         if let stream = request.httpBodyStream {
