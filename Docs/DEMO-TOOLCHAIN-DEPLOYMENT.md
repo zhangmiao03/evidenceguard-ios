@@ -170,13 +170,13 @@ Web 新发现的兼容问题已修复：JSON 解码会保留新服务返回的�
 
 ### 最终同步发布与当前 Codex 联调
 
-已合入同分支的 AWS 连接修复 `5ab4ec2` 和 Dashboard 正文查看 `1a2f7d8`，未强推。合并后重新通过 13 项 Web 单元、14 项监控测试、监控与当前后端的兼容脚本，以及 8 项受影响的桌面/手机 Dashboard 浏览器测试，TypeScript/Vite 生产构建成功。最终包内全部 94 个后端应用、依赖、测试及素材文件与 Linux 306 项通过的预检包完全同哈希，没有重复运行未变的后端测试。
+已合入同分支的 AWS 连接修复 `5ab4ec2` 和 Dashboard 正文查看 `1a2f7d8` 及 Codex 观察适配 `29b87fb`，未强推。合并后重新通过 14 项 Web 单元、18 项监控测试、监控与当前后端的兼容脚本，以及 10 项受影响的桌面/手机 Dashboard 浏览器测试，TypeScript/Vite 生产构建成功。最终包内全部 94 个后端应用、依赖、测试及素材文件与 Linux 306 项通过的预检包完全同哈希，没有重复运行未变的后端测试。
 
-- **当前 Web**：`/opt/evidenceguard-demo/releases/tools-78f9a46242aedff8/web`；入口 `/assets/index-3ay3CKUw.js`；最终四浏览器公网入口和官方切换复验均通过。
-- **后端**：仍为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`。此次 Web 发布同时保留已上线的 observer `/opt/evidenceguard-dashboard/releases/51356eded710c92d`。
-- **包**：119 文件，基准提交 `0c2153e`；archive SHA-256 `78f9a46242aedff813f667c252825e2361d57511d49aa03ccb01a7d06a07f2f9`；manifest 内容摘要 `00741bd4aee61b6ddd6be7c3ece44a7221ce2cd539fb205fcd6b8d570d596933`。
-- **实际发布时间**：2026-10-16 13:23（新加坡时间），SSM `68e2d85e-2650-48a8-a3cd-41512114d2bc` 返回 Success；仅 demo 重启，team/review PID 在本次操作前后不变，业务数据保留。
-- **对应回滚备份**：`/var/backups/evidenceguard-demo-web/20261016T052331630965Z`；使用同包 `web_release.py --rollback`。如观察器或后台配置此后再次变更，脚本会拒绝直接恢复，须先重新核对，不能绕过检查或回退数据库。
+- **当前 Web**：`/opt/evidenceguard-demo/releases/tools-3c13da608c1867d8/web`；入口 `/assets/index-DCwGSe6f.js`；最终四浏览器公网入口和官方切换复验均通过。
+- **后端**：仍为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`。此次 Web 发布同时保留已上线的 observer `/opt/evidenceguard-dashboard/releases/b0629775779e3eeb`。
+- **包**：119 文件，基准提交 `2ce244e`；archive SHA-256 `3c13da608c1867d81a8d5bb0ee8abcb3e11cd05e1eb92ea7617f4a1ee142d221`；manifest 内容摘要 `7c8d2c1c65befac82d623875fdb3b48d1117591fe046a58158cfb901192536f5`。
+- **实际发布时间**：2026-10-16 13:35（新加坡时间），SSM `1c0e05b3-c3f4-41f0-9fab-670309b0fc4a` 返回 Success；仅 demo 重启，team/review PID 在本次操作前后不变，业务数据保留。
+- **对应回滚备份**：`/var/backups/evidenceguard-demo-web/20261016T053512106370Z`；使用同包 `web_release.py --rollback`。如观察器或后台配置此后再次变更，脚本会拒绝直接恢复，须先重新核对，不能绕过检查或回退数据库。
 
 当前真实模型联调 SSM `f7751cbf-e261-4eac-9da0-e8ca6da5d061` 返回 Success：
 
@@ -187,4 +187,4 @@ Web 新发现的兼容问题已修复：JSON 解码会保留新服务返回的�
 
 两轮都核对了服务端冻结契约、`executor_started/executor_completed`、最终响应、API 工具回执和 observer 工具记录，工具为 `list_camera_capabilities` 与 `list_tasks`。测试安装关闭自动记忆，没有硬件操作或推送。当前登记设备和执行器设备均为 0，结果仅证明 HTTP/Agent/工具契约连通，不是 iPhone 二进制或物理摄像头验收。
 
-当时 observer 尚未直接采集 Codex 子进程的模型 HTTP/提示词；`realModelCalls=null`、`promptSnapshots=0` 是明确的观测缺口，不能解读为未调用模型，也不填造 HTTP 200 次数。Dashboard 会话另行补充这部分采集，不影响本轮已核验的 Codex 生命周期与工具回执。
+当时 observer 尚未直接采集 Codex 子进程的模型 HTTP/提示词；`realModelCalls=null`、`promptSnapshots=0` 是明确的观测缺口，不能解读为未调用模型，也不填造 HTTP 200 次数。随后合入的 `29b87fb` 已补齐 Codex 步骤、输入协议和结果边界的记录，仍与模型 HTTP 请求明确区分；旧 run 没有回填。这不改变本轮已核验的 Codex 生命周期与工具回执。
