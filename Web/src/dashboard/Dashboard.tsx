@@ -532,8 +532,8 @@ export default function Dashboard() {
   }
   function content() {
     if (page === 12) return <Showcase onMonitor={() => openPage(2)} onPage={openPage} />;
-    if (page === 13) return <><div className="eg-media-tabs eg-image-views">{[['memory','图像记忆与理解'],['archive','完整图片台账'],['analysis','视觉分析、事件核验与模型实际输入']].map(([id,label])=><button key={id} aria-pressed={imageView===id} onClick={()=>setImageView(id)}>{label}</button>)}</div>{imageView==='memory'?<ImageMemory rows={rows} onSelect={setSelected} onPage={openPage}/>:imageView==='archive'?<ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/>:<ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected}/>}</>;
-    if (page === 14) return <><FlowStrip steps={["入库录像 / 分段","向量索引","图文检索候选","模型复核 / 原片核验"]}/><VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
+    if (page === 13) return <><div className="eg-media-tabs eg-image-views">{[['memory','图像记忆与理解'],['archive','完整图片台账'],['analysis','调用与事件核验']].map(([id,label])=><button key={id} aria-pressed={imageView===id} onClick={()=>setImageView(id)}>{label}</button>)}</div>{imageView==='memory'?<ImageMemory rows={rows} onSelect={setSelected} onPage={openPage}/>:imageView==='archive'?<ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/>:<ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected}/>}</>;
+    if (page === 14) return <VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} />;
     if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
     if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
     const props={rows,allRows:bundle.records,coverage:bundle.coverage,onSelect:setSelected,onPage:openPage};
@@ -642,20 +642,12 @@ export default function Dashboard() {
           <strong>{cloud ? "比赛云端工作区" : "本地开发工作区"}</strong>
           <small>{cloud ? "Singapore / Live telemetry" : "研发追踪 / Offline ready"}</small>
         </div>
-        {page===12&&<p className="eg-ops-nav-label">工作台</p>}
         <nav aria-label="Dashboard 页面">
-          {(page===12?[12,0,13,14,1,2,3,4,5,6,7,8,9,10,11]:[12,0,3,2,13,14,5,6,7,1,4,8,9,10,11]).map(i => (
-            <div key={i}>{page!==12&&[12,13,1].includes(i)&&<p className="eg-ops-nav-label">{i===12?"01 · 先看作品与链路":i===13?"02 · 看证据与效果":"03 · 看实现与运行"}</p>}
-            <button
-              key={pages[i]}
-              aria-current={page === i ? "page" : undefined}
-              className={page === i ? "active" : ""}
-              onClick={() => openPage(i)}
-            >
-              <span>{glyphs[i]}</span>
-              {pages[i]}
-            </button></div>
-          ))}
+          <p className="eg-ops-nav-label">作品与真实效果</p>
+          {[12,0,3,13,14,2].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
+          <details className="eg-nav-more" open={[1,4,5,6,7,8,9,10,11].includes(page)||undefined}><summary>开发诊断 · 9 个页面</summary>
+            {[5,6,7,1,4,8,9,10,11].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
+          </details>
         </nav>
         <div className="eg-ops-sidebar-bottom">
           <span>{mode === "cloud" ? "CLOUD / READ ONLY" : mode === "local" ? "LOCAL API" : "OFFLINE WORKSPACE"}</span>

@@ -247,6 +247,10 @@ class Collector:
             media,media_coverage=read_media(environment['database'],now,state.get('embeddingSignature') if same_process else None,assets,video_root)
             records.extend(media)
             coverage['mediaIndex']=media_coverage
+            from .briefing import project as project_briefing
+            try:records.extend(project_briefing(self.output,label,assets,media,state if same_process else {},environment,now))
+            except (OSError,ValueError,TypeError,KeyError,sqlite3.Error) as exc:
+                coverage['briefingErrorType']=type(exc).__name__
         except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
             coverage['mediaIndex']={'status':'unavailable','errorType':type(exc).__name__}
         for name,model in state.get('models',{}).items():

@@ -21,7 +21,7 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
  });
  await page.goto('/dashboard?view=images');
  await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
- await page.getByText('视觉分析、事件核验与模型实际输入',{exact:true}).click();
+ await page.getByText('调用与事件核验',{exact:true}).click();
  await expect(page.getByText('真实调用结果测试',{exact:true})).toBeVisible();
  await expect(page.getByRole('heading',{name:'云台摄像头 1'})).toBeVisible();
  await page.getByRole('button',{name:'豆包识图实际输入 · 放大图片 1'}).click();
@@ -33,6 +33,7 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
  if (executor==='codex') await expect(page.getByRole('dialog')).toContainText('本次传给 AI 执行器的媒体');
  await page.getByRole('button',{name:'关闭详情'}).click();
  await page.getByRole('navigation',{name:'Dashboard 页面'}).getByRole('button',{name:'视频向量库'}).click();
+ await page.getByText('其他检索诊断与建库调用',{exact:true}).click();
  await expect(page.getByText('“包裹何时离开区域”')).toBeVisible();
  await expect(page.getByText('0.7346',{exact:true})).toBeVisible();
  await expect(page.getByText('遮挡期间无法确认拿取动作')).toBeVisible();
@@ -40,7 +41,7 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
  // Mobile Safari may defer metadata loading until playback is requested.
  await page.locator('.eg-search-candidate').evaluate(el=>{const video=el.querySelector('video');if(video){video.load();void video.play().catch(()=>{});}});
  await expect(page.locator('.eg-search-candidate')).toContainText('媒体副本暂不可用');
- await page.getByRole('button',{name:'图片向量输入',exact:true}).click();
+ await page.getByRole('button',{name:'公开图片查询',exact:true}).click();
  await expect(page.getByText(/当前没有可公开展示的图片查询/)).toBeVisible();
  expect(outside).toEqual([]);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

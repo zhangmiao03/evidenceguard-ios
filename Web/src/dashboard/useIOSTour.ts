@@ -48,6 +48,19 @@ export function useIOSTour() {
     setTopics(items=>items.map(t=>t.id==='main'?{...t,messages:t.messages.filter(m=>m.sceneId!==sceneId)}:t));
     setTopicId('main');setCondition('baseline');setMode('live');setInput('');setPreferences(p=>({...p,proactive:true}));beginGuard();
   }
+  function presentScene(id:string, step:number){
+    // Atomic, deterministic presentation state. No SDK, network or live claim.
+    const s=tourScenarios.find(value=>value.id===id)!;
+    const active=step>=2,changed=step>=3;
+    setSceneId(id);setCamera(s.device);setEditorId(id);setError('');setToast('');
+    setCondition(changed?'changed':'baseline');setTopicId('main');setMode('live');
+    setGuards([{...draftFor(s),stage:step===0?0:step===1?1:2,frame:step>=1,box:step>=1?s.box:null,
+      status:active?'active':'draft',baseline:active,evidence:changed,result:changed?'issue':active?'confirmed':'pending',
+      reason:changed?s.changed:active?s.present:'先确认需求与关注区域'}]);
+    setTopics([{id:'main',title:'anker 主对话',messages:[{role:'user',text:s.prompt,mode:'live',sceneId:id,condition:'baseline'},
+      ...(changed?[{role:'assistant' as const,text:s.changed+'。已保留提醒画面，可以继续追问。',kind:'reminder' as const,mode:'live' as const,sceneId:id,condition:'changed' as const}]:[])]}]);
+    setTab(step===4?0:1);setStack(step===4?[]:['guard']);
+  }
   function generate(){if(!editor?.prompt.trim())return;patchGuard({stage:1,frame:false,box:null,result:'pending',reason:'等待框选与确认'});}
   function revise(){
     if(!editor)return;
@@ -94,7 +107,7 @@ export function useIOSTour() {
   const outcome=currentGuard?guardLabels[currentGuard.result]:'尚未创建守护';
   return {sceneId,scene,condition,tab,route,stack,root,go,back,chooseScene,observe,outcome,toolsOpen,setToolsOpen,showFrame,setShowFrame,
     camera,selectCamera,mode,setMode,topic,topicId,topics,input,setInput,ask,newTopic,selectTopic,
-    guards,editor,editorScene,currentGuard,beginGuard,restartScene,patchGuard,generate,revise,revision,setRevision,activate,pause,compareEndpoints,error,
+    guards,editor,editorScene,currentGuard,beginGuard,restartScene,presentScene,patchGuard,generate,revise,revision,setRevision,activate,pause,compareEndpoints,error,
     automaticMemory,setAutomaticMemory,memoryFilter,setMemoryFilter,memories,setMemories,memoryText,setMemoryText,temporary,setTemporary,removing,setRemoving,remember,openMemory,
     nearby,setNearby,deviceName,setDeviceName,deviceKind,setDeviceKind,bluetooth,setBluetooth,connectBluetooth,
     nickname,setNickname,toast,setToast,preferences,toggle,morningHour,setMorningHour,eveningHour,setEveningHour,

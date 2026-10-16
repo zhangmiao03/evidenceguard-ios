@@ -5,8 +5,14 @@ import {IOSPreview} from './IOSPreview';
 import {useIOSTour} from './useIOSTour';
 import {tourScenarios,type TourCondition} from './tourData';
 import {TourGuide} from './TourGuide';
+import {JudgeTour} from './JudgeTour';
 
 export function Showcase({onMonitor,onPage}:{onMonitor:()=>void;onPage?:(page:number)=>void}) {
+  const [manual,setManual]=useState(new URLSearchParams(location.search).get('tour')==='manual');
+  return <><div className="eg-tour-mode"><button aria-pressed={!manual} onClick={()=>setManual(false)}>60 秒自动导览</button><button aria-pressed={manual} onClick={()=>setManual(true)}>自己操作 App</button></div>{manual?<ManualShowcase onMonitor={onMonitor} onPage={onPage}/>:<JudgeTour onMonitor={onMonitor} onPage={onPage}/>}</>;
+}
+
+function ManualShowcase({onMonitor,onPage}:{onMonitor:()=>void;onPage?:(page:number)=>void}) {
   const tour=useIOSTour(),[copied,setCopied]=useState(false),[large,setLarge]=useState(false),[scale,setScale]=useState(1);
   useEffect(()=>{const resize=()=>setScale(window.innerWidth>=1000&&!large?Math.max(.5,Math.min(1,(window.innerHeight-250)/852)):Math.min(1,(window.innerWidth-70)/393));resize();window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize);},[large]);
   return <section className="eg-showcase">

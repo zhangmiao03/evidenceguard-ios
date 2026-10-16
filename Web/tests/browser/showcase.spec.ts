@@ -22,12 +22,13 @@ test('image results and vector segments retain provenance and readable details',
   bundle.coverage={mediaIndex:{status:'connected',sampledAt:1000,currentSignature:'sig',tables:{video_segments:{total:1}},invalidVectorsInSample:0}};
   await page.goto('/dashboard?view=images');
   await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
-  await page.getByText('视觉分析、事件核验与模型实际输入',{exact:true}).click();
+  await page.getByText('调用与事件核验',{exact:true}).click();
   await expect(page.getByText('纸箱位于地垫内',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'查看完整结果与来源'}).click();
   await expect(page.getByRole('dialog')).toContainText('无法判断画外情况');
   await page.getByRole('button',{name:'关闭详情'}).click();
   await page.getByRole('navigation',{name:'Dashboard 页面'}).getByRole('button',{name:'视频向量库'}).click();
+  await page.getByText('查看全部录像、时间窗口与向量索引',{exact:true}).click();
   await expect(page.locator('.eg-media-indexgrid')).toContainText('合成测试素材 · 真实入库');
   await page.getByText('本窗口向量详情 · 1 条',{exact:true}).click();
   await expect(page.getByText('1024 维',{exact:true})).toBeVisible();

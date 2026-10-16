@@ -5,7 +5,7 @@ const nav=(page:Page)=>phone(page).getByRole('navigation',{name:'iOS 功能导�
 async function start(page:Page){
   const writes:string[]=[];
   page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
-  await page.goto('/dashboard?view=showcase');
+  await page.goto('/dashboard?view=showcase&tour=manual');
   await expect(page.getByText('iOS 交互演示 · 示例数据 · 不连接硬件',{exact:true})).toBeVisible();
   return writes;
 }

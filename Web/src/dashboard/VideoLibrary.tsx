@@ -4,6 +4,7 @@ import {SearchHistory} from './SearchHistory';
 import {deviceLabel,statusLabel} from './labels';
 import {clipGroups} from './mediaReading.mjs';
 import {time,sec,type MediaRow} from './MediaPanels';
+import {RetrievalCase} from './RetrievalCase';
 
 export function VideoIndex({rows,coverage,onSelect}:{rows:MediaRow[];coverage?:Record<string,any>;onSelect:(r:any)=>void}){
   const recordings=rows.filter(r=>r.name==='media_recordings');
@@ -14,6 +15,8 @@ export function VideoIndex({rows,coverage,onSelect}:{rows:MediaRow[];coverage?:R
   const source=(s:string)=>({official_sdk:'官方 SDK 事件导入',uploaded:'客户端上传 · 来源见录像说明',synthetic_review:'合成测试素材 · 真实入库',fixture:'测试场景素材',synthetic_demo:'合成测试素材'}[s]||'来源未记录');
   function choose(id:string){setChosen(id);setClip('');setSeek(0);}
   return <div className="eg-media eg-video-library">
+    <RetrievalCase rows={rows} onSelect={onSelect}/>
+    <details className="eg-brief-details"><summary>查看全部录像、时间窗口与向量索引</summary>
     <section className="eg-media-indexgrid">
       <aside className="eg-ops-panel"><span className="eg-media-eyebrow">RECORDED VIDEO</span><h2>先看原片，再看记忆</h2><p>切换录像，点击时间窗口和关键帧，即可定位对应原片。这里读取真实入库记录。</p>
         <div className="eg-media-calllist">{recordings.map((r,i)=><button key={r.id} aria-pressed={active?.id===r.id} onClick={()=>choose(r.data.id)}><span>{r.data.title||`录像 ${i+1}`}<small>{source(r.data.sourceType)} · {sec(r.data.duration)}</small></span><b>{statusLabel(r.data.status)}</b></button>)}</div>
@@ -35,6 +38,7 @@ export function VideoIndex({rows,coverage,onSelect}:{rows:MediaRow[];coverage?:R
       <details className="eg-vector-details"><summary>本窗口向量详情 · {current.rows.length} 条</summary>{current.rows.map((r:MediaRow)=><div className="eg-media-vector" key={r.id}><strong>{r.data.kind==='frame'?`关键帧向量 · ${sec(r.data.frameOffsetSeconds)}`:'视频片段向量'}</strong><span>{r.data.dimensions} 维</span><p>{r.data.indexVersion===2?'v2 视频 / 关键帧双路索引':'v1 视频索引'} · {r.data.signatureCompatible===true?'当前模型可检索':r.data.signatureCompatible===false?'需重建索引':'兼容性未采集'}</p><button onClick={()=>onSelect(r)}>展开向量、签名与校验摘要</button></div>)}</details></>}
       {!groups.length&&<p>当前录像尚无已采集的索引，不能用上传成功代替检索就绪。</p>}
     </section>
-    <SearchHistory rows={rows} recordings={recordings} onSelect={onSelect}/>
+    </details>
+    <details className="eg-brief-details"><summary>其他检索诊断与建库调用</summary><SearchHistory rows={rows} recordings={recordings} onSelect={onSelect}/></details>
   </div>;
 }

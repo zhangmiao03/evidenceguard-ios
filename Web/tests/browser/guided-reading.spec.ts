@@ -3,7 +3,7 @@ import {emptyBundle} from '../../src/dashboard/data.mjs';
 
 test('all three guided scenarios finish with baseline, change, uncertainty and a frozen reminder without writes',async({page})=>{
   const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
-  await page.goto('/dashboard?view=showcase');
+  await page.goto('/dashboard?view=showcase&tour=manual');
   const guide=page.getByRole('region',{name:'场景逐步导览'}),phone=page.locator('.ios-current'),result=page.locator('.eg-showcase-observation');
   for(const name of ['门口包裹','室内宠物','工作室物品']){
     await page.locator('.eg-showcase-scenes').getByRole('button',{name:new RegExp(name)}).click();
@@ -47,6 +47,8 @@ test('video groups show four windows and twelve image units, keep corpus calls o
   await page.route('**/dashboard/api/snapshot?*',r=>r.fulfill({json:bundle}));
   await page.route('**/dashboard/api/media/**',r=>r.fulfill({status:410,body:'expired'}));
   await page.goto('/dashboard?view=vectors');
+  await page.getByText('查看全部录像、时间窗口与向量索引',{exact:true}).click();
+  await page.getByText('其他检索诊断与建库调用',{exact:true}).click();
   await expect(page.locator('.eg-video-counts')).toContainText('12图像向量');
   await expect(page.getByRole('group',{name:'录像切片时间轴'}).or(page.locator('.eg-clip-tabs')).getByRole('button')).toHaveCount(4);
   await page.locator('.eg-clip-tabs button').nth(2).click();

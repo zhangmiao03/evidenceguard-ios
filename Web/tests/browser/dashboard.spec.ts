@@ -154,7 +154,7 @@ test("all dashboard pages render without horizontal page overflow", async ({
     "Agent 与模型",
     "服务器资源",
     "部署代码核对",
-    "图片分析",
+    "图像记忆与分析",
     "视频向量库",
     "设备与取流",
     "对话与 Trace",
@@ -165,6 +165,7 @@ test("all dashboard pages render without horizontal page overflow", async ({
     "用量与覆盖",
     "数据与版本",
   ]) {
+    if(!await page.getByRole("navigation").getByRole("button", { name }).isVisible()) await page.getByText("开发诊断 · 9 个页面",{exact:true}).click();
     await page.getByRole("navigation").getByRole("button", { name }).click();
     await expect(
       page.getByRole("heading", { name, exact: true }),
