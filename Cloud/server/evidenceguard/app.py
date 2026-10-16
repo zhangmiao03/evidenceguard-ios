@@ -91,6 +91,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     official_events=official_mode() or (camera_adapter is None and not fixture_mode())
     camera=CameraRegistry(camera_adapter or (FixtureLabAdapter(os.getenv('EVIDENCEGUARD_FIXTURE_URL','http://127.0.0.1:8787')) if fixture_mode() else SDKEventsAdapter(store)))
     camera.official_mode=official_events
+    camera.personal=personal
     camera.live=LiveDevices(store)
     scheduler=TaskScheduler()
     captures=CameraService(store,camera,scheduler)
@@ -273,6 +274,11 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def memory_options(request: Request, enabled: bool): return memory.configure(personal_client(request),enabled)
     @app.post('/api/personal/memory-retry')
     async def memory_retry(request: Request): return memory.retry(personal_client(request))
+    @app.post('/api/personal/tasks/{key}/cancel')
+    async def personal_cancel_task(request: Request, key: str):
+        client=personal_client(request)
+        personal.tasks.cancel(client,key)
+        return personal.snapshot(client)
     @app.post('/api/personal/inbox/{key}/read')
     async def personal_mark_read(request: Request, key: str): return personal.read(personal_client(request), key)
     @app.put('/api/personal/conversation')

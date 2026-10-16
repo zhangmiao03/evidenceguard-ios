@@ -288,6 +288,16 @@ struct ProactiveMessageCard: View {
             Text(ChatPresentation.text(message.body.isEmpty ? message.title : message.body)).font(.body).textSelection(.enabled)
             Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
             if testSource { Label("测试 / 回放资料", systemImage: "clock").font(.caption).foregroundStyle(Brand.muted) }
+            if let source = message.sources.first(where: { $0.evidenceId != nil }), let evidence = source.evidenceId {
+                NavigationLink(value: AppRoute.evidence(evidence)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let url = store.client.absoluteURL(source.imageUrl) {
+                            AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: { ProgressView() }.frame(maxHeight: 180)
+                        }
+                        Label("查看这次事件画面", systemImage: "photo")
+                    }
+                }.buttonStyle(.plain)
+            }
             DisclosureGroup("查看来源") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(ChatPresentation.text(message.why)).font(.caption)
@@ -319,6 +329,9 @@ struct ProactiveMessageCard: View {
                     } label: { Image(systemName: "ellipsis") }.accessibilityLabel("处理提醒")
                 }
             }.disabled(store.busy)
+            if let camera = message.sources.compactMap(\.cameraId).first {
+                NavigationLink("查看摄像头当前画面", value: AppRoute.liveCamera(camera)).font(.subheadline)
+            }
             if message.feedback == "handled" { Text("已记下你的反馈；摄像头告警仍以新观察为准。").font(.caption2).foregroundStyle(Brand.muted) }
         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(.white).clipShape(RoundedRectangle(cornerRadius: 16))

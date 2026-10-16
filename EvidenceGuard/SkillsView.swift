@@ -22,8 +22,8 @@ private struct OfficialCameraHomeView: View {
                 if connection.devices.filter(\.isCompetitionCamera).isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Image(systemName: "video.badge.plus").font(.largeTitle).foregroundStyle(Brand.blue)
-                        Text("等你连接第一台摄像头").font(.title3.weight(.semibold))
-                        Text("连接后，在这里看门铃、人物和包裹等设备事件。").foregroundStyle(Brand.muted)
+                        Text(connection.checking ? "正在恢复摄像头连接…" : "连接你的摄像头").font(.title3.weight(.semibold))
+                        Text(connection.message).foregroundStyle(Brand.muted)
                         NavigationLink("连接摄像头", value: AppRoute.officialSDK).buttonStyle(.borderedProminent)
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
                         .background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 22))
@@ -54,7 +54,7 @@ private struct OfficialCameraHomeView: View {
                         set: { connection.setEventSync($0, client: store.client) }))
                         .accessibilityIdentifier("cameraSkills.sync")
                     Text(connection.syncMessage).font(.caption).foregroundStyle(Brand.muted)
-                    Text("切换页面后继续同步；锁屏后暂停。收到的新事件按你的通知偏好处理。")
+                    Text("切换页面后继续同步；锁屏后暂停。普通事件保存在列表，匹配你交代的关注事项才会发助手提醒。")
                         .font(.caption).foregroundStyle(Brand.muted)
                 }
                 HStack { Text("最近事件").font(.headline); Spacer(); NavigationLink("提醒设置", value: AppRoute.notificationSettings).font(.subheadline) }
@@ -80,6 +80,12 @@ private struct OfficialCameraHomeView: View {
                 if store.data.cameraEvents?.truncated == true { Text("显示最近 100 条已同步事件。").font(.caption).foregroundStyle(Brand.muted) }
             }.padding(20)
         }.agentPageStyle("摄像头 Skill", largeTitle: true)
+            .task {
+                if connection.devices.isEmpty && !connection.checking,
+                   (try? connection.configuredCredentials()) != nil {
+                    connection.discoverConfigured(client: store.client)
+                }
+            }
             .refreshable { await store.refresh() }
     }
 }
@@ -196,8 +202,24 @@ struct TasksView: View {
                     Label("定时", systemImage: "clock").tag("scheduled")
                 }.pickerStyle(.segmented).accessibilityIdentifier("skills.sections")
                 if section == "tasks" {
-                    if store.data.skills.isEmpty {
+                    if store.data.skills.isEmpty && (store.data.personal?.tasks ?? []).isEmpty {
                         EmptyState(title: "想让摄像头帮你关注什么？", detail: "告诉助手你的需求，一起确认对象、区域和提醒条件。", icon: "video")
+                    }
+                    if let tasks = store.data.personal?.tasks, !tasks.isEmpty {
+                        Text("交代给助手的事项").font(.headline)
+                        ForEach(tasks) { task in
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack { Text(ChatPresentation.text(task.title)).font(.headline); Spacer(); Text(task.statusLabel).font(.caption).foregroundStyle(Brand.blue) }
+                                Text(task.reason).font(.caption).foregroundStyle(Brand.muted)
+                                if let expires = task.expiresAt { Text("截至 " + displayTime(expires)).font(.caption).foregroundStyle(Brand.muted) }
+                                NavigationLink("回到这件事的对话", value: AppRoute.conversation(task.conversationId, nil))
+                                if task.isOpen {
+                                    Button("结束关注") { Task { await store.perform { store.data.personal = try await store.client.cancelPersonalTask(task.id) } } }
+                                        .disabled(store.busy)
+                                }
+                            }.padding(16).background(.white.opacity(0.8)).clipShape(RoundedRectangle(cornerRadius: 18))
+                                .accessibilityIdentifier("tasks.personal." + task.id)
+                        }
                     }
                     taskGroup("运行中", status: "active")
                     taskGroup("待确认", status: "draft")

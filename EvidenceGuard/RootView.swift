@@ -13,6 +13,8 @@ private struct ProductRootView: View {
     @EnvironmentObject private var store: AppStore
     @AppStorage("showFeedback") private var showFeedback = true
     var body: some View {
+        VStack(spacing: 0) {
+            AssistantCameraPanel(controller: store.officialSDK.liveController).padding(.horizontal, 12)
         TabView(selection: $store.selectedTab) {
             tab(.assistant) { TeachAIView() }.tabItem { Label("助手", systemImage: "bubble.left.and.bubble.right.fill") }.badge(store.unreadAssistantCount).tag(AppTab.assistant)
             tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头Skill", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
@@ -20,7 +22,11 @@ private struct ProductRootView: View {
             tab(.memory) { MemoryView() }.tabItem { Label("记忆", systemImage: "brain.head.profile") }.tag(AppTab.memory)
             tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
+        }
         .tint(Brand.blue)
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { store.officialSDK.liveController.stop(message: "App 已离开前台，画面采集已停止") }
+        }
         .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
                                         active: scenePhase == .active) { await store.refresh() } }
         .background { HardwareExecutorWorker(connection: store.officialSDK, client: store.client, active: scenePhase == .active) }
@@ -58,6 +64,7 @@ private struct ProductRootView: View {
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)
         case .cameraEvents: CameraSkillsView()
+        case .liveCamera(let id): CameraLiveDestination(id: id)
         case .notificationSettings: NotificationSettingsView()
         case .voiceSettings: VoiceSettingsView()
         case .privacy: PrivacyView()

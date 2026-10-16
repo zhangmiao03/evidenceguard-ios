@@ -47,7 +47,10 @@ class CameraService:
                     if owner and owner.get('replay'): raise ValueError('此摄像头正在执行录像回放测试；请查看任务回放证据，不把模拟设备新图混入回放')
                     manifest = next((m for m in await self.cameras.manifests() if m.id == device_id), None)
                     if not manifest: raise ValueError('摄像头不存在')
-                    if manifest.connection != 'online': raise ValueError('摄像头尚未连接，不能取得新画面')
+                    if manifest.connection != 'online':
+                        if manifest.adapter.startswith('official'):
+                            raise ValueError('摄像头已登记，当前实时画面会话未就绪。请在 App 前台连接画面后重试；这不表示设备未添加或设备离线。')
+                        raise ValueError('摄像头当前连接不可用，不能取得新画面')
                     if manifest.capabilities.get('liveSnapshot') != CapabilityState.SUPPORTED:
                         receipt.update(status='unsupported', reason='该设备的新鲜截图能力尚未就绪')
                     else:

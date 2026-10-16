@@ -118,6 +118,9 @@ struct APIClient {
     func memoryOptions(enabled: Bool) async throws -> PersonalSnapshot {
         try await send("/api/personal/memory-options?enabled=\(enabled)", method: "PUT", body: [String:String]())
     }
+    func cancelPersonalTask(_ id: String) async throws -> PersonalSnapshot {
+        try await send("/api/personal/tasks/\(id)/cancel", body: [String: String]())
+    }
     func retryMemory() async throws -> PersonalSnapshot { try await send("/api/personal/memory-retry", body: [String:String]()) }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {

@@ -94,7 +94,7 @@ enum SDKCredentialVault {
     @Published private(set) var switchingWorkspace = false
     @Published private(set) var workspaceMessage = ""
     @Published var workspaceError: String?
-    weak var liveController: LiveCameraController?
+    let liveController = LiveCameraController()
     @Published private(set) var checking = false
     @Published private(set) var message = SDKConfiguration.current.usesManagedAccount
         ? "已配置摄像头账号，等待连接设备" : "等待主办方发放账号与 Token"
@@ -282,7 +282,7 @@ enum SDKCredentialVault {
         toolExecutor.invalidate()
         eventSyncOrigin = nil
         UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
-        liveController?.stop()
+        liveController.stop()
         connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
@@ -331,7 +331,7 @@ enum SDKCredentialVault {
         defer { switchingWorkspace = false }
         workspaceMessage = "正在停止本项目直播与取帧…"
         await toolExecutor.shutdown()
-        await liveController?.stopForWorkspaceSwitch()
+        await liveController.stopForWorkspaceSwitch()
         disconnect()
         // EvidenceGuardLiveBridge releases the native player after 500 ms.
         do { try await Task.sleep(for: .milliseconds(650)) }
