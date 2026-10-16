@@ -7,6 +7,7 @@ import hashlib
 import time
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
+from .assistant_identity import ASSISTANT_NAME
 
 
 class NewConversation(BaseModel):
@@ -60,7 +61,7 @@ class Conversations:
             result = self.proactive.bind(client, key)
             now = time.time()
             self.store.db.execute('INSERT OR IGNORE INTO conversations VALUES (?,?,?,?,?,?)',
-                                  (key, client, 'main', '助手主对话', now, now))
+                                  (key, client, 'main', ASSISTANT_NAME + ' 主对话', now, now))
         return result
 
     def create(self, client, request_id):
@@ -96,6 +97,9 @@ class Conversations:
             updated = max(row[4], latest['createdAt'] if latest else 0)
             unread = 0
             if row[1] == 'main':
+                # Older installations keep their inbox ID and transcript; the
+                # assistant's fixed name is presentation, not a data migration.
+                title = ASSISTANT_NAME + ' 主对话'
                 notices = self.proactive.messages(client)
                 unread = sum(not m.get('read') for m in notices)
                 if notices and notices[-1].get('updatedAt',notices[-1]['createdAt']) > updated:

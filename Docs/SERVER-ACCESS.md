@@ -20,7 +20,7 @@
 | 团队联调 | `https://team.47.131.21.137.sslip.io` | `evidenceguard` / `/var/lib/evidenceguard` |
 | Apple 审核 | `https://review.47.131.21.137.sslip.io` | `evidenceguard-review` / `/var/lib/evidenceguard-review` |
 
-手机源码在 `/opt/evidenceguard-demo/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
+手机原始源码在 `/opt/evidenceguard-demo/Cloud/server`，后续 demo 使用独立 release 目录，不能再把原始目录当作运行版本。维护前用 `systemctl show evidenceguard-demo -p ExecStart -p DropInPaths` 核对实际路径；10 月 15～16 日的发布与差异见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
 
 三个 HTTPS 入口使用受信任证书，每六小时检查续期；三个证书的续期演练均已成功。地址依赖当前 Elastic IP，不能释放或更换它后仍期望旧地址有效。换笔记本 Wi-Fi 不会改变服务器地址。
 

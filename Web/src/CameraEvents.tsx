@@ -16,7 +16,7 @@ export function CameraEvents({ devices, initial }: { devices: Device[]; initial?
     void load(); const timer = setInterval(() => void load(), 5000);
     return () => { active = false; clearInterval(timer); };
   }, [camera]);
-  const review: Record<string,string> = { saved: "已保存，未视觉核验", pending: "等待视觉核验", running: "视觉核验中", completed: "已完成缩略图核验", unavailable: "暂无法视觉核验", failed: "核验失败" };
+  const review: Record<string,string> = { saved: "已保存，未视觉核验", pending: "等待视觉核验", running: "视觉核验中", completed: "已完成缩略图核验", metadata_only: "仅设备报告，暂无可核验图片", unavailable: "暂无法视觉核验", failed: "核验失败" };
   return <section className="card camera-events">
     <div className="section-heading"><h2>最近设备事件</h2><label>筛选设备<select value={camera} onChange={e => setCamera(e.target.value)}><option value="">全部设备</option>{devices.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label></div>
     <p className="hint">来自官方事件同步，仅覆盖已导入记录。锁屏、断网或同步暂停期间不保证连续覆盖。</p>

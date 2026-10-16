@@ -62,7 +62,7 @@ export function MemoryPage({
         <span className="feature-symbol">✧</span>
         <div>
           <h2>让助手更了解你</h2>
-          <p>保存你确认的关注点与回复偏好，后续对话继续使用。</p>
+          <p>保存你的关注点与回复偏好，后续对话继续使用。</p>
           <button
             className="primary"
             disabled={!personal}
@@ -75,14 +75,22 @@ export function MemoryPage({
           </button>
         </div>
       </section>
+      {personal?.automaticMemory && <section className="card product-card">
+        <label className="check-label"><input type="checkbox" checked={personal.automaticMemory.enabled} disabled={busy}
+          onChange={e => { const enabled = e.target.checked; void perform(() => api.request<Personal>(`/api/personal/memory-options?enabled=${enabled}`, undefined, undefined, "PUT")); }} />聊天后自动整理记忆</label>
+        <p>{personal.automaticMemory.reason}</p>
+        <small>仅整理你明确说出的偏好和家庭信息；可以关闭、查看来源或移除，已有记忆会保留。</small>
+        {personal.automaticMemory.status === "failed" && <button disabled={busy} onClick={() => void perform(() => api.request<Personal>("/api/personal/memory-retry", {}))}>重试记忆整理</button>}
+        <ErrorNotice error={error} />
+      </section>}
       <div className="section-heading">
-        <h2>已确认的记忆 · {personal?.memories.length || 0}</h2>
+        <h2>已保存的记忆 · {personal?.memories.length || 0}</h2>
         <label>
           记忆类型
           <select value={filter} onChange={(e) => setFilter(e.target.value)}>
             <option value="all">全部</option>
             <option value="longterm">长期</option>
-            <option value="temporary">24 小时</option>
+            <option value="temporary">临时</option>
           </select>
         </label>
       </div>
@@ -93,6 +101,8 @@ export function MemoryPage({
               {m.expiresAt ? "临时记忆" : "长期记忆"}
             </span>
             <p className="memory-content">{m.content}</p>
+            <small>{m.source === "conversation" ? "来源：对话自动整理" : "来源：手动添加"}</small>
+            {m.sourceQuote && <details><summary>查看用户原话</summary><p>{m.sourceQuote}</p></details>}
             <small>
               {m.expiresAt
                 ? "有效至 " + timeLabel(m.expiresAt)
@@ -117,8 +127,7 @@ export function MemoryPage({
         </p>
       )}
       <p className="subtle-note">
-        每个客户端最多保存 20
-        条。记忆与提醒偏好属于当前浏览器，摄像头和任务在团队空间共享；记忆不会自动授权或启用设备操作。
+        记忆数量以服务端限制为准。记忆与提醒偏好属于当前浏览器，摄像头和任务在团队空间共享；记忆不会自动授权或启用设备操作。
       </p>
       {adding && (
         <Modal title="添加记忆" busy={busy} onClose={() => setAdding(false)}>
@@ -244,7 +253,14 @@ export function SettingsPage({
     try {
       const result = await api.request<Personal>(
         "/api/personal/preferences",
-        draft,
+        // This version edits the legacy single summary. Do not echo unrendered
+        // morning/evening fields from a newer server: they override dailySummary
+        // and would prevent the visible switch from actually disabling reports.
+        {
+          enabled: draft.enabled, dailySummary: draft.dailySummary,
+          summaryHour: draft.summaryHour, quietStart: draft.quietStart,
+          quietEnd: draft.quietEnd, timezone: draft.timezone,
+        },
         undefined,
         "PUT",
       );

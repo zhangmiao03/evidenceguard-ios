@@ -260,6 +260,10 @@ struct PersonalPreferences: Codable, Equatable {
 }
 struct PersonalMemory: Codable, Identifiable, Equatable {
     var id: String; var content: String; var source: String; var createdAt: Double; var expiresAt: Double?
+    var sourceQuote: String?
+}
+struct AutomaticMemoryStatus: Codable, Equatable {
+    var enabled: Bool; var pending: Int; var status: String; var reason: String
 }
 struct PersonalNotice: Codable, Identifiable, Equatable {
     var id: String; var kind: String; var title: String; var body: String
@@ -267,6 +271,7 @@ struct PersonalNotice: Codable, Identifiable, Equatable {
     var kindLabel: String { ["event":"事件触发", "schedule":"定时概况", "followup":"后续提醒"][kind] ?? "助手提醒" }
 }
 struct PersonalSnapshot: Codable, Equatable {
+    var automaticMemory: AutomaticMemoryStatus?
     var preferences: PersonalPreferences; var revision: Int
     var memories: [PersonalMemory]; var inbox: [PersonalNotice]; var delivery: String; var lastError: String?
     var messages: [AssistantMessage]?

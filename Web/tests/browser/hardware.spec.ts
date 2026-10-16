@@ -12,7 +12,7 @@ test('event-only camera, millisecond timeline and native confirmation are usable
     if(path==='/api/bootstrap') json={skills:[],cameras:[camera],evidence:[],agent:{ready:false,provider:'test'},personal:{revision:0,preferences:{},memories:[],inbox:[],messages:[]}};
     if(path==='/api/agent/conversations/main') json={id:'main-test',title:'助手',kind:'main',updatedAt:1,unreadCount:0};
     if(path==='/api/sdk/events') json={events:[{id:'event-1',cameraId:camera.id,deviceName:camera.name,startMs:1791766800000,endMs:1791766801000,
-      detectionType:'人物',hasVideo:true,imageUrl:null,reviewStatus:'saved',reason:'仅保存元数据',sourceType:'official_sdk'}],truncated:false,continuousCoverage:false};
+      detectionType:'人物',hasVideo:true,imageUrl:null,reviewStatus:'metadata_only',reason:'仅保存元数据',sourceType:'official_sdk'}],truncated:false,continuousCoverage:false};
     if(path==='/api/hardware/snapshot') json={devices:[{id:camera.id,label:camera.name,executorPlatform:'iOS',executorOnline:true,capabilityRevision:'revision',viewRevision:1,settingsRevision:0,
       privacy:'off',routes:{device_settings_set:{ready:true,sdkMapping:'test'}},validationResults:[]}],operations:[op],tools:[]};
     if(path==='/api/hardware/confirmations') { const body=route.request().postDataJSON(); confirmations.push(body); op.executionState='queued'; json=op; }
@@ -26,7 +26,7 @@ test('event-only camera, millisecond timeline and native confirmation are usable
   await expect(page.getByText('事件已登记',{exact:false})).toBeVisible();
   await page.getByRole('button',{name:'客厅云台',exact:false}).click();
   await expect(page.getByText('本条无图片',{exact:true})).toBeVisible();
-  await expect(page.getByText('已保存，未视觉核验',{exact:false})).toBeVisible();
+  await expect(page.getByText('仅设备报告，暂无可核验图片',{exact:false})).toBeVisible();
   await expect(page.getByText('SDK 标记有录像，尚未下载',{exact:false})).toBeVisible();
   await expect(page.getByText('设备事件时间 2026',{exact:false})).toBeVisible();
   await expect(page.getByRole('button',{name:'确认这次操作'})).toBeVisible();

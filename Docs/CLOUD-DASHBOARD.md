@@ -62,7 +62,9 @@ Agent 不一定调用工具；缺失回执不等于成功。Trace 展示执行�
  → 脱敏快照 → 非特权 HTTP 服务 → nginx /dashboard
 ```
 
-| 环境 | 原服务 / 内部端口 | 业务源码 | Python 环境 |
+以下是监控初次接入时的目录；demo 后续切换为独立 release。当前维护须以 `systemctl show evidenceguard-demo -p ExecStart -p DropInPaths` 为准，并让 collector 的 demo source 与实际加载目录对应。后续变更与逐文件核对见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。
+
+| 环境 | 原服务 / 内部端口 | 初始业务源码 | Python 环境 |
 | --- | --- | --- | --- |
 | team | evidenceguard / 8790 | /opt/evidenceguard/Cloud/server | /opt/evidenceguard/venv |
 | demo | evidenceguard-demo / 8792 | /opt/evidenceguard-demo/Cloud/server | /opt/evidenceguard-demo/venv-build10 |

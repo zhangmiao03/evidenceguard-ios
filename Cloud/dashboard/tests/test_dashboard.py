@@ -54,7 +54,8 @@ class PublicDashboardTests(unittest.TestCase):
         self.assertFalse(result['data']['contentCapture'])
         self.assertTrue(result['data']['publicProjection'])
         self.assertEqual(public_value(float('nan')),None)
-        self.assertNotIn('AKIAABCDEFGHIJKLMNOP',public_value('AKIAABCDEFGHIJKLMNOP'))
+        fake_access_key = 'AKIA' + '0' * 16
+        self.assertNotIn(fake_access_key,public_value(fake_access_key))
 
     def test_business_snapshot_is_read_only_and_not_a_transcript(self):
         p=self.root/'business.sqlite3'

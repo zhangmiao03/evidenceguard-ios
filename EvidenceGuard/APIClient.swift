@@ -98,6 +98,10 @@ struct APIClient {
     func cancelTrial(_ id: String) async throws -> SkillTrial { try await send("/api/skill-trials/\(id)/cancel", body: [String:String]()) }
     func trialRecording(_ id: String) async throws -> VideoRecording { try await get("/api/skill-trials/\(id)/recording") }
     func personalSettings() async throws -> PersonalSnapshot { try await get("/api/personal") }
+    func configureMemory(_ enabled: Bool) async throws -> PersonalSnapshot {
+        try await send("/api/personal/memory-options?enabled=\(enabled ? "true" : "false")", method: "PUT", body: Optional<String>.none)
+    }
+    func retryMemory() async throws -> PersonalSnapshot { try await send("/api/personal/memory-retry", body: [String:String]()) }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
         struct Body: Encodable { var content: String; var temporary: Bool }
