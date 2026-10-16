@@ -54,7 +54,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>在添加摄像头时，用于发现附近的 Wi-Fi 网络并将摄像头连接到你选择的网络。</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>在添加摄像头时，用于扫描、连接并配置附近的摄像头设备。</string>
+	<string>用于发现并连接你选择的蓝牙设备，包括摄像头、门铃、除草机和平板中枢。</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于发现和连接局域网内的摄像头、门铃及团队测试服务。</string>
 	<key>NSMicrophoneUsageDescription</key>

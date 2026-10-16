@@ -79,16 +79,19 @@ def test_scope_denial_and_expired_state_cannot_connect(tmp_path,configured):
     asyncio.run(check())
 
 
-def test_api_callback_never_exchanges_token_and_private_content_requires_device_proof(tmp_path,configured,monkeypatch):
+@pytest.mark.parametrize('provider',['gmail','feishu_cli'])
+def test_api_callback_never_exchanges_token_and_private_content_requires_device_proof(tmp_path,configured,monkeypatch,provider):
+    import sys
+    monkeypatch.setenv('EG_FEISHU_CLI_BINARY',sys.executable)
     monkeypatch.setenv('EG_ACCESS_TOKEN','x'*40)
     app=create_app(tmp_path/'http.sqlite',provider=ScriptedProvider([]),start_worker=False)
     with TestClient(app) as client:
         client.headers.update({'Authorization':'Bearer '+'x'*40,'X-EG-Installation-ID':str(uuid4()),'X-EG-Private-Key':'p'*64})
         assert client.post('/api/personal/memories',json={'content':'我的家庭偏好'}).status_code==201
-        request=client.post('/api/connectors/gmail/authorize').json()
+        request=client.post('/api/connectors/'+provider+'/authorize').json()
         original=dict(client.headers)
         client.headers.clear()
-        result=client.get('/api/connectors/oauth/callback/gmail',params=dict(state=request['state'],code='browser-code'),follow_redirects=False)
+        result=client.get('/api/connectors/oauth/callback/'+provider,params=dict(state=request['state'],code='browser-code'),follow_redirects=False)
         assert result.status_code==307 and result.headers['location'].startswith('com.zhangmiao.evidenceguard.connect://oauth?')
         assert 'no-store' in result.headers['cache-control']
         assert app.state.store.db.execute('SELECT COUNT(*) FROM connector_tokens').fetchone()[0]==0
@@ -131,7 +134,7 @@ def test_read_only_tools_pagination_bounded_email_and_refresh(tmp_path,configure
             return httpx.Response(200,json=dict(code=0,data=dict(items=[dict(message_id='om_1',body={'content':'hello'})])))
         c.transport=httpx.MockTransport(serve)
         tools=c.tools(ToolRegistry(),owner)
-        assert set(tools.names)=={'search_gmail','read_gmail','list_feishu_chats','read_feishu_messages','read_phone_context'}
+        assert set(tools.names)=={'search_gmail','read_gmail','list_feishu_chats','read_feishu_messages','read_phone_context','web_search','fetch_url','get_weather'}
         result=await tools.call('search_gmail',query='newer_than:7d')
         assert result['nextPageToken']=='next'
         email=await tools.call('read_gmail',message_id='abc')
@@ -143,7 +146,7 @@ def test_read_only_tools_pagination_bounded_email_and_refresh(tmp_path,configure
         for bad in ['https://attacker.test/', '../token', 'abc?path=secret']:
             with pytest.raises(ValueError): await tools.call('read_gmail',message_id=bad)
         with pytest.raises(ValueError): await tools.call('send_gmail',message='no')
-        assert set(c.tools(ToolRegistry(),str(uuid4())).names)=={'read_phone_context'}
+        assert set(c.tools(ToolRegistry(),str(uuid4())).names)=={'read_phone_context','web_search','fetch_url','get_weather'}
         s.close()
     asyncio.run(check())
 

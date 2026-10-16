@@ -218,7 +218,15 @@ struct ConversationView: View {
             }
         }
         .onChange(of: input) { _, value in store.conversationDrafts[effectiveConversationID] = value }
-        .onAppear { if allowsConversationSwitching { store.activeConversationID = conversationID } }
+        .onAppear {
+            if allowsConversationSwitching { store.activeConversationID = conversationID }
+            if skillID == nil && executionMode == "live" && store.pendingChatRequests[effectiveConversationID] == nil {
+                cameraID = store.selectedCameraID
+            }
+        }
+        .onChange(of: store.selectedCameraID) { _, id in
+            if skillID == nil && executionMode == "live" && !sending && store.pendingChatRequests[effectiveConversationID] == nil { cameraID = id }
+        }
         .onDisappear { inputFocused = false; store.conversationDrafts[effectiveConversationID] = input }
         .onChange(of: store.composerRevision) { _, _ in
             guard allowsConversationSwitching else { return }
@@ -245,15 +253,8 @@ struct ConversationView: View {
     }
 
     private func createDraft(camera: String?) async {
-        guard let camera, !creatingDraft, store.isConnected else { return }
-        creatingDraft = true; inputFocused = false; defer { creatingDraft = false }
-        do {
-            let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-            let prompt = String((text.isEmpty ? runs.last?.message ?? "请选择画面中的观察对象并完善提醒条件" : text).prefix(2000))
-            let draft = try await store.client.createDraft(camera: camera, conversation: conversationID, prompt: prompt.count >= 2 ? prompt : "请选择画面中的观察对象并完善提醒条件", replacesID: skillID)
-            await store.refresh()
-            store.openEditor(draft, regionCameraID: camera)
-        } catch { self.error = error.localizedDescription }
+        inputFocused = false
+        store.beginCameraGuard(cameraID: camera)
     }
 
     private var suggestions: some View {
@@ -316,7 +317,7 @@ struct ConversationView: View {
                     if executionMode == "live" {
                         Button("看看现在的画面", systemImage: "viewfinder") { input = "请调用当前摄像头拍一张新画面，告诉我看到了什么。"; inputFocused = true }.accessibilityIdentifier("chat.inspect")
                         Button(showCamera ? "收起摄像头画面" : "查看摄像头画面", systemImage: "video") { inputFocused = false; showCamera.toggle() }
-                        Button("新建守护并圈选", systemImage: "square.dashed") { Task { await createDraft(camera: selectedCamera?.id) } }
+                        Button("添加守护", systemImage: "plus.circle") { Task { await createDraft(camera: selectedCamera?.id) } }
                             .disabled(creatingDraft || selectedCamera == nil || !store.isConnected)
                     } else {
                         NavigationLink { VideoSearchView() } label: { Label("文字 / 图片检索录像", systemImage: "photo.on.rectangle") }
@@ -434,10 +435,10 @@ struct ConversationView: View {
                         Text(capture.timestampMeaning == "client_live_sample" ? "本机取样于 \(displayTime(capture.sampledAt)) · 设备拍摄时间未知" : capture.sourceType == "official_sdk" ? "设备事件时间 · \(displayTime(capture.capturedAt)) · 事件缩略图" : capture.sourceType == "synthetic_demo" ? "合成测试 · 生成于 \(displayTime(capture.capturedAt)) · 非摄像头实拍" : "\(capture.historical == true ? "历史资料 · " : "")采集于 \(displayTime(capture.capturedAt)) · \(capture.sourceType == "fixture" ? "测试画面" : "设备画面")")
                             .font(.caption).foregroundStyle(Brand.muted)
                         if executionMode == "live" && capture.historical != true {
-                            if let draft = draftForCapture(capture) {
-                                Button("圈选此摄像头的目标与区域") { inputFocused = false; store.openEditor(draft, regionCameraID: capture.cameraId) }.accessibilityIdentifier("chat.capture.editRegion")
+                            if let guardID = run.guardDraftId {
+                                Button("继续设置守护") { inputFocused = false; store.openCameraGuard(guardID) }.accessibilityIdentifier("chat.capture.editRegion")
                             } else {
-                                Button("为此摄像头新建草案并圈选") { Task { await createDraft(camera: capture.cameraId) } }.disabled(creatingDraft || !store.isConnected).accessibilityIdentifier("chat.capture.newDraft")
+                                Button("添加守护") { Task { await createDraft(camera: capture.cameraId) } }.disabled(!store.isConnected).accessibilityIdentifier("chat.capture.newDraft")
                             }
                         }
                     } else {
@@ -464,6 +465,14 @@ struct ConversationView: View {
             }
             if (run.videos ?? []).contains(where: { $0.verificationStatus == "failed" }) {
                 Button("复核未完成，编辑后重试") { prepareRetry(run) }.font(.subheadline)
+            }
+            if let guardID = run.guardDraftId {
+                Button { inputFocused = false; store.openCameraGuard(guardID) } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("继续设置守护", systemImage: "shield.checkered").font(.headline)
+                        Text("需求已保存，点这里到摄像头守护中继续框选和确认。").font(.subheadline)
+                    }.frame(maxWidth: .infinity, minHeight: 48, alignment: .leading).padding(8)
+                }.buttonStyle(.borderedProminent).accessibilityIdentifier("chat.guardDraft")
             }
             if let draft = run.draft {
                 let current = store.skill(draft.id) ?? draft

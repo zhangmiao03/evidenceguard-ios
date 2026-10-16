@@ -44,6 +44,9 @@ from .push import PushService, DeviceRegistration, Presence
 from .ops import install_ops
 from .hardware_tools.gateway import HardwareGateway
 from .hardware_tools.routes import install_hardware_routes
+from .visual_skills.harness import SceneHarness
+from .visual_skills.service import VisualScenes
+from .visual_skills.routes import install_scene_routes
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -58,6 +61,7 @@ class LifecycleRequest(BaseModel):
     switchFrom: dict[str,str] = Field(default_factory=dict)
 class AgentRequest(BaseModel):
     clientPlatform: Literal['ios','web'] | None = None
+    guardFlowVersion: Literal[1] | None = None
     message: str = Field(min_length=1,max_length=2000)
     conversationId: str = Field(min_length=1,max_length=100)
     requestId: str = Field(min_length=1,max_length=100)
@@ -123,6 +127,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     camera.hardware=hardware
     proactive.ingest=ingest
     watch=CameraWatch(store,captures,visual_review,proactive)
+    scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
+    agent.visual_scenes=scenes
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -133,11 +139,15 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         personal_task=asyncio.create_task(proactive.run()) if start_worker else None
         memory_task=asyncio.create_task(memory.run()) if start_worker else None
         watch_task=asyncio.create_task(watch.run()) if start_worker else None
+        scenes_task=asyncio.create_task(scenes.run()) if start_worker else None
         ingest_task=asyncio.create_task(ingest.run()) if start_worker else None
         demo_task=asyncio.create_task(demo.run()) if start_worker and demo.enabled else None
         push_task=asyncio.create_task(push.run()) if start_worker else None
         try: yield
         finally:
+            if scenes_task:
+                scenes_task.cancel(); await asyncio.gather(scenes_task,return_exceptions=True)
+            await scenes.shutdown()
             if watch_task:
                 watch_task.cancel(); await asyncio.gather(watch_task,return_exceptions=True)
             if memory_task:
@@ -179,6 +189,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.memory=memory
     app.state.connectors=connectors
     app.state.watch=watch
+    app.state.visual_scenes=scenes
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -228,6 +239,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     from .video.search import install_search_routes
     install_search_routes(app,videos,search_owner)
     def push_key(request): return request.headers.get('X-EG-Push-Key')
+    install_scene_routes(app,scenes,personal_client)
     @app.get('/api/push/status')
     async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
     @app.put('/api/push/device')
@@ -517,7 +529,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             if not client or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
             reply=proactive.message(client,body.replyToMessageId)
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
-        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),reference_image_id=body.referenceImageId)
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),reference_image_id=body.referenceImageId,guard_flow_version=body.guardFlowVersion)
         if client: value['clientId']=client; store.save_run(value)
         return value
     @app.get('/api/agent/conversations')

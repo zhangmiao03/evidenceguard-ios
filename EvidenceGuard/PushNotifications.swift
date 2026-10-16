@@ -193,9 +193,12 @@ enum PushBinding {
         Task { @MainActor in PushNotifications.shared.tapped(info); completionHandler() }
     }
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        // Foreground uses the assistant's own inbox; still retain the notification
-        // in Notification Center so an explicit test can be opened.
-        completionHandler([.list])
+        let metadata = notification.request.content.userInfo["eg"] as? [String: String]
+        // Camera sampling requires the app in front. A user-confirmed guard
+        // must still be able to show its alert while that sampling is active.
+        if metadata?["foreground"] == "guard" || metadata?["foreground"] == "test" {
+            completionHandler([.banner, .sound, .list])
+        } else { completionHandler([.list]) }
     }
 }
 

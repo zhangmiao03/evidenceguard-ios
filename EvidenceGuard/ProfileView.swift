@@ -151,7 +151,7 @@ private struct NotificationSettingsContent: View {
             Section {
                 NavigationLink("查看提醒记录", value: AppRoute.personalInbox)
                 DisclosureGroup("提醒依据与后台检查") {
-                    Text("没有运行中的守护时，助手不会假装正在看现场。摄像头接入和具体守护仍需在摄像头 Skill 中设置。").font(.caption)
+                    Text("没有运行中的守护时，助手不会假装正在看现场。摄像头接入和具体守护仍需在摄像头守护中设置。").font(.caption)
                     if store.data.personal?.activity?.isEmpty ?? true { Text("暂无待检查事项。").font(.caption).foregroundStyle(Brand.muted) }
                     ForEach(Array((store.data.personal?.activity ?? []).prefix(5))) { item in
                         VStack(alignment: .leading, spacing: 4) {
