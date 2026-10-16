@@ -54,6 +54,7 @@ test('image results and vector segments retain provenance and readable details',
   bundle.coverage={mediaIndex:{status:'connected',sampledAt:1000,currentSignature:'sig',tables:{video_segments:{total:1}},invalidVectorsInSample:0}};
   await page.goto('/dashboard?view=images');
   await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+  await page.getByText('视觉分析、事件核验与模型实际输入',{exact:true}).click();
   await expect(page.getByText('纸箱位于地垫内',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'查看完整结果与来源'}).click();
   await expect(page.getByRole('dialog')).toContainText('无法判断画外情况');

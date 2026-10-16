@@ -32,6 +32,8 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
  await expect(page.getByText('0.7346',{exact:true})).toBeVisible();
  await expect(page.getByText('遮挡期间无法确认拿取动作')).toBeVisible();
  await expect(page.locator('.eg-search-candidate a[download="录像.mp4"]')).toHaveAttribute('href',video);
+ // Mobile Safari may defer metadata loading until playback is requested.
+ await page.locator('.eg-search-candidate').evaluate(el=>{const video=el.querySelector('video');if(video){video.load();void video.play().catch(()=>{});}});
  await expect(page.locator('.eg-search-candidate')).toContainText('媒体副本暂不可用');
  await page.getByRole('button',{name:'图片向量输入',exact:true}).click();
  await expect(page.getByText(/当前没有可公开展示的图片查询/)).toBeVisible();

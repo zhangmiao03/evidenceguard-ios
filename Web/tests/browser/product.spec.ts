@@ -64,6 +64,7 @@ async function setup(
     proactive?: boolean;
     replay?: boolean;
     automaticMemory?: boolean;
+    memories?: any[];
     sendGate?: Promise<void>;
     restoreGate?: Promise<void>;
   } = {},
@@ -80,7 +81,7 @@ async function setup(
         quietEnd: 8,
         timezone: "Asia/Shanghai",
       },
-      memories: [] as any[],
+      memories: options.memories ?? [] as any[],
       inbox: [],
       messages: options.proactive
         ? ([
@@ -789,9 +790,9 @@ test("recording import keeps unknown capture dates and playback failures are vis
 
 
 test("cloud automatic memory is optional and disabling preserves saved memories", async ({ page }) => {
-  const { state, errors } = await setup(page, { automaticMemory: true });
-  state.personal.memories.push({ id: "auto-1", content: "回复简洁一些", source: "conversation", sourceQuote: "我希望回复简洁一些", createdAt: 1, expiresAt: null });
-  await page.reload(); await enter(page); await nav(page, "记忆");
+  const { state, errors } = await setup(page, { automaticMemory: true,
+    memories: [{ id: "auto-1", content: "回复简洁一些", source: "conversation", sourceQuote: "我希望回复简洁一些", createdAt: 1, expiresAt: null }] });
+  await nav(page, "记忆");
   const toggle = page.getByLabel("聊天后自动整理记忆");
   await expect(toggle).toBeChecked();
   await expect(page.getByText("来源：对话自动整理")).toBeVisible();

@@ -30,6 +30,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import com.anker.esiotkit.media.event_stream.EventDownloadState
+import com.anker.esiotkit.media.event_stream.EventMediaPlayer
+import com.anker.esiotkit.media.event_stream.EventPlayListener
+import com.anker.esiotkit.media.event_stream.EventPlayerState
+import com.anker.esiotkit.sample.main.mega.media.stopAndRelease
+import com.anker.esiotkit.support.platform.getDocumentFilePath
+import com.anker.esiotkit.support.platform.platformFileSystem
+import com.anker.esiotkit.support.platform.ensureDirectoryExists
+import okio.Path.Companion.toPath
 import evidenceguard.tools.OfficialSdkBridge
 import evidenceguard.tools.HardwareToolJson
 import com.anker.esiotkit.media.live_stream.LiveMediaPlayer
@@ -69,6 +82,8 @@ class EvidenceGuardSDKBridge {
     private var discoveredSn = emptySet<String>()
     private val eventCache = mutableMapOf<String, MegaEvent>()
     private val activeLive = mutableMapOf<String, EvidenceGuardLiveBridge>()
+    private var downloadJob: Job? = null
+    private var downloadRequest: String? = null
     private var officialHost: EvidenceGuardOfficialHost? = null
     private val hardware = mutableMapOf<String, HardwareToolJson>()
 
@@ -92,6 +107,10 @@ class EvidenceGuardSDKBridge {
     }
 
     fun executeHardware(sn: String, commandJSON: String, completion: (String) -> Unit) {
+        if (downloadJob != null) {
+            completion("{\"status\":\"rejected\",\"sdkUsed\":false,\"simulated\":false,\"error\":{\"code\":\"DEVICE_BUSY\",\"message\":\"Event video download owns the media session\"}}")
+            return
+        }
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try { completion(withTimeout(12000) { hardwareFor(sn).execute(commandJSON) }) }
             catch (_: Exception) { completion("{\"status\":\"unknown\",\"sdkUsed\":false,\"simulated\":false,\"error\":{\"code\":\"DISPATCH_UNKNOWN\",\"message\":\"SDK operation interrupted or timed out\"}}") }
@@ -154,7 +173,7 @@ class EvidenceGuardSDKBridge {
     }
 
     fun createLive(sn: String): EvidenceGuardLiveBridge? {
-        if (sn !in discoveredSn) return null
+        if (sn !in discoveredSn || downloadJob != null) return null
         val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) } ?: return null
         activeLive.remove(sn)?.stop()
         return EvidenceGuardLiveBridge(device).also { activeLive[sn] = it }
@@ -349,6 +368,81 @@ class EvidenceGuardSDKBridge {
         }
 
     private class EventQueryError(val code: Int) : Exception()
+
+    /** Event recordings only; this is not a continuous SD-card export API.
+     * Use the same documented EventMediaPlayer path as the official demo.
+     */
+    fun downloadEventVideo(sn: String, eventId: String, requestId: String, completion: (String) -> Unit) {
+        val event = eventCache[eventId]?.takeIf { it.deviceSn == sn && it.videoPath.isNotBlank() }
+        val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) }
+        if (downloadJob != null || officialHost != null || sn !in discoveredSn || event == null || device == null ||
+            !Regex("[a-fA-F0-9-]{36}").matches(requestId)) {
+            completion(failure("event_video_unavailable")); return
+        }
+        stopLive()
+        downloadRequest = requestId
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val dir = getDocumentFilePath().toPath().resolve("evidenceguard-recordings")
+            val destination = dir.resolve("$requestId.mp4")
+            var player: EventMediaPlayer? = null
+            var saved = false
+            var receipt = failure("event_download_failed")
+            try {
+                platformFileSystem.ensureDirectoryExists(dir)
+                val finished = CompletableDeferred<Boolean>()
+                player = EventMediaPlayer(event, device).apply {
+                    setPlayListener(object : EventPlayListener {
+                        override fun onPlayState(status: EventPlayerState, message: String) {}
+                        override fun onDownloadState(status: EventDownloadState, progress: Float, message: String) {
+                            when (status) {
+                                EventDownloadState.Success -> finished.complete(true)
+                                EventDownloadState.Failed, EventDownloadState.Timeout -> finished.complete(false)
+                                else -> {}
+                            }
+                        }
+                        override fun onMuteState(isMute: Boolean) {}
+                        override fun onProgress(progress: Float) {}
+                        override fun onVideoInfo(info: VideoInfo) {}
+                    })
+                    startDownload(path = destination.toString())
+                }
+                check(withTimeout(120_000) { finished.await() })
+                // Do not accept an arbitrary callback-provided filesystem path.
+                check(platformFileSystem.exists(destination))
+                val size = platformFileSystem.metadata(destination).size ?: 0L
+                check(size > 0L && size <= 150_000_000L)
+                saved = true
+                receipt = buildJsonObject {
+                    put("status", "success"); put("path", destination.toString())
+                    put("eventId", event.megaEventId); put("deviceSn", sn)
+                    put("startMs", event.startTimestamp); put("bytes", size)
+                    put("source", "official_event_download")
+                }.toString()
+            } catch (_: CancellationException) {
+                receipt = failure("event_download_cancelled_or_timeout")
+            } catch (_: Exception) {
+                receipt = failure("event_download_failed")
+            } finally {
+                withContext(NonCancellable + Dispatchers.Main) {
+                    runCatching { player?.stopAndRelease() }
+                    delay(800) // native release grace, before permitting another player
+                    if (downloadJob?.isActive == false) {
+                        saved = false
+                        receipt = failure("event_download_cancelled_or_timeout")
+                    }
+                    if (!saved) runCatching { platformFileSystem.delete(destination) }
+                    downloadJob = null; downloadRequest = null
+                    completion(receipt)
+                }
+            }
+        }
+        downloadJob = job
+        job.start()
+    }
+
+    fun cancelEventVideo(requestId: String) {
+        if (downloadRequest == requestId) downloadJob?.cancel()
+    }
 
     fun cancelInspection() {
         generation += 1

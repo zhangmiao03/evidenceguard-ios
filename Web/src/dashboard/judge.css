@@ -1005,6 +1005,14 @@
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.eg-judge details, .eg-judge details > *, .eg-judge .eg-ops-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.eg-judge code, .eg-judge pre, .eg-judge .eg-ops-mono {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .judge-file-list span {
   color: #d8ba86;
   flex-shrink: 0;

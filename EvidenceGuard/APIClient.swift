@@ -184,13 +184,13 @@ struct APIClient {
         }
         return try JSONDecoder().decode(VideoSearchImage.self, from: value)
     }
-    func uploadRecording(_ file: URL, camera: String, recordedAt: Double?) async throws -> VideoRecording {
+    func uploadRecording(_ file: URL, camera: String, recordedAt: Double?, title: String? = nil) async throws -> VideoRecording {
         let resource = file.startAccessingSecurityScopedResource()
         defer { if resource { file.stopAccessingSecurityScopedResource() } }
         let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
         guard size > 0 && size <= 150_000_000 else { throw APIProblem(message: "请选择不超过 150 MB 的录像") }
         var url = URLComponents(url: baseURL.appendingPathComponent("api/recordings"), resolvingAgainstBaseURL: true)!
-        url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: file.deletingPathExtension().lastPathComponent)]
+        url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: title ?? file.deletingPathExtension().lastPathComponent)]
         if let recordedAt { url.queryItems?.append(URLQueryItem(name: "recordedAt", value: String(recordedAt))) }
         url.queryItems?.append(URLQueryItem(name: "recordedTimezone", value: TimeZone.current.identifier))
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120

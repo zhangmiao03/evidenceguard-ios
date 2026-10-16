@@ -43,7 +43,16 @@ struct EvidenceDetailView: View {
                     if item.videoUrl != nil {
                         NavigationLink(value: AppRoute.replayVideo(item.id, item.seekSeconds ?? 0)) { Label("播放触发片段 · \(videoTime(item.originalEventTime ?? 0))", systemImage: "play.circle.fill") }.buttonStyle(PrimaryAction())
                         Text("回放测试生成的提醒；记录时间不是原录像拍摄时间。证据只包含触发时已到达的画面。").font(.caption).foregroundStyle(.orange)
-                    } else { EvidenceImage(url: store.client.absoluteURL(item.imageUrl)) }
+                    } else if let path = item.imageUrl {
+                        VideoSearchThumbnail(path: path).frame(height: 220).clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    if let path = item.imageUrl, store.data.videoModels?.retrievalVersion == 2 {
+                        NavigationLink {
+                            VideoSearchView(seed: VideoSearchSeed(imagePath: path, cameraID: item.cameraId,
+                                origin: store.client.baseURL, label: "\(item.title) · \(displayTime(item.capturedAt))"))
+                        } label: { Label("用这张画面查历史录像", systemImage: "photo.badge.magnifyingglass") }
+                            .buttonStyle(.bordered).accessibilityIdentifier("evidence.searchRecordings")
+                    }
                     GroupBox("事件详情") { VStack(alignment: .leading, spacing: 10) { Text(item.reason); Text("来源设备：\(item.deviceName ?? store.camera(item.cameraId)?.name ?? item.cameraId)"); if !item.skillId.isEmpty { Text("规则版本：\(item.revision)") }; Text(item.sourceType == "fixture" ? "来源：合成摄像头测试画面" : item.sourceType == "synthetic_demo" ? "来源：合成测试样本 · 非摄像头实拍，时间为生成时间" : item.sourceType == "official_sdk" ? "来源：官方事件缩略图 · 时间为设备事件时间" : "来源：\(item.sourceType)") }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading) }
                     if !item.skillId.isEmpty { NavigationLink(value: AppRoute.skill(item.skillId)) { Label("查看所属任务", systemImage: "shield") } }
                     if ["official_sdk", "synthetic_demo"].contains(item.sourceType) {
@@ -95,6 +104,9 @@ struct RecordingLibraryView: View {
                 NavigationLink { VideoSearchView() } label: {
                     Label("用文字或图片检索录像", systemImage: "magnifyingglass")
                 }.accessibilityIdentifier("recordings.search")
+                NavigationLink { DeviceRecordingImportView(connection: store.officialSDK) } label: {
+                    Label("从设备事件下载录像", systemImage: "video.badge.waveform")
+                }.accessibilityIdentifier("recordings.deviceImport")
             }
             Section("导入录像") {
                 Picker("来源摄像头", selection: $cameraID) { ForEach(store.data.cameras) { c in Text(c.name).tag(c.id) } }
@@ -152,6 +164,94 @@ struct RecordingLibraryView: View {
             _ = try await store.client.uploadRecording(url, camera: cameraID, recordedAt: knownDate ? recordedAt.timeIntervalSince1970 : nil)
             await store.refresh(); store.toast = "录像已保存，正在建立视频索引"
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+struct DeviceRecordingImportView: View {
+    @EnvironmentObject private var store: AppStore
+    @ObservedObject var connection: OfficialSDKConnection
+    @State private var cameraSN = ""
+    @State private var date = Date()
+    @State private var pending: SDKInspectionEvent?
+    @State private var importing = false
+    @State private var task: Task<Void, Never>?
+    @State private var status = ""
+    @State private var cachedFile: URL?
+    @State private var cachedEvent: SDKInspectionEvent?
+    @State private var origin: URL?
+    private var camera: SDKDiscoveredCamera? { connection.devices.first { $0.sn == cameraSN } }
+    private var busy: Bool { importing || connection.downloadingRecording || connection.inspecting || connection.syncing || connection.checking }
+    var body: some View {
+        List {
+            Section("设备事件录像") {
+                Text("按日期查询官方事件，下载其中已有录像的记录，再导入当前服务建立索引。下载期间会暂停直播；设备原录像保留。此入口不扫描存储卡的全部连续录像。").font(.subheadline)
+                if !connection.canDiscover { Text(connection.buildStatus).foregroundStyle(.orange) }
+                Picker("设备", selection: $cameraSN) {
+                    ForEach(connection.devices.filter(\.isCompetitionCamera)) { Text($0.name).tag($0.sn) }
+                }.disabled(busy)
+                DatePicker("日期", selection: $date, in: ...Date(), displayedComponents: .date).disabled(busy)
+                Button("查询事件录像") { if let camera { connection.queryEvents(camera: camera, date: date) } }
+                    .disabled(busy || camera == nil || !connection.canDiscover)
+                Text(connection.inspectionMessage).font(.caption).foregroundStyle(Brand.muted)
+                Text("单次最多 50 条事件；查不到记录不代表当时没有活动。事件时间不一定是文件第一帧时间，未核实的拍摄开始时间按未知保存。").font(.caption).foregroundStyle(Brand.muted)
+            }
+            Section("可导入的事件") {
+                ForEach(connection.events.filter { $0.deviceSn == cameraSN && $0.hasVideo }) { event in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(event.startDate, format: .dateTime.year().month().day().hour().minute().second())
+                        Button("下载并导入这段录像") { pending = event }.disabled(busy || !store.isConnected)
+                    }
+                }
+            }
+            if !status.isEmpty || importing {
+                Section("导入进度") {
+                    if importing { ProgressView() }
+                    Text(status).font(.subheadline)
+                    if importing { Button("取消当前导入", role: .cancel) { task?.cancel() } }
+                    else if let cachedEvent, cachedFile != nil { Button("重试上传已下载文件") { start(cachedEvent) } }
+                    NavigationLink("查看录像库", value: AppRoute.recordings)
+                }
+            }
+        }.pageStyle("设备录像导入")
+            .onAppear { origin = store.client.baseURL; if cameraSN.isEmpty { cameraSN = connection.devices.first(where: \.isCompetitionCamera)?.sn ?? "" } }
+            .onChange(of: store.client.baseURL) { _, _ in task?.cancel(); clearCached(); origin = nil; status = "服务已切换，请返回录像库重新进入。" }
+            .onDisappear { task?.cancel(); clearCached() }
+            .alert("下载并导入当前服务？", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
+                Button("取消", role: .cancel) { pending = nil }
+                Button("下载并导入") { if let pending { start(pending) }; pending = nil }
+            } message: { Text("录像将从设备下载到手机，再上传至当前服务并发送给已配置的检索模型。请保持 App 在前台。") }
+    }
+    private func clearCached() {
+        if let cachedFile { try? FileManager.default.removeItem(at: cachedFile) }
+        cachedFile = nil; cachedEvent = nil
+    }
+    private func start(_ event: SDKInspectionEvent) {
+        guard !importing, let camera, event.deviceSn == camera.sn, origin == store.client.baseURL else { return }
+        let client = store.client.scoped()
+        importing = true
+        task = Task { @MainActor in
+            defer { importing = false }
+            do {
+                if cachedEvent?.id != event.id || cachedFile == nil {
+                    clearCached(); status = "正在从官方 SDK 下载事件录像…"
+                    let file = try await connection.downloadEventRecording(camera: camera, event: event)
+                    if Task.isCancelled || client.baseURL != store.client.baseURL { try? FileManager.default.removeItem(at: file); throw CancellationError() }
+                    cachedFile = file; cachedEvent = event
+                }
+                try Task.checkCancellation()
+                guard client.baseURL == store.client.baseURL, let file = cachedFile else { throw CancellationError() }
+                status = "下载完成，正在上传并排队建立索引…"
+                try await client.registerSDKDevices([camera])
+                try Task.checkCancellation()
+                guard client.baseURL == store.client.baseURL else { throw CancellationError() }
+                let value = try await client.uploadRecording(file, camera: IOSToolExecutor.deviceID(camera.sn), recordedAt: nil,
+                    title: "设备事件录像 · \(event.startDate.formatted(date: .numeric, time: .standard))")
+                guard !Task.isCancelled, client.baseURL == store.client.baseURL else { return }
+                clearCached(); await store.refresh()
+                status = "录像已保存：\(value.stateLabel)。索引完成后可在录像库检索。"
+            } catch is CancellationError { status = "导入已取消；已经完成的服务端上传可在录像库查看。" }
+            catch { status = "导入未完成：\(error.localizedDescription)" }
+        }
     }
 }
 

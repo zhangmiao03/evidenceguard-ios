@@ -315,8 +315,12 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     async def recording(recording_id:str):
         r=videos.accessible(recording_id)
         if not r.get('aspectRatio'):
+            # Metadata must remain readable while preprocessing is queued, or
+            # after it fails before a playback file exists.
+            try: source=videos.file(recording_id)
+            except KeyError: return videos.public(r)
             import json
-            value=json.loads(await command('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(videos.file(recording_id))))['streams'][0]
+            value=json.loads(await command('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(source)))['streams'][0]
             r['aspectRatio']=value['width']/value['height']; videos.db.save_recording(r)
         return videos.public(r)
     @app.get('/api/recordings/{recording_id}/video')

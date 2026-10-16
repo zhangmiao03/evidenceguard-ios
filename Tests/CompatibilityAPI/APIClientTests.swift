@@ -56,6 +56,32 @@ final class APIClientTests: XCTestCase {
         APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)), installationProof: { _ in "synthetic-installation-proof" })
     }
 
+    func testEventRecordingUploadKeepsDeviceScopeAndUnknownFileStart() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("synthetic API transport fixture".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        StubProtocol.install { item in
+            XCTAssertEqual(item.request.httpMethod, "POST")
+            XCTAssertEqual(item.request.url!.path, "/api/recordings")
+            let query = URLComponents(url: item.request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+            XCTAssertEqual(query.first { $0.name == "cameraId" }?.value, "sdk-camera-test")
+            XCTAssertEqual(query.first { $0.name == "title" }?.value, "设备事件录像 · 测试")
+            XCTAssertFalse(query.contains { $0.name == "recordedAt" }, "Event time is not automatically file start time")
+            XCTAssertEqual(item.request.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+            XCTAssertEqual(item.request.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+            item.reply(#"{"id":"video-test","cameraId":"sdk-camera-test","title":"设备事件录像 · 测试","sourceType":"uploaded","status":"queued","segmentCount":0,"playbackUrl":"/api/recordings/video-test/video"}"#, status: 202)
+        }
+        let result = try await client().uploadRecording(file, camera: "sdk-camera-test", recordedAt: nil, title: "设备事件录像 · 测试")
+        XCTAssertEqual(result.status, "queued")
+        XCTAssertNil(result.recordedAt)
+    }
+
+    func testEvidenceSearchImageRejectsAnotherOriginBeforeTransport() async {
+        StubProtocol.install { _ in XCTFail("Cross-origin evidence must not receive credentials") }
+        do { _ = try await client().videoSearchImage("https://other-origin.invalid/evidence.jpg"); XCTFail("Expected rejection") }
+        catch {}
+    }
+
     func testLatestGuardVersionAndHistoryReferenceTravelTogether() async throws {
         StubProtocol.install { item in
             if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }

@@ -3,8 +3,19 @@ import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
+struct VideoSearchSeed {
+    let imagePath: String
+    let cameraID: String
+    let origin: URL
+    let label: String
+}
+
 struct VideoSearchView: View {
     @EnvironmentObject private var store: AppStore
+    let seed: VideoSearchSeed?
+    init(seed: VideoSearchSeed? = nil) { self.seed = seed }
+    @State private var loadingSeed = false
+    @State private var seedLoaded = false
     @State private var text = ""
     @State private var camera = "all"
     @State private var period = "all"
@@ -22,7 +33,7 @@ struct VideoSearchView: View {
     @State private var error: String?
 
     private var canSubmit: Bool {
-        store.isConnected && store.data.videoModels?.retrievalVersion == 2 && store.data.videoModels?.embeddingReady == true && !submitting && result?.isRunning != true &&
+        store.isConnected && store.data.videoModels?.retrievalVersion == 2 && store.data.videoModels?.embeddingReady == true && !submitting && !loadingSeed && result?.isRunning != true &&
         (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || reference != nil) &&
         text.count <= 1000 &&
         (period != "custom" || from < until)
@@ -34,6 +45,11 @@ struct VideoSearchView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Label("找回你关心的片刻", systemImage: "sparkle.magnifyingglass").font(.title2.bold())
                     Text("描述一件事，或添加目标照片。在已保存录像中寻找相关片段，再查看原片核对。").font(.subheadline).foregroundStyle(Brand.muted)
+                    if let seed {
+                        Text("入口：\(seed.label)。可替换参考图；请确认当前图片、摄像头与时间范围后开始检索。").font(.caption).foregroundStyle(Brand.muted)
+                        if loadingSeed { ProgressView("正在读取所选证据画面…") }
+                        if !loadingSeed && !seedLoaded { Button("重新读取证据画面") { Task { await loadSeed() } } }
+                    }
                     if store.data.videoModels?.retrievalVersion != 2 {
                         Text("当前服务尚未开启新版图文检索。请升级云端服务；原有助手历史查询仍可使用。").font(.subheadline).foregroundStyle(.orange)
                     } else if store.data.videoModels?.embeddingReady != true {
@@ -98,6 +114,7 @@ struct VideoSearchView: View {
                 }
             }.padding(16)
         }.pageStyle("录像检索")
+        .task { await loadSeed() }
         .task(id: photo) {
             guard let photo else { return }
             do {
@@ -108,6 +125,7 @@ struct VideoSearchView: View {
         .task(id: "\(searchID ?? "")-\(refreshID)-\(store.client.baseURL.absoluteString)") { await poll() }
         .onChange(of: store.client.baseURL) { _, _ in
             result = nil; searchID = nil; resultOrigin = nil; error = nil
+            if seed != nil { reference = nil; seedLoaded = false; camera = "all" }
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { choice in
             do {
@@ -121,6 +139,22 @@ struct VideoSearchView: View {
         .sheet(isPresented: $crop) {
             if let reference { VideoReferenceCrop(image: reference) { self.reference = $0 } }
         }
+    }
+
+    private func loadSeed() async {
+        guard let seed, !seedLoaded, !loadingSeed else { return }
+        guard seed.origin == store.client.baseURL else { error = "服务已切换，请返回当前服务的证据重新选择。"; return }
+        guard store.camera(seed.cameraID) != nil else { error = "该证据的来源摄像头已不在当前服务中，请返回重新选择。"; return }
+        loadingSeed = true; defer { loadingSeed = false }
+        let client = store.client.scoped()
+        do {
+            let data = try await client.videoSearchImage(seed.imagePath)
+            guard !Task.isCancelled, seed.origin == store.client.baseURL else { return }
+            guard store.camera(seed.cameraID) != nil else { throw APIProblem(message: "来源摄像头已移除，请重新选择。") }
+            try select(data)
+            camera = seed.cameraID
+            seedLoaded = true
+        } catch { if !Task.isCancelled && seed.origin == store.client.baseURL { self.error = error.localizedDescription } }
     }
 
     private func querySummary(_ value: VideoSearchResult) -> some View {
