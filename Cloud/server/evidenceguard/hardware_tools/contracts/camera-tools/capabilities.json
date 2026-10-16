@@ -1,6 +1,8 @@
 {
-  "version": "0.2.0",
+  "version": "0.3.0",
   "source": "docs/AGENT_TOOL_PLAN.md#4",
+  "referenceBaseline": "official-demo-baseline.json",
+  "referenceBaselineGrantsExecution": false,
   "capabilities": [
     {
       "id": "C01",

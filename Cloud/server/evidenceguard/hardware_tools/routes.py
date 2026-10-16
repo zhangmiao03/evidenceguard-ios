@@ -12,6 +12,8 @@ from .vendor.camera_tools.catalog import ToolError
 class Route(Input):
     ready: bool
     sdkMapping: str = Field(min_length=1, max_length=240)
+    motionModes: list[Literal['step','continuous']] = Field(default_factory=lambda: ['step'], max_length=2)
+    maxContinuousMs: int = Field(default=0, ge=0, le=1100)
 
 
 class Register(Input):
@@ -19,6 +21,7 @@ class Register(Input):
     model: Literal['T8171','T8214']
     platform: Literal['ios','web','android']
     adapterVersion: str = Field(min_length=1,max_length=100)
+    sdkVersion: str = Field(default='unknown', max_length=100)
     sdkArtifactHash: str = Field(pattern='^[a-f0-9]{64}$')
     firmwareVersion: str = Field(default='unknown',max_length=100)
     privacy: Literal['on','off','unknown'] = 'unknown'
@@ -50,6 +53,7 @@ class Validation(Input):
     capabilityRevision: str
     status: Literal['passed','failed','not_run']
     evidence: str = Field(min_length=10,max_length=2000)
+    variant: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class Lease(Input):
@@ -62,6 +66,8 @@ class Result(Lease):
     status: Literal['acknowledged','failed','unknown','stopped']
     simulated: Literal[False] = False
     sdkUsed: bool = False
+    sdkAccepted: bool | None = None
+    stopResult: dict | None = None
     sdkResult: dict | None = None
     data: dict = Field(default_factory=dict)
     references: list[dict] = Field(default_factory=list,max_length=64)
@@ -76,6 +82,13 @@ class Reconcile(Input):
 
 class PrivacyCheck(Input):
     evidence: str = Field(min_length=10,max_length=2000)
+
+class Review(Input):
+    operationId: str
+    requestHash: str
+    observedEffect: Literal['confirmed','not_observed','failed','unconfirmed','not_applicable']
+    artifactValidated: Literal['unvalidated','integrity_checked','decoded','not_applicable'] | None = None
+    evidence: str = Field(min_length=10, max_length=2000)
 
 
 def install_hardware_routes(app, gateway):
@@ -101,8 +114,13 @@ def install_hardware_routes(app, gateway):
 
     @app.post('/api/hardware/validations')
     async def validate(request: Request):
-        body=(await limited_json(request,Validation,8192)).model_dump()
+        body=(await limited_json(request,Validation,8192)).model_dump(exclude_none=True)
         return gateway.runtime.validate_hardware(gateway.human(client(request)),body)
+
+    @app.post('/api/hardware/review')
+    async def review(request: Request):
+        body=(await limited_json(request,Review,8192)).model_dump(exclude_none=True)
+        return gateway.sync_run(gateway.runtime.review_result(gateway.human(client(request)),body))
 
     @app.post('/api/hardware/reconcile')
     async def reconcile(request: Request):

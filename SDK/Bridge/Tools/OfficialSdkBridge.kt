@@ -37,6 +37,9 @@ data class BridgeResult(
     val data: Map<String, String> = emptyMap(),
     val references: List<BridgeReference> = emptyList(),
     val sdkUsed: Boolean = true,
+    val sdkAccepted: Boolean? = null,
+    val stopState: String? = null,
+    val stopSdkCode: Int? = null,
 )
 
 /**
@@ -51,6 +54,7 @@ class OfficialSdkBridge(
     private val nowEpochMs: () -> Long,
     private val preparedReplyIds: () -> Set<Int> = { emptySet() },
 ) {
+    val sourceDeviceSn: String get() = device.deviceSn
     private val live get() = manager.liveStream(device.deviceSn)
     private val night get() = manager.nightVision(device.deviceSn)
     private val privacy get() = manager.privacyMask(device.deviceSn)
@@ -63,8 +67,8 @@ class OfficialSdkBridge(
 
     private fun reject(code: String, message: String) = BridgeResult("failed", errorCode = code, message = message, sdkUsed = false)
     private fun <T> result(r: ThingResult<T>, success: (T) -> BridgeResult = { BridgeResult("acknowledged") }): BridgeResult = when (r) {
-        is ThingResult.Success -> success(r.data)
-        is ThingResult.Error -> BridgeResult("failed", sdkCode = r.code, message = r.message ?: "SDK error", errorCode = when (r.code) {
+        is ThingResult.Success -> success(r.data).copy(sdkAccepted = true)
+        is ThingResult.Error -> BridgeResult("failed", sdkCode = r.code, sdkAccepted = false, message = r.message ?: "SDK error", errorCode = when (r.code) {
             -1004 -> "PRIVACY_BLOCKED"
             -1002 -> "CAPABILITY_NOT_READY" // Unsupported and not-yet-ready are not distinguishable here.
             else -> "SDK_ERROR"
@@ -109,7 +113,20 @@ class OfficialSdkBridge(
                 if (!live.supportsPTZ()) reject("CAPABILITY_NOT_READY", "PTZ not ready")
                 else {
                     val direction = PTZDirection.entries.firstOrNull { it.name == a["direction"] }
-                    if (direction == null) reject("UNSUPPORTED_PARAMETER", "Invalid direction") else result(live.controlPTZ(direction))
+                    val mode = a["motionMode"] ?: "step"
+                    val duration = a["durationMs"]?.toLongOrNull()
+                    when {
+                        direction == null -> reject("UNSUPPORTED_PARAMETER", "Invalid direction")
+                        mode == "step" && duration == null -> result(live.controlPTZ(direction))
+                        mode == "continuous" && duration != null && duration in 100..MAX_CONTINUOUS_PTZ_MS -> {
+                            if (command.deadlineEpochMs - nowEpochMs() < duration + PTZ_STOP_TIMEOUT_MS)
+                                reject("DEADLINE_EXCEEDED", "Insufficient time for start and paired stop")
+                            else boundedPTZ(duration,
+                                start = { result(live.startPTZMovement(direction)) },
+                                stop = { result(live.stopPTZMovement(direction)) })
+                        }
+                        else -> reject("UNSUPPORTED_PARAMETER", "Step has no duration; continuous requires 100..1100 ms")
+                    }
                 }
             }
             "camera_goto_preset" -> {
@@ -139,19 +156,11 @@ class OfficialSdkBridge(
                     is ThingResult.Error -> result(modes)
                     is ThingResult.Success -> if (nowEpochMs() >= command.deadlineEpochMs) reject("DEADLINE_EXCEEDED", "Expired during mode lookup")
                     else if (mode == null || mode !in modes.data) reject("STALE_REFERENCE", "Mode is no longer available")
-                    else result(live.changeVideoMode(mode, 0)) { change ->
-                        // Match the official T8214 sample: the device changes its
-                        // composite pipeline in place; restarting the player can
-                        // interfere with that transition. Preserve the SDK result.
-                        BridgeResult("acknowledged", data = mapOf(
-                            "previousMode" to "${change.previousMode}",
-                            "mode" to "${change.newMode}",
-                            "sdkStreamRestartRequired" to "${change.streamRestartRequired}",
-                            "requiresNewMediaSession" to "false",
-                            "restartPolicy" to "doorbell_in_place",
-                            "physicalEffect" to "unverified",
-                        ))
-                    }
+                    else result(live.changeVideoMode(mode, 0)) { change -> BridgeResult("acknowledged", data = mapOf(
+                        "previousMode" to "${change.previousMode}", "newMode" to "${change.newMode}",
+                        "streamRestartRequired" to "${change.streamRestartRequired}",
+                        "restartHandling" to if (change.streamRestartRequired) "host_review_required_doorbell" else "not_requested",
+                        "automaticRestartPerformed" to "false", "layoutVerified" to "false", "roiInvalidated" to "true")) }
                 }
             }
             "device_settings_set" -> setField(a)
@@ -167,12 +176,12 @@ class OfficialSdkBridge(
         return withTimeoutOrNull(timeout) {
             suspendCancellableCoroutine { continuation ->
                 service.getQuickResponseList(success = { list ->
-                    if (continuation.isActive) continuation.resume(BridgeResult("acknowledged", references = list.orEmpty()
+                    if (continuation.isActive) continuation.resume(BridgeResult("acknowledged", sdkAccepted = true, references = list.orEmpty()
                         .filter { it.deviceSn.isEmpty() || it.deviceSn == device.deviceSn }
                         .map { BridgeReference("reply", it.desc.ifEmpty { "Voice ${it.voiceId}" }, "reply:${it.voiceId}", ready = it.voiceId in preparedReplyIds()) },
                         data = mapOf("preparationSource" to "host_verified_ids", "ttsStreaming" to "false")))
                 }, onFailure = { code, _ ->
-                    if (continuation.isActive) continuation.resume(BridgeResult("failed", errorCode = "SDK_ERROR", message = code.toString()))
+                    if (continuation.isActive) continuation.resume(BridgeResult("failed", sdkAccepted = false, errorCode = "SDK_ERROR", message = code.toString()))
                 })
                 // SDK exposes no cancellation handle here. Late callbacks are ignored.
             }

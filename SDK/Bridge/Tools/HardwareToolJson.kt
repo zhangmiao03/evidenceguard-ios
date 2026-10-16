@@ -11,8 +11,15 @@ class HardwareToolJson(private val bridge: OfficialSdkBridge, private val model:
                 // A directory entry alone does not prove a reply is prepared for playback.
                 put("ready", ready && name != "doorbell_reply_play")
                 put("sdkMapping", "OfficialSdkBridge.$name")
+                if (name == "camera_ptz_step") {
+                    put("motionModes", JsonArray(listOf("step", "continuous").map(::JsonPrimitive)))
+                    put("maxContinuousMs", MAX_CONTINUOUS_PTZ_MS)
+                }
             }) }
-            put("camera_observe", buildJsonObject { put("ready", ready); put("sdkMapping", "product_live_challenge") })
+            // onRate/onVideoInfo are not decoded-frame progress. Keep the
+            // ordinary read-only image path; strict control references await
+            // a verified native decoder callback, not a timer-generated counter.
+            put("camera_observe", buildJsonObject { put("ready", false); put("sdkMapping", "native_decoder_progress_required") })
         })
         put("fields", buildJsonObject {
             listOf("microphoneEnabled", "audioRecordEnabled", "statusLED").forEach { field ->
@@ -40,6 +47,10 @@ class HardwareToolJson(private val bridge: OfficialSdkBridge, private val model:
         val result = if (envelope.getValue("command").jsonPrimitive.content == "stop") bridge.stop(command) else bridge.execute(command)
         return buildJsonObject {
             put("status", result.status); put("sdkUsed", result.sdkUsed); put("simulated", false)
+            put("sdkAccepted", result.sdkAccepted?.let(::JsonPrimitive) ?: JsonNull)
+            result.stopState?.let { state -> put("stopResult", buildJsonObject {
+                put("state", state); put("sdkCode", result.stopSdkCode?.let(::JsonPrimitive) ?: JsonNull)
+            }) }
             put("sdkResult", buildJsonObject {
                 put("source", "ESIotKit / OfficialSdkBridge")
                 put("code", result.sdkCode?.let(::JsonPrimitive) ?: JsonNull)

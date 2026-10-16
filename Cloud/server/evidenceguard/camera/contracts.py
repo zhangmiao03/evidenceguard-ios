@@ -60,6 +60,8 @@ class FrameRef:
     sampled_at: float | None = None
     request_id: str | None = None
     session_id: str | None = None
+    execution_epoch: str | None = None
+    decoder_frame: dict | None = None
 
 
 @dataclass(frozen=True)

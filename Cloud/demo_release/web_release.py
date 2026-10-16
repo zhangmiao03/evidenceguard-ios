@@ -40,7 +40,7 @@ def configuration():
 def runtime_hashes(root):
     result = {'requirements.txt': common.digest(root / 'requirements.txt')}
     for p in sorted((root / 'evidenceguard').rglob('*')):
-        if p.is_file() and '__pycache__' not in p.parts and p.suffix in {'.py', '.json'}:
+        if p.is_file() and '__pycache__' not in p.parts and (p.suffix in {'.py', '.json'} or common.runtime_prompt(p.relative_to(root))):
             result[p.relative_to(root).as_posix()] = common.digest(p)
     return result
 
@@ -48,7 +48,8 @@ def runtime_hashes(root):
 def verify_runtime(root, manifest):
     prefix = 'Cloud/server/'
     expected = {p[len(prefix):]: h for p, h in manifest['files'].items()
-                if p == prefix + 'requirements.txt' or p.startswith(prefix + 'evidenceguard/') and Path(p).suffix in {'.py', '.json'}}
+                if p == prefix + 'requirements.txt' or p.startswith(prefix + 'evidenceguard/') and
+                (Path(p).suffix in {'.py', '.json'} or common.runtime_prompt(Path(p[len(prefix):])))}
     if runtime_hashes(root) != expected:
         raise RuntimeError('Active backend differs from the reviewed package; recompare before Web deployment')
 

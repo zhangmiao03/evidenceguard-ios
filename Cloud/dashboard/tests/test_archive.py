@@ -32,6 +32,8 @@ class ArchiveTests(unittest.TestCase):
             for i in range(97):
                 run={'id':f'run-{i:03}','text':'真实回复 private-secret-abcdefgh','createdAt':1000+i//2,'status':'completed','clientPlatform':'ios'}
                 if i==0: run['referenceImageId']='private-reference'
+                if i==1: run['endpointAnalyses']=[{'analysis':{'summary':'private-endpoint-canary'}}]
+                if i==3: run['privateContent']=True  # follow-up quoting a private analysis
                 db.execute('INSERT INTO runs VALUES (?,?)',(run['id'],json.dumps(run)))
             db.execute('INSERT INTO video_query_images VALUES (?,?)',('private-reference','private-query-image-canary'))
         db.close()
@@ -71,6 +73,10 @@ class ArchiveTests(unittest.TestCase):
         self.assertNotIn('private-secret-abcdefgh',exported)
         private=next(v for v in values if v['id']=='run-000')
         self.assertIsNone(private['answer']);self.assertEqual(private['bodyStatus'],'private_content')
+        self.assertNotIn('private-endpoint-canary',exported)
+        for rid in ['run-001','run-003']:
+            item=next(v for v in values if v['id']==rid)
+            self.assertIsNone(item['answer']);self.assertEqual(item['bodyStatus'],'private_content')
         historic=next(v for v in values if v['id']=='run-002')
         self.assertEqual(historic['historyStatus'],'steps_not_retained_or_not_captured')
         step=self.client.get('/dashboard/api/archive-trace/run-096').json()

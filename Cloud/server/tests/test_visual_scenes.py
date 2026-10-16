@@ -23,6 +23,17 @@ CLIENT = '2c322328-71f2-4c2f-ac05-1cc27c3c4342'
 OTHER = 'c58ab789-506e-49ea-a14f-270ce80093e6'
 
 
+def test_control_in_flight_or_unknown_stop_prevents_activation(env):
+    async def check():
+        scenes, _, captures, _ = env
+        scene = await selected(env)
+        captures.hardware_busy = lambda _: True
+        with pytest.raises(ValueError, match='停止结果未知'):
+            await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        assert scenes.get(scene['id'], CLIENT)['status'] == 'draft'
+    asyncio.run(check())
+
+
 def test_result_distinguishes_confirmed_rules_from_fresh_evidence(env):
     async def check():
         scenes, store, _, _ = env
