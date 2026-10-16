@@ -133,6 +133,12 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     from .vision.endpoints import EndpointVisionService
     endpoint_vision=EndpointVisionService(store,visual_review)
     scenes.endpoint_vision=endpoint_vision
+    scenes.harness.local_vision=endpoint_vision.local
+    scenes.harness.live=camera.live
+    from .vision.control import VisualControl
+    visual_control=VisualControl(store,hardware,scenes,endpoint_vision)
+    scenes.visual_control=visual_control
+    hardware.visual_control=visual_control
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -167,6 +173,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
                 personal_task.cancel(); await asyncio.gather(personal_task, return_exceptions=True)
             await trials.shutdown()
             await agent.shutdown()
+            await visual_control.close()
+            await endpoint_vision.local.close()
             if task:
                 task.cancel(); await asyncio.gather(task,return_exceptions=True)
             await worker.shutdown()
@@ -195,6 +203,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.watch=watch
     app.state.visual_scenes=scenes
     app.state.endpoint_vision=endpoint_vision
+    app.state.visual_control=visual_control
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -241,6 +250,14 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         if not connectors.proof(client,request.headers.get('X-EG-Private-Key')):
             raise HTTPException(403,'图片检索需要当前设备的私有空间凭据，请重新连接服务')
         return client
+    @app.get('/api/vision/status')
+    async def vision_status(request: Request):
+        client=search_owner(request)
+        return dict(endpoint=endpoint_vision.configuration(),local=endpoint_vision.local.configuration(),
+                    controls={d:visual_control.readiness(d,client) for d in hardware.devices()})
+    @app.get('/api/vision/controls/{control_id}')
+    async def visual_control_status(control_id: str,request: Request):
+        return visual_control.result(control_id,search_owner(request))
     from .video.search import install_search_routes
     install_search_routes(app,videos,search_owner)
     def push_key(request): return request.headers.get('X-EG-Push-Key')

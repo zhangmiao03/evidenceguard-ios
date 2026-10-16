@@ -44,6 +44,7 @@ class HardwareGateway:
         self.hosts = {h['id']: h for h in self.runtime.store.all('host', TEAM)}
         self.observations = {}
         self.scenes = None
+        self.visual_control = None
         # A process restart never certifies a foreground client is still present.
         with self.runtime.store.transaction():
             for host in self.hosts.values():
@@ -268,7 +269,10 @@ class HardwareGateway:
                 d['viewConfirmationRequired'] = True
                 self.runtime.store.put('device',d)
                 op['productViewInvalidated'] = True; self.runtime.store.put('operation',op)
-        return self.sync_run(op)
+        value=self.sync_run(op)
+        if self.visual_control and op['tool'] in MOVEMENT:
+            self.visual_control.operation_finished(op)
+        return value
 
     def sync_run(self, op):
         value=public(op)

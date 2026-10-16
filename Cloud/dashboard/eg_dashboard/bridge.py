@@ -91,7 +91,7 @@ def instrument(ops, native):
         start = time.monotonic()
         status = 'failed'
         result_info = {}
-        private_search=name in {'search_recordings','analyze_visual_endpoints'}
+        private_search=name in {'search_recordings','analyze_visual_endpoints','sample_camera_vision','aim_camera_at_guard_target','read_visual_control'}
         captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:])
         recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs), **captured})
         try:
@@ -217,6 +217,11 @@ def attach(app, ops, native):
     endpoint_vision = getattr(app.state,'endpoint_vision',None)
     if endpoint_vision:
         configured_models['endpoint_vision'] = endpoint_vision.configuration().get('model')
+    prompt_catalog = [ops.safe(endpoint_vision.prompt_catalog())] if endpoint_vision else []
+    if getattr(app.state,'visual_control',None):
+        from evidenceguard.vision.control import GROUNDING_PROMPT, GROUNDING_HASH
+        prompt_catalog.append(dict(operation='vision.ground_target',version='visual-step-v1',sha256=GROUNDING_HASH,
+                                   systemPrompt=GROUNDING_PROMPT,status='loaded_read_only_grounding'))
     state = {'startedAt': time.time(), 'pid': os.getpid(), 'appVersion': app.version,
              'environment': os.getenv('EG_DASHBOARD_ENVIRONMENT','local'),
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
@@ -227,7 +232,7 @@ def attach(app, ops, native):
              'embeddingSignature': getattr(video_service, 'index_signature', getattr(getattr(video_service, 'embedding', None), 'signature', None)),
              'videoRoot': str(getattr(video_service, 'root', '')),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
-             'promptCatalog': [ops.safe(endpoint_vision.prompt_catalog())] if endpoint_vision else [],
+             'promptCatalog': prompt_catalog,
              'tools': ops.safe(app.state.tools.schemas)}
     target = Path(recorder.path).with_name('observer-state.json')
     target.write_text(json.dumps(state, ensure_ascii=False),encoding='utf-8')

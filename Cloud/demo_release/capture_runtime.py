@@ -22,7 +22,7 @@ def inventory(root):
         rel=p.relative_to(root)
         source=rel.parts[0] in {'evidenceguard','tests'} and p.suffix in {'.py','.json'}
         prompt=p.suffix=='.md' and rel.parts[:3]==('evidenceguard','vision','prompts')
-        if p.is_file() and '__pycache__' not in rel.parts and (source or prompt or rel.as_posix() in {'requirements.txt','migration_stage.py'}):
+        if p.is_file() and '__pycache__' not in rel.parts and (source or prompt or rel.as_posix() in {'requirements.txt','requirements-vision.txt','migration_stage.py'}):
             result[rel.as_posix()]=hashlib.sha256(p.read_bytes()).hexdigest()
     return result
 

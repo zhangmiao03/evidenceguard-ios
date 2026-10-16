@@ -47,3 +47,17 @@ def test_capture_includes_fixed_runtime_prompts_but_not_private_files(tmp_path):
     prompt=tmp_path/'evidenceguard/vision/prompts/common.md';prompt.parent.mkdir(parents=True);prompt.write_text('rules')
     (tmp_path/'evidenceguard/private.env').write_text('secret')
     assert list(inventory(tmp_path))==['evidenceguard/vision/prompts/common.md']
+
+
+def test_deploy_does_not_interrupt_unknown_hardware_control(tmp_path,monkeypatch):
+    import sqlite3
+    monkeypatch.setattr(runtime.legacy,'DATA',tmp_path)
+    with sqlite3.connect(tmp_path/'evidenceguard.sqlite3') as db:
+        for table in ('runs','recordings'):db.execute('CREATE TABLE '+table+' (payload TEXT)')
+    with sqlite3.connect(tmp_path/'evidenceguard-hardware.sqlite3') as db:
+        db.execute('CREATE TABLE records(kind TEXT,id TEXT,team TEXT,body TEXT)')
+        db.execute('INSERT INTO records VALUES (?,?,?,?)',('operation','one','product',json.dumps({'control':True,'executionState':'unknown'})))
+    with pytest.raises(RuntimeError,match='Hardware control'):runtime.idle()
+    with sqlite3.connect(tmp_path/'evidenceguard-hardware.sqlite3') as db:
+        db.execute('UPDATE records SET body=?',(json.dumps({'control':True,'executionState':'completed'}),))
+    runtime.idle()

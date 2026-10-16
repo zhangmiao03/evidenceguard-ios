@@ -54,6 +54,11 @@ def idle():
         searching = db.execute("SELECT COUNT(*) FROM video_search_jobs WHERE json_extract(payload,'$.status') IN ('searching','verifying')").fetchone()[0] if db.execute("SELECT 1 FROM sqlite_master WHERE name='video_search_jobs'").fetchone() else 0
     if active or indexing or searching:
         raise RuntimeError('Demo has active Agent, indexing or retrieval jobs; retry after they finish')
+    path=legacy.DATA/'evidenceguard-hardware.sqlite3'
+    if path.exists():
+        with sqlite3.connect(path.as_uri()+'?mode=ro',uri=True) as db:
+            active=db.execute("SELECT COUNT(*) FROM records WHERE kind='operation' AND json_extract(body,'$.control')=1 AND json_extract(body,'$.executionState') IN ('queued','executing','verifying','unknown') AND COALESCE(json_extract(body,'$.leaseReleasedByHuman'),0)=0").fetchone()[0]
+        if active: raise RuntimeError('Hardware control is running or unresolved; do not interrupt it')
 
 
 def restore(backup):
@@ -68,6 +73,15 @@ def activate(release):
     python = release/'venv/bin/python'
     if not python.is_file():
         raise RuntimeError('Install release-local dependencies before activation')
+    features=manifest.get('features',{})
+    feature_lines=''
+    if features:
+        if features!={'localVision':True,'endpointProfile':'video','visualControl':True}:
+            raise RuntimeError('Unknown runtime features')
+        legacy.run(str(python),str(release/'vision_assets.py'),'--check')
+        from importlib.util import spec_from_file_location,module_from_spec
+        spec=spec_from_file_location('vision_assets',release/'vision_assets.py'); assets=module_from_spec(spec);spec.loader.exec_module(assets)
+        feature_lines=(f'Environment=EG_LOCAL_VISION_ENABLED=1 EG_FLOW_ENABLED=1 EG_GUARD_AUX_ENABLED=1 EG_ENDPOINT_ENABLED=1 EG_ENDPOINT_PROFILE=video EG_VISUAL_CONTROL_ENABLED=1 EG_DEPTH_MODEL_PATH={assets.MODEL}\n')
     legacy.healthy()
     legacy.run(str(python), str(release/'preflight.py'))
     config = json.loads(legacy.CONFIG.read_text())
@@ -81,7 +95,7 @@ def activate(release):
     backup = legacy.BACKUPS/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup.mkdir(parents=True, mode=0o700)
     command = f'{release}/venv/bin/uvicorn eg_dashboard.bootstrap:app --app-dir {release}/Cloud/server --host 127.0.0.1 --port 8792 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log'
-    new = f"[Service]\nEnvironment=EG_PRODUCT_RELEASE={manifest['contentHash']}\nExecStart=\nExecStart={command}\n"
+    new = f"[Service]\nEnvironment=EG_PRODUCT_RELEASE={manifest['contentHash']}\nEnvironment=PYTHONPATH={release}/Cloud/dashboard\n{feature_lines}ExecStart=\nExecStart={command}\n"
     import hashlib
     saved = dict(release=str(release), contentHash=manifest['contentHash'],
         oldSource=config['environments']['demo']['source'], newSource=str(release/'Cloud/server/evidenceguard'),

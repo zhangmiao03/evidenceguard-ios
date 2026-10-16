@@ -23,6 +23,11 @@ def install_scene_routes(app, scenes, client, analysis_client=None):
     async def frame(key: str, body: Revision, request: Request):
         return scenes.public(await scenes.frame(key, client(request), body.revision))
 
+    @app.post('/api/visual-scenes/{key}/sample-analysis')
+    async def sample_analysis(key: str, body: Revision, request: Request):
+        owner=(analysis_client or client)(request)
+        return await scenes.sample_endpoints(key,owner,body.revision)
+
     @app.post('/api/visual-scenes/{key}/selection')
     async def selection(key: str, body: Selection, request: Request):
         return scenes.public(scenes.select(key, client(request), body))

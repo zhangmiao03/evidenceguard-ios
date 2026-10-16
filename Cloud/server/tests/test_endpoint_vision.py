@@ -77,6 +77,25 @@ def test_one_rgb_call_originals_and_crops_scope_metadata_and_cached_receipt(setu
     asyncio.run(run())
 
 
+def test_depth_images_are_actually_sent_and_cache_is_separate_from_rgb(setup):
+    import base64
+    from evidenceguard.vision.processing import LocalVision
+    async def check():
+        service,scene,current,_=setup
+        rgb=await service.analyze(scene,current,lambda:True)
+        data,_,_=service.store.media(current['mediaId'])
+        service.local.configuration=lambda:dict(ready=True,depthReady=True,flowReady=True)
+        service.local.analyze=AsyncMock(return_value=dict(status='completed',depth={'status':'completed'},
+            flow={'status':'skipped','code':'FRAMES_NOT_ADJACENT'},images=[dict(label='depth '+k,base64=base64.b64encode(data).decode()) for k in ('a','b')]))
+        depth=await service.analyze(scene,current,lambda:True,include_depth=True)
+        assert depth['status']=='completed' and depth['condition']=='C' and depth['id']!=rgb['id']
+        parts=service.port._request.call_args.args[0][1]['content']
+        assert sum(p['type']=='image_url' for p in parts)==6
+        assert depth['auxiliary']['depth']['status']=='completed' and not depth['controlEligible']
+        assert 'images' not in depth['auxiliary']
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize('kind',['channel','view','camera','frame','time','source','same','missing','depth'])
 def test_invalid_sources_cannot_call_model_or_authorize_control(setup,kind):
     service,scene,current,_=setup
@@ -219,6 +238,30 @@ def test_history_contract_never_gains_endpoint_live_guard_tool(setup,tmp_path):
         assert 'analyze_visual_endpoints' not in run['executionContract']['allowed_tools']
         assert 'request_camera_snapshot' not in run['executionContract']['allowed_tools']
         await runtime.scheduler.shutdown();app.state.store.close()
+    asyncio.run(check())
+
+
+def test_explicit_sampling_rejects_foreign_sessions_and_view_drift(setup):
+    from evidenceguard.visual_skills.service import VisualScenes
+    async def check():
+        service,scene,current,_=setup
+        session=dict(id='live-test',client='other-client',viewVersion=0)
+        live=SimpleNamespace(current=lambda _:session,recent_pair=lambda *_:None)
+        capture=AsyncMock(return_value=current)
+        captures=SimpleNamespace(cameras=SimpleNamespace(live=live),capture=capture)
+        scenes=VisualScenes(service.store,captures,None,None)
+        scenes.save(scene);scenes.endpoint_vision=service
+        result=await scenes.sample_endpoints(scene['id'],scene['clientId'],scene['revision'])
+        assert result['code']=='LIVE_SESSION_REQUIRED' and capture.await_count==0
+        session['client']=scene['clientId']
+        async def analyze(*args,**kwargs):
+            assert args[2]() and kwargs['include_depth']
+            session['viewVersion']=1
+            return dict(status='completed')
+        service.analyze=AsyncMock(side_effect=analyze)
+        result=await scenes.sample_endpoints(scene['id'],scene['clientId'],scene['revision'])
+        assert result['code']=='STALE_CONTEXT' and capture.await_count==2
+        assert scenes.get(scene['id'],scene['clientId'])==scene
     asyncio.run(check())
 
 

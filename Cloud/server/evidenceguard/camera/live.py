@@ -190,6 +190,28 @@ class LiveDevices:
             if now - frame.received_at > 30:
                 del self.frames[fid]
 
+    def trim_frames(self):
+        # Bounded, ephemeral window of actual uploaded bytes; no invented frames.
+        total = 0
+        counts = {}
+        for fid, (frame, raw, _) in reversed(list(self.frames.items())):
+            count = counts.get(frame.device_id, 0)
+            if time.time()-frame.received_at > 30 or count >= 12 or total+len(raw) > 64_000_000:
+                del self.frames[fid]
+            else:
+                counts[frame.device_id] = count+1
+                total += len(raw)
+
+    def recent_pair(self, device_id, ending_frame_id):
+        self.trim_frames()
+        end = self.frames.get(ending_frame_id)
+        if not end or end[0].device_id != device_id: return None
+        from ..vision.processing import pair_gate
+        for frame, raw, _ in reversed(list(self.frames.values())):
+            if pair_gate(asdict(frame), asdict(end[0])) is None:
+                return raw, end[1], asdict(frame), asdict(end[0])
+        return None
+
     def commands(self, s):
         self.expire()
         return [dict(requestId=rid, sessionId=p['sessionId'], deviceId=p['deviceId'],
@@ -238,6 +260,7 @@ class LiveDevices:
                          sampled_at=body.sampledAt, request_id=body.requestId, session_id=s['id'],
                          execution_epoch=p.get('executionEpoch'), decoder_frame=body.decoderFrame)
         self.frames[frame.frame_id] = (frame, raw, mime)
+        self.trim_frames()
         media = self.store.save_media(asdict(frame), raw, mime)
         s.update(sequence=max(s['sequence'], body.sequence), lastFrameUrl=media['imageUrl'], lastSampledAt=body.sampledAt)
         p['future'].set_result(frame)

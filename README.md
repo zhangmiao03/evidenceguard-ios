@@ -1,5 +1,11 @@
 # EvidenceGuard · iOS / Cloud
 
+## 后端 DepthART / DIS 与单步视觉控制（2026-10-17）
+
+本轮保持 iOS / Web 前端和官方SDK桥接不变，补充有界真实帧窗口、DepthART448与DIS CPU处理、当前目标定位到单步工具的编排、SDK回执后的新图复核。助手新增 `sample_camera_vision`、`aim_camera_at_guard_target`、`read_visual_control`，继续使用现有硬件确认卡；不自动连续追踪。`EG_ENDPOINT_PROFILE=video` 显式复用云端当前有效模型配置，不尝试旧官方密钥。
+
+**后端不能生成缺失的 iOS 解码回调。** 现有 `camera_observe.ready=false` 保留，没有原生解码证明时返回 `NATIVE_DECODER_PROOF_REQUIRED`，不能宣称已实现真机自主转动。光流也只在真实取样间隔≤1秒且视角一致时运行。实现、部署/回滚与验收范围见 [后端图像处理与控制接入](Docs/BACKEND-VISION-ROLLOUT-2026-10-17.md)；以下首版RGB描述属于早期接入记录。
+
 ## 真机录像检索、iOS 导入与 demo 发布（2026-10-17）
 
 已保留并合并 `main@b321730` 和 `dongrunze@80438af` 的最新守护、SeedLite、v0.3 工具、归档及演示修复。**demo 现在已部署图文视频检索 v2 和合并后的 Cloud 模块**，原 Web 资源、账号配置、数据库及团队/评审服务保留。以下早期记录中的“未部署”描述当时状态；本次没有生成或上传新的 TestFlight。

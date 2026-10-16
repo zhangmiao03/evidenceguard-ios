@@ -95,11 +95,57 @@ class VisualScenes:
             if session and current and current.get('viewRevision') != session['id']+':'+str(session.get('viewVersion',0)):
                 return False
             return True
-        result=await self.endpoint_vision.analyze(original,current,valid,include_depth=include_depth)
+        live=getattr(self.captures.cameras,'live',None)
+        pair=live.recent_pair(original['cameraId'],current['frameId']) if live and current else None
+        result=await self.endpoint_vision.analyze(original,current,valid,include_depth=include_depth,flow_pair=pair)
         if not valid(): return unavailable('STALE_CONTEXT','守护或视角已变化，结果已丢弃')
         # Keep private experiment results in the protected cache/run, not the
         # legacy scene listing, and never reschedule observation via save().
         return result
+
+    async def sample_endpoints(self, key, client, revision, *, run=None):
+        """Two explicit bounded capture challenges using the existing iOS API.
+
+        Requests cannot make the native decoder run faster. If their real sample
+        interval is too wide, DIS is skipped, never resampled/interpolated.
+        """
+        from ..vision.endpoints import unavailable
+        original=self.get(key,client)
+        if original['revision']!=revision: raise ValueError('守护已更新')
+        if run and run.get('cameraId')!=original['cameraId']: raise ValueError('设备超出本轮范围')
+        if not self.endpoint_vision or not self.endpoint_vision.configuration()['ready']:
+            return unavailable('NOT_CONFIGURED','图像模型未配置，未请求新画面')
+        live=self.captures.cameras.live
+        session=live.current(original['cameraId'])
+        if not session or session.get('client')!=client:
+            return unavailable('LIVE_SESSION_REQUIRED','请在本客户端打开该设备的画面')
+        view=(session['id'],session.get('viewVersion',0))
+        def valid():
+            latest=self.get(key,client)
+            saved=self.store.run(run['id']) if run else None
+            current=live.current(original['cameraId'])
+            return (latest['revision']==revision and latest['status']==original['status']
+                    and latest.get('box')==original.get('box') and latest.get('frame')==original.get('frame')
+                    and current and current.get('client')==client
+                    and (current['id'],current.get('viewVersion',0))==view
+                    and not (saved and saved.get('status')=='cancelled')
+                    and not getattr(self.captures,'hardware_busy',lambda _:False)(original['cameraId']))
+        try:
+            captures=[]
+            async with asyncio.timeout(12):
+                for _ in range(2):
+                    if not valid(): return unavailable('STALE_CONTEXT','任务或设备状态已变化')
+                    capture=await self.captures.capture(original['cameraId'],purpose='用户请求深度与短间隔画面分析')
+                    if capture.get('status')!='completed': return unavailable('CAPTURE_UNAVAILABLE','前台客户端未提供新画面')
+                    captures.append(capture)
+            pair=live.recent_pair(original['cameraId'],captures[-1]['frameId'])
+            # Endpoint comparison still uses the user's target/reference; flow
+            # uses the newly captured adjacent pair, with separate source IDs.
+            result=await self.endpoint_vision.analyze(original,captures[-1],valid,
+                include_depth=True,flow_pair=pair)
+            return result if valid() else unavailable('STALE_CONTEXT','分析期间会话或视角已变化，结果已丢弃')
+        except asyncio.CancelledError: raise
+        except TimeoutError: return unavailable('CAPTURE_TIMEOUT','短时采样超时；没有生成或插值帧')
 
     def result(self, scene, now=None):
         now = time.time() if now is None else now

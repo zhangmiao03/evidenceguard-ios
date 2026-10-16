@@ -324,11 +324,14 @@ class AgentRuntime:
                             try:
                                 contract.check_tool(name)
                                 args=json.loads(call['function']['arguments'])
-                                if name=='analyze_visual_endpoints':
+                                if name in {'analyze_visual_endpoints','sample_camera_vision','aim_camera_at_guard_target','read_visual_control'}:
                                     run['privateContent']=True
                                     if privacy_token is None: privacy_token=PRIVATE_CONTENT.set(True)
                                 if name=='draft_visual_skill' and run['draft']: raise ValueError('本轮已有草案，请使用现有草案')
                                 result=await active_tools.call(name,**args)
+                                if name=='aim_camera_at_guard_target' and isinstance(result,dict) and result.get('operation'):
+                                    run.setdefault('visualControls',[]).append({k:v for k,v in result.items() if k!='operation'})
+                                    result=result['operation'] | {'visualControlId':result['id']}
                                 if isinstance(result,dict) and result.get('executionState'):
                                     run.setdefault('hardwareOperations',[]).append(result)
                                     capture=result.get('result',{}).get('data',{}).get('capture')
@@ -353,7 +356,7 @@ class AgentRuntime:
                                         camera_availability_checked=True
                                 if name=='draft_visual_skill': run['draft']=result
                                 if name in {'create_camera_guard','revise_camera_guard'}: run['guardDraftId']=result['guardId']
-                                if name=='analyze_visual_endpoints':
+                                if name in {'analyze_visual_endpoints','sample_camera_vision'}:
                                     run.setdefault('endpointAnalyses',[]).append(result)
                                 if name=='search_recordings':
                                     # Only the most recent executed search backs this answer and its cards.

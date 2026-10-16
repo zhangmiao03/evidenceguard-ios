@@ -19,10 +19,12 @@ from ..harness.codex import structured_text
 from ..harness.providers import OpenAICompatibleProvider
 from ..ops import PRIVATE_CONTENT, traced
 from .validation import schema_errors, evidence_violations
+from .processing import LocalVision, VERSION as LOCAL_VERSION
 
-VERSION = 'seedlite-endpoints-rgb-v1'
+VERSION = 'seedlite-endpoints-aux-v2'
 PROMPT = (Path(__file__).parent / 'prompts/common.md').read_text(encoding='utf-8')
-ADAPTER_PROMPT = '''本次只提供B组首尾RGB图片，没有深度、光流或独立上下镜头。全图始终保留，裁剪不是新时刻。
+ADAPTER_PROMPT = '''本次提供首尾RGB图片；如提供同帧DepthART或短间隔DIS辅助图，其可用性、来源、质量由auxiliary字段声明；未提供时不得编造。全图始终保留，裁剪不是新时刻。没有独立上下镜头。
+相对深度仅辅助同帧空间关系，不能跨帧比较归一化灰度。光流是额外短间隔取样的诊断，不等于首尾目标运动；cross_frame.motion_basis仅允许rgb或none。
 target.selection=region时，人工框仅表示区域，target.description表示目标类别；不要把整个框当作具体物体或声称识别真实身份。
 时间字段captured_at仅表示设备拍摄时间，sampled_at表示客户端读取直播时间；null保持未知。
 这是已保存证据的只读分析，输出不能触发云台、门铃、告警或任务状态变化。图像方向可能判断错误，不提供电机方向、角度或动作参数。'''
@@ -69,6 +71,15 @@ class EndpointVisionService:
         self.port.model = os.getenv('EG_ENDPOINT_MODEL_ID','')
         self.port.key = os.getenv('EG_ENDPOINT_API_KEY','')
         self.port.ready = all((self.port.base_url,self.port.model,self.port.key))
+        self.profile = os.getenv('EG_ENDPOINT_PROFILE', 'dedicated')
+        # Explicit deployment choice reuses the CURRENT configured video trio.
+        # Never tries an old official key/endpoint after a provider failure.
+        if self.profile == 'video':
+            from ..video.providers import LiteVideoProvider
+            source = LiteVideoProvider()
+            self.port.base_url, self.port.model, self.port.key, self.port.ready = source.base, source.model, source.key, source.ready
+        elif self.profile != 'dedicated': self.port.ready = False
+        self.local = LocalVision()
         self.lock = asyncio.Lock()
         self.pending = 0
         with store.transaction():
@@ -77,7 +88,9 @@ class EndpointVisionService:
     def configuration(self):
         return dict(enabled=self.enabled, ready=bool(self.enabled and self.port.ready),
                     model=self.port.model or None, mode='read_only', condition='B',
-                    depthEnabled=False, flowEnabled=False, promptVersion=VERSION, promptSha256=PROMPT_HASH)
+                    supportedConditions=['B','C'],
+                    depthEnabled=self.local.configuration()['depthReady'], flowEnabled=self.local.configuration()['flowReady'],
+                    modelProfile=self.profile, localVision=self.local.configuration(), promptVersion=VERSION, promptSha256=PROMPT_HASH)
 
     @staticmethod
     def prompt_catalog():
@@ -103,11 +116,11 @@ class EndpointVisionService:
         return raw, metadata
 
     @traced('vision.endpoints')
-    async def analyze(self, scene, current, still_valid, *, include_depth=False):
+    async def analyze(self, scene, current, still_valid, *, include_depth=False, flow_pair=None):
         if not self.enabled or not self.port.ready:
             return unavailable('NOT_CONFIGURED','首尾图分析尚未启用或模型配置不完整')
-        if include_depth:
-            return unavailable('DEPTH_NOT_INTEGRATED','本接入只运行RGB单次分析；深度与光流仍在独立实验包中')
+        if include_depth and not self.local.configuration()['depthReady']:
+            return unavailable('DEPTH_NOT_READY','服务端深度处理尚未就绪，没有伪装成已完成深度分析')
         if not scene.get('box') or not scene.get('frame') or not scene.get('plan'):
             return unavailable('NEEDS_SELECTION','请先由用户框选并保存目标或关注区域')
         try:
@@ -131,9 +144,12 @@ class EndpointVisionService:
         gates = dict(endpoint_comparison_allowed=True, roi_b_source='baseline', flow_allowed=False,
                      capturedIntervalKnown=a['captured_at'] is not None and b['captured_at'] is not None)
         meta = dict(frames={'a':a,'b':b},gates=gates)
+        condition='C' if include_depth else 'B'
         context = dict(target=target,roi_a=target['bbox_a'],frames=meta['frames'],pair_gates=gates,
-                       condition='B',controlEligible=False)
-        key = hashlib.sha256(json.dumps([scene['clientId'],scene['id'],scene['revision'],context,
+                       condition=condition,controlEligible=False)
+        auxiliary_key = [LOCAL_VERSION, include_depth, self.local.configuration(),
+                         [f.get('frame_id') for f in flow_pair[2:]] if flow_pair else None]
+        key = hashlib.sha256(json.dumps([scene['clientId'],scene['id'],scene['revision'],context,auxiliary_key,
                 self.port.model,self.port.base_url,PROMPT_HASH,hashlib.sha256(first).hexdigest(),hashlib.sha256(last).hexdigest()],
                 sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         if self.pending >= self.MAX_PENDING:
@@ -149,12 +165,17 @@ class EndpointVisionService:
             with self.store.lock:
                 row=self.store.db.execute('SELECT payload FROM endpoint_analyses WHERE id=?',(key,)).fetchone()
             if row: return json.loads(row[0]) | {'cached':True}
-            reason=self.visual.reserve(scene['cameraId'],'endpoint:'+key,images=4,event_limit=2)
+            reason=self.visual.reserve(scene['cameraId'],'endpoint:'+key,images=4+(2 if include_depth else 0)+(1 if flow_pair else 0),event_limit=2)
             if reason: return unavailable('BUDGET_EXHAUSTED',reason)
             async with asyncio.timeout(self.DEADLINE):
+                auxiliary = await self.local.analyze(first,last,a,b,depth=include_depth,flow_pair=flow_pair)
+                if include_depth and auxiliary.get('depth',{}).get('status') != 'completed':
+                    return unavailable('DEPTH_PROCESSING_FAILED','深度处理未完成，请稍后重试；没有使用伪造的深度图')
+                context['auxiliary'] = {k:v for k,v in auxiliary.items() if k!='images'}
                 content=[dict(type='text',text=json.dumps(context,ensure_ascii=False))]
                 for label,raw in [('a',first),('b',last)]:
                     content += await asyncio.to_thread(image_parts,raw,box,label)
+                content += self.local.parts(auxiliary)
                 options=dict(response_format={'type':'json_object'},max_tokens=2500)
                 if self.port.model.startswith('doubao-'): options['thinking']={'type':'disabled'}
                 answer=await self.port._request([dict(role='system',content=PROMPT+'\n'+ADAPTER_PROMPT),
@@ -162,14 +183,15 @@ class EndpointVisionService:
                 raw_answer=structured_text(answer.get('content') or '')
                 if answer.get('tool_calls') or len(raw_answer)>48000: raise ValueError('invalid response size/type')
                 analysis=json.loads(raw_answer)
-                errors=schema_errors(analysis,{'target':target},meta,'B')+evidence_violations(analysis,{'target':target},meta,'B')
+                errors=schema_errors(analysis,{'target':target},meta,condition)+evidence_violations(analysis,{'target':target},meta,condition)
                 if errors:
                     return unavailable('INVALID_MODEL_RESULT','模型结果未通过结构或证据约束校验') | {'validationErrors':errors[:12]}
             if not still_valid(): return unavailable('STALE_CONTEXT','分析期间任务或视角已变化，结果已丢弃')
             result=dict(status='completed',id=key,readOnly=True,controlEligible=False,cached=False,
-                        condition='B',model=self.port.model,promptVersion=VERSION,promptSha256=PROMPT_HASH,
+                        condition=condition,model=self.port.model,promptVersion=VERSION,promptSha256=PROMPT_HASH,
                         analysis=analysis,sources=meta['frames'],createdAt=time.time(),latencyMs=round((time.monotonic()-started)*1000),
-                        limitation=LIMITATION,semanticValidation='requires_human_review',isLiveConclusion=False)
+                        limitation=LIMITATION,semanticValidation='requires_human_review',isLiveConclusion=False,
+                        auxiliary=context['auxiliary'])
             with self.store.transaction():
                 self.store.db.execute('INSERT OR REPLACE INTO endpoint_analyses VALUES (?,?)',(key,json.dumps(result,ensure_ascii=False)))
             return result
