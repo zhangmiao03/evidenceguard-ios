@@ -47,7 +47,7 @@
 .ios-current .ios-card header svg{color:var(--ios-blue)}
 .eg-ops .ios-current .ios-primary,.eg-ops .ios-current .ios-outline{display:flex;width:100%;min-height:46px;border-radius:15px;margin:12px 0 5px;font-weight:600}
 .eg-ops .ios-current .ios-primary{color:white;background:#176ff5}
-.eg-ops .ios-current .ios-primary:hover{background:#085de0}
+.eg-ops .ios-current .ios-primary:hover{background:#085de0;color:white}
 .eg-ops .ios-current .ios-outline{background:#f6faff;color:var(--ios-blue);border:1px solid #d2e3ff}
 .eg-ops .ios-current .ios-danger{color:#c92d35}
 .ios-current .ios-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
@@ -99,6 +99,7 @@
 .ios-current .ios-frame{margin:12px 0}
 .ios-current .ios-frame-canvas{position:relative;aspect-ratio:4/3;overflow:hidden;border-radius:17px;background:#d2deeb}
 .ios-current .ios-frame img{width:100%;height:100%;object-fit:cover;display:block;user-select:none}
+.ios-current .ios-frame-canvas svg.ios-scene-map{position:absolute;inset:0;width:100%;height:100%;display:block}
 .ios-current .ios-frame-canvas.is-selecting{touch-action:none;cursor:crosshair}
 .ios-current .ios-frame-tag{position:absolute;left:9px;top:10px;border-radius:20px;background:#1b2739b0;padding:5px 9px;font-size:9px;color:white;pointer-events:none}
 .ios-current .ios-frame figcaption{font-size:9px;line-height:1.5;color:#687d95;margin:5px 2px}

@@ -15,6 +15,7 @@ import { AgentCycle, DeploymentPanel, ServerResources } from "./CloudPanels";
 import { RecordContent } from "./RecordContent";
 import { cloudJSON } from "./cloud.mjs";
 import { ImageAnalysis, VideoIndex } from "./MediaPanels";
+import {ImageMemory} from "./ImageMemory";
 import { ArchivePanel } from "./ArchivePanel";
 import { Showcase } from "./Showcase";
 import {JudgeOverview,TaskReplay,DeviceStory,PromptStory,TaskBoard,EvidenceStory,QualityStory,UsageStory,DataStory,FlowStrip} from "./JudgePanels";
@@ -54,7 +55,7 @@ const pages = [
   "服务器资源",
   "部署代码核对",
   "作品演示",
-  "图片分析",
+  "图像记忆与分析",
   "视频向量库",
 ];
 const glyphs = ["◈", "▣", "≋", "◇", "⌘", "☷", "▤", "◎", "▥", "⇄", "▧", "⌁", "▶", "▧", "⌗"];
@@ -84,6 +85,7 @@ const initialFilters = {
 
 export default function Dashboard() {
   const [bundle, setBundle] = useState<Bundle>(emptyBundle());
+  const [imageView,setImageView]=useState("memory");
   const [page, setPage] = useState(() => Math.max(0, pageKeys.indexOf(new URLSearchParams(location.search).get("view") || "overview")));
   const [mode, setMode] = useState("offline");
   const [cloud, setCloud] = useState(false);
@@ -143,6 +145,7 @@ export default function Dashboard() {
   const filtered = Object.values(filters).some(Boolean);
   function openPage(index: number) {
     setPage(index);
+    window.scrollTo({top:0,behavior:"instant"});
     const url=new URL(location.href);
     url.searchParams.set("view",pageKeys[index]);
     if(cloud)url.searchParams.set("environment",environment);
@@ -528,9 +531,9 @@ export default function Dashboard() {
     );
   }
   function content() {
-    if (page === 12) return <Showcase onMonitor={() => openPage(2)} />;
-    if (page === 13) return <><FlowStrip steps={["来源画面","本次上传副本","视觉模型理解","事实与未知"]}/><ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/><details className="judge-advanced"><summary>视觉分析、事件核验与模型实际输入</summary><ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></details></>;
-    if (page === 14) return <><FlowStrip steps={["入库录像 / 分段","向量索引","文字检索候选","模型复核 / 原片核验"]}/><VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
+    if (page === 12) return <Showcase onMonitor={() => openPage(2)} onPage={openPage} />;
+    if (page === 13) return <><div className="eg-media-tabs eg-image-views">{[['memory','图像记忆与理解'],['archive','完整图片台账'],['analysis','视觉分析、事件核验与模型实际输入']].map(([id,label])=><button key={id} aria-pressed={imageView===id} onClick={()=>setImageView(id)}>{label}</button>)}</div>{imageView==='memory'?<ImageMemory rows={rows} onSelect={setSelected} onPage={openPage}/>:imageView==='archive'?<ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/>:<ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected}/>}</>;
+    if (page === 14) return <><FlowStrip steps={["入库录像 / 分段","向量索引","图文检索候选","模型复核 / 原片核验"]}/><VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
     if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
     if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
     const props={rows,allRows:bundle.records,coverage:bundle.coverage,onSelect:setSelected,onPage:openPage};

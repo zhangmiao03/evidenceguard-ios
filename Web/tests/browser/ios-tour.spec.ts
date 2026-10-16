@@ -24,8 +24,11 @@ test('new iOS guard requires a fresh frame, ROI, confirmation and baseline; paus
   await p.getByRole('button',{name:'获取摄像头新画面',exact:true}).click();
   await expect(next).toBeDisabled();
   const frame=p.getByRole('group',{name:'演示画面框选'});
-  await frame.click({position:{x:55,y:80}});
-  await frame.click({position:{x:160,y:155}});
+  const bounds=await frame.boundingBox();
+  expect(bounds).not.toBeNull();
+  // The fit-to-window phone is scaled; click two visible points in the frame.
+  await frame.click({position:{x:bounds!.width*.25,y:bounds!.height*.35}});
+  await frame.click({position:{x:bounds!.width*.70,y:bounds!.height*.80}});
   await expect(p.locator('.ios-selection')).toHaveCount(1);
   await next.click();
   await p.getByRole('button',{name:'确认并开启',exact:true}).click();
@@ -66,7 +69,7 @@ test('history text/image search stays separate from live view and prior reply fr
   await p.getByRole('button',{name:'发送演示消息'}).click();
   const image=p.locator('.ios-message.assistant img');
   const original=await image.getAttribute('src');
-  await page.locator('.eg-showcase-states').getByRole('button',{name:'条件触发'}).click();
+  await expect(page.locator('.eg-showcase-states').getByRole('button',{name:'条件触发'})).toBeDisabled();
   await expect(image).toHaveAttribute('src',original!);
   await p.getByRole('button',{name:'对话范围与摄像头'}).click();
   await p.getByRole('button',{name:'历史资料',exact:true}).click();
