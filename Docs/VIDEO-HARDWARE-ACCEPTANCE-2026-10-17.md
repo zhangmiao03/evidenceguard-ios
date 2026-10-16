@@ -115,4 +115,17 @@
 - 修复 Dashboard 折叠内容检查、WebKit 媒体错误触发、长哈希换行及记忆测试启动重载竞态；保留团队新增的 iOS 脚本演示。未恢复产品 Web 的硬件开发路线。
 - 本机没有 Xcode；新增 Swift/Kotlin 源码未在本机生成 iOS Framework。普通 iOS 模拟器 CI 只验证无官方 SDK 的产品 target，不能证明 arm64 桥接、真实事件下载或后台行为。
 
+产品代码 `246ab88` 的 [GitHub PR 检查](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38954320983)已全部通过：
+
+| 检查 | 结果 |
+|---|---|
+| Cloud | 后端、发布、Dashboard 检查通过 |
+| 普通 iOS 模拟器 | 编译成功；5 项 UI + 12 项 API 测试通过 |
+| Linux Chromium / Firefox / WebKit / mobile WebKit | 204 通过，4 项官方构件测试跳过 |
+| macOS WebKit / mobile WebKit | 102 通过，2 项官方构件测试跳过 |
+
+原生兼容检查暴露并修复了两个问题：后台优先级的诊断发送延迟，以及测试直接关闭 URLSession 后迟到任务仍创建请求。现在使用 utility 优先级，并由 `OpsDelivery.close()` 先拒绝新请求、等待在途请求结束，再关闭连接；业务请求不等待诊断。阻塞、溢出、旧服务错误与关闭后丢弃均保留断言。
+
+Web 的媒体失败用例改为真实 HTTP 410，避免不同解码器把 JPEG 当作可播放静态视频。重复的 push 检查还出现一次 Firefox 普通 HTTP 测试点击后没有提交表单；该用例改为在密码输入框按 Enter，仍断言 HTTPS 提示且没有发出凭据请求，四浏览器各重复 3 次共 12 通过。`246ab88` 后仅有这项测试输入调整及文档更新，未改变产品运行代码；最新流水线状态以 PR checks 为准。此前一次 macOS 双帧用例超时的诊断记录亦保留，后续两轮 macOS 检查通过，不能据此扩大为所有 Safari/硬件组合均已验证。
+
 Mac 开发者先恢复官方包并执行 `python3 SDK/prepare.py --check`、`python3 SDK/prepare.py`，再编译 `EvidenceGuardSDK`，不能直接用旧 Framework。用 T8171 / T8214 各选择一条实际事件：验证 SDK 文件路径、完整播放、上传索引、失败重试、取消、后台切换、服务切换、工具停止与直播恢复。最后验证证据图入口、三个查询模式及返回原片定位，再归档/TestFlight。原 build 17 不包含本次改动。
