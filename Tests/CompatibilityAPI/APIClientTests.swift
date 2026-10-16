@@ -53,7 +53,7 @@ final class APIClientTests: XCTestCase {
         return value
     }
     private func client() -> APIClient {
-        APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)))
+        APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)), installationProof: { _ in "synthetic-installation-proof" })
     }
 
     func testHardwareEnvelopeUsesBoundExecutorAndKeepsJSONTypes() async throws {
@@ -71,9 +71,27 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(response["operation"]["nullable"], .null)
         XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Executor-Token"), "synthetic-executor-token")
         XCTAssertEqual(requests.all.first?.httpMethod, "POST")
+        XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
         XCTAssertEqual(try HardwareValue.parse(response.json), response)
         XCTAssertEqual(IOSToolExecutor.deviceID("T8171TESTTOOLS1"), "sdk-e41d9c3701a5f085f9ea")
     }
+
+    func testUnavailableInstallationProofDoesNotSendRequest() async throws {
+        let requests = Requests()
+        StubProtocol.install { item in requests.append(item.request); item.reply("{}") }
+        let api = APIClient(baseURL: origin, transport: session(), installationProof: { _ in
+            throw APIProblem(message: "Synthetic keychain unavailable")
+        })
+        do {
+            _ = try await api.hardware("executors/executor-test/claim", body: .object([:]),
+                executor: HardwareExecutorSession(id: "executor-test", token: "synthetic-executor-token", deviceID: "sdk-test"))
+            XCTFail("Expected credential failure")
+        } catch let error as APIProblem {
+            XCTAssertEqual(error.message, "Synthetic keychain unavailable")
+        }
+        XCTAssertTrue(requests.all.isEmpty)
+    }
+
     override func tearDown() {
         transports.forEach { $0.invalidateAndCancel() }
         transports.removeAll()
