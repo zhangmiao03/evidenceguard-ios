@@ -43,6 +43,7 @@ private final class Requests {
 
 final class APIClientTests: XCTestCase {
     private var transports: [URLSession] = []
+    private var deliveries: [OpsDelivery] = []
     private let origin = URL(string: "https://eg-api-tests.invalid")!
 
     private func session(observations: Bool = false) -> URLSession {
@@ -53,7 +54,9 @@ final class APIClientTests: XCTestCase {
         return value
     }
     private func client() -> APIClient {
-        APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)), installationProof: { _ in "synthetic-installation-proof" })
+        let delivery = OpsDelivery(session: session(observations: true))
+        deliveries.append(delivery)
+        return APIClient(baseURL: origin, transport: session(), observations: delivery, installationProof: { _ in "synthetic-installation-proof" })
     }
 
     func testEventRecordingUploadKeepsDeviceScopeAndUnknownFileStart() async throws {
@@ -180,10 +183,15 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(requests.all.isEmpty)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        // API completion deliberately does not await diagnostics. Close their
+        // owner first so a queued Task cannot use an invalidated URLSession in
+        // the next test or deliver an old receipt to its URLProtocol handler.
+        for delivery in deliveries { await delivery.close() }
+        deliveries.removeAll()
         transports.forEach { $0.invalidateAndCancel() }
         transports.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testLegacyCaptureFlowCompletesWhileObservationsAreStalled() async throws {
@@ -358,5 +366,8 @@ final class APIClientTests: XCTestCase {
         StubProtocol.install { item in requests.append(item.request); item.reply("{}", status: 503) }
         await delivery.send(request)
         XCTAssertEqual(requests.all.count, 3, "Failure must release a diagnostic slot")
+        await delivery.close()
+        await delivery.send(request)
+        XCTAssertEqual(requests.all.count, 3, "Closed delivery must discard late diagnostic tasks")
     }
 }
