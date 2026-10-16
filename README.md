@@ -2,6 +2,8 @@
 
 ## 后端 DepthART / DIS 与单步视觉控制（2026-10-17）
 
+**已发布到 demo**：`tools-e4725de3d0d287d8`（后端源码 `a9387d2`）。发布前验证云端最新私有模型配置可调用，发布后密钥文件哈希不变；原业务记录、Web资源与team/review服务保持。本机后端/Dashboard/发布工具合并 **541通过、10跳过**；云端Linux后端 **482通过、1跳过**，独立部署路径上的真实DepthART/DIS及模型调用另行验证通过。单次模型不合规结果按unknown拒绝，不将这组烟测当作准确率或真机验收。
+
 本轮保持 iOS / Web 前端和官方SDK桥接不变，补充有界真实帧窗口、DepthART448与DIS CPU处理、当前目标定位到单步工具的编排、SDK回执后的新图复核。助手新增 `sample_camera_vision`、`aim_camera_at_guard_target`、`read_visual_control`，继续使用现有硬件确认卡；不自动连续追踪。`EG_ENDPOINT_PROFILE=video` 显式复用云端当前有效模型配置，不尝试旧官方密钥。
 
 **后端不能生成缺失的 iOS 解码回调。** 现有 `camera_observe.ready=false` 保留，没有原生解码证明时返回 `NATIVE_DECODER_PROOF_REQUIRED`，不能宣称已实现真机自主转动。光流也只在真实取样间隔≤1秒且视角一致时运行。实现、部署/回滚与验收范围见 [后端图像处理与控制接入](Docs/BACKEND-VISION-ROLLOUT-2026-10-17.md)；以下首版RGB描述属于早期接入记录。
