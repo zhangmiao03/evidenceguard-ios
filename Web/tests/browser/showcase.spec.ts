@@ -21,8 +21,9 @@ test('iOS tour completes Skill, unknown evidence and memory flow without busines
   await page.getByRole('navigation',{name:'iOS 功能导航'}).getByRole('button',{name:'我的'}).click();
   await page.getByRole('switch',{name:'演示通知'}).click();
   await expect(page.getByRole('switch',{name:'演示通知'})).toHaveAttribute('aria-checked','false');
-  await page.locator('.eg-phone-context').getByRole('button',{name:'官方 SDK'}).click();
-  await expect(page.locator('.eg-phone-sdk')).toContainText('不加载 SDK');
+  await page.locator('.eg-phone-context').getByRole('button',{name:'手机 SDK 说明'}).click();
+  await expect(page.locator('.eg-phone-sdk')).toContainText('Web 没有这些硬件控制接口');
+  await expect(page.locator('.eg-phone-sdk')).toContainText('手机 App 的官方 SDK');
   await page.getByRole('button',{name:/室内宠物/}).click();
   await expect(page.locator('.eg-phone-result')).toContainText('宠物正在客厅休息');
   await page.getByLabel('演示对话输入').fill('刚才发生了什么？');
