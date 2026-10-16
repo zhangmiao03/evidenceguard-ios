@@ -79,3 +79,17 @@ python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no
 - 线上 demo 实际数据：7 组 SDK 图片事件核验、12 条视觉缓存；额外保留的 7 组图片 Trace 共 28 条，均有真实 `image_review` 模型记录、关联提示词和返回正文，未截断。视觉模型为 `doubao-seed-2-1-lite-260915`。
 - 线上向量：1 段 10 秒 `synthetic_review` 测试录像，Embedding 模型 `doubao-embedding-vision-251215`，实际向量 1024 维、范数 1、当前签名匹配。没有把测试素材说成摄像头实拍。
 - 已在内置浏览器打开正式网址，检查图片分析正文、向量库和 iOS 展示；独立静态 HTTP 服务也可打开 ZIP 根入口。真实摄影与模型结果来自既有后端记录；本次没有声称重新完成原生 iOS 编译或硬件取流验收。
+
+## 媒体与手机展示追加验收（2026-10-16 18:58 部署，新加坡时间）
+
+- 媒体 / 视觉实现提交 `0993957`；执行器图片采集修复 `f8708d1`。已同步队友的 `ae5d71c`，保留其原生 iOS、SDK 与业务后端更新，并推送 `dongrunze`。
+- 当前发布目录 `/opt/evidenceguard-dashboard/releases/073ca161a4de655e`；部署包 SHA-256 `073ca161a4de655ee6d25909fcd0cc01488523dd156bc6799fffe68eb903386f`。回滚目录 `/var/backups/evidenceguard-dashboard/20261016T105814535684Z`。
+- 网站 ZIP SHA-256 `136989ba91bbd0fc58509891569e374038643c00fe198853be849b7e8fbc620c`，已比较线上下载与本地产物，逐字节一致。
+- 合并后生产构建、28 项 Python 监控测试、16 项 Web 单元测试、40 项 Chromium / Firefox / WebKit / 手机 WebKit 浏览器测试全部通过。服务器再次通过四组实际业务树兼容检查；三套服务健康、原 App API 鉴权、匿名 Dashboard 和只读限制均通过。
+- demo 实际任务 `dashboard-media-9ba6dcae942543b689ba8902a1f2da69` 完成：`read_stored_image` → Codex 执行步骤（`doubao-seed-2-1-lite-260915`）→ 最终回复。其 24,290 字节 JPEG 输入副本 HTTP 200、SHA-256 与观测的输入一致；同一 Trace 的工具、模型输入和最终回复都有正文。该图片是已保存的 SDK 事件图片，不是本次实时取景。
+- 上述图片观察边界是 `host_to_codex`，页面标注“传给 AI 执行器的原图”；不将执行器记录解释为可见的模型底层 HTTP 报文。
+- review 实际任务 `dashboard-media-fb91df4a49f14c8c83b8e9ca25f85923` 完成：`search_recordings` → `doubao-embedding-vision-251215` → `doubao-seed-2-1-lite-260915` 视频复核 → `vector.search` → 最终回复。查询“包裹离开区域”返回一个候选，余弦相似度约 0.2635，复核为 uncertain。页面保留“无法确认”，不改写成确定发生。
+- 检索使用服务器原有 10 秒 `synthetic_review` 合成录像，页面显示“非摄像头实拍”；已在内置浏览器从开始实际播放到 10 秒结束，解码尺寸 640×360，媒体无错误。普通 HTTP 视频复核的实际输入也有独立副本记录。
+- demo 公开缓存的 11 项去重媒体（10 图、1 视频）均验证返回 200、内容 SHA-256 一致、字节 Range 返回 206。模型图片放大、输入/结果关联、无任意外链请求由浏览器测试覆盖。
+- 查看本次检索：在视频向量库将“后端环境”切到“Apple 审核”；查看真实图片识别：选择“手机演示”。不同环境的数据保持隔离，不为了展示而复制成另一套环境的记录。
+- iOS 展示使用项目自有场景照片，五个入口可交互，仍是有标记的浏览器演示。本次验收不等于原生 iOS 构建或真实设备取流测试。当前业务未实现图片作为向量查询输入；相关空态明示这一边界。
