@@ -13,6 +13,9 @@ import {
 import "./dashboard.css";
 import { AgentCycle, CloudStatus, DeploymentPanel, ServerResources } from "./CloudPanels";
 import { RecordContent } from "./RecordContent";
+import { cloudJSON } from "./cloud.mjs";
+import { ImageAnalysis, VideoIndex } from "./MediaPanels";
+import { Showcase } from "./Showcase";
 
 type Row = {
   id: string;
@@ -47,8 +50,12 @@ const pages = [
   "数据与版本",
   "服务器资源",
   "部署代码核对",
+  "作品演示",
+  "图片分析",
+  "视频向量库",
 ];
-const glyphs = ["◈", "▣", "≋", "◇", "⌘", "☷", "▤", "◎", "▥", "⇄", "▧", "⌁"];
+const glyphs = ["◈", "▣", "≋", "◇", "⌘", "☷", "▤", "◎", "▥", "⇄", "▧", "⌁", "▶", "▧", "⌗"];
+const pageKeys = ["overview","devices","traces","agent","prompts","tasks","evidence","quality","usage","data","server","deployment","showcase","images","vectors"];
 const fmtTime = (at: number) =>
   at
     ? new Date(at * 1000).toLocaleString("zh-CN", { hour12: false })
@@ -74,7 +81,7 @@ const initialFilters = {
 
 export default function Dashboard() {
   const [bundle, setBundle] = useState<Bundle>(emptyBundle());
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(() => Math.max(0, pageKeys.indexOf(new URLSearchParams(location.search).get("view") || "overview")));
   const [mode, setMode] = useState("offline");
   const [cloud, setCloud] = useState(false);
   const [environment, setEnvironment] = useState("demo");
@@ -82,6 +89,8 @@ export default function Dashboard() {
   const [refreshNumber, setRefreshNumber] = useState(0);
   const [liveAt, setLiveAt] = useState(0);
   const [cloudFailed, setCloudFailed] = useState(false);
+  const [discovery, setDiscovery] = useState("正在连接云端采集服务…");
+  const [discoveryNumber, setDiscoveryNumber] = useState(0);
   const [filters, setFilters] = useState(initialFilters);
   const [selected, setSelected] = useState<Row | null>(null);
   const [trace, setTrace] = useState<string | null>(null);
@@ -122,29 +131,42 @@ export default function Dashboard() {
   ] as string[];
   const problems = rows.filter((r) => failure(r.status));
   const synthetic = bundle.dataset.source === "synthetic";
+  const filtered = Object.values(filters).some(Boolean);
+  function openPage(index: number) {
+    setPage(index);
+    history.replaceState(null, "", `${location.pathname}?view=${pageKeys[index]}`);
+  }
   useEffect(() => {
     setSelected(null);
     setTrace(null);
   }, [filters, page, bundle.dataset.id]);
   useEffect(() => {
-    const c = new AbortController();
-    void fetch("/dashboard/api/info", {signal:c.signal}).then(async response => {
-      if (!response.ok) return;
-      const info = await response.json();
-      if (info.mode !== "competition" || !Array.isArray(info.environments)) return;
-      setCloud(true); setEnvironments(info.environments);
-      setEnvironment(info.defaultEnvironment || "demo"); setMode("cloud");
-    }).catch(() => {});
-    return () => c.abort();
-  }, []);
+    const c = new AbortController(); let active = true; let timer: number | undefined; let attempts = 0;
+    async function discover() {
+      try {
+        const info = await cloudJSON("/dashboard/api/info", { signal: c.signal });
+        if (info.mode !== "competition" || !Array.isArray(info.environments) || !info.environments.length) throw Error("此入口没有提供云端采集配置，可先使用离线演示。");
+        if (!active) return;
+        setCloud(true); setEnvironments(info.environments);
+        setEnvironment(old => info.environments.some((e: {id:string}) => e.id === old) ? old : info.defaultEnvironment || "demo"); setDiscovery("");
+        setMode(old => old === "offline" ? "cloud" : old);
+      } catch (e) {
+        if (!active) return;
+        setDiscovery(e instanceof Error ? e.message : "连接失败，将自动重试。");
+        timer = window.setTimeout(discover, Math.min(30000, 3000 * 2 ** attempts++));
+      }
+    }
+    void discover();
+    const online = () => setDiscoveryNumber(n => n + 1);
+    window.addEventListener("online", online);
+    return () => { active = false; c.abort(); clearTimeout(timer); window.removeEventListener("online", online); };
+  }, [discoveryNumber]);
   useEffect(() => {
     if (!cloud || mode !== "cloud") return;
     const c = new AbortController(); let active = true; let timer: number | undefined;
     async function poll() {
       try {
-        const response = await fetch(`/dashboard/api/snapshot?environment=${encodeURIComponent(environment)}`, {signal:c.signal});
-        if (!response.ok) throw Error(`云端采样暂不可用（${response.status}）；显示的旧数据不会标为最新。`);
-        const value = sanitizeBundle(validateBundle(await response.json())) as Bundle;
+        const value = sanitizeBundle(validateBundle(await cloudJSON(`/dashboard/api/snapshot?environment=${encodeURIComponent(environment)}`, { signal: c.signal }))) as Bundle;
         if (active) { setBundle(value); setLiveAt(Date.now()); setCloudFailed(false); setError(""); }
       } catch (e) {
         if (active) { setCloudFailed(true); setError(e instanceof Error ? e.message : "云端连接失败"); }
@@ -493,6 +515,9 @@ export default function Dashboard() {
     );
   }
   function content() {
+    if (page === 12) return <Showcase onMonitor={() => openPage(2)} />;
+    if (page === 13) return <ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} />;
+    if (page === 14) return <VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} />;
     if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
     if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
     if (page === 0)
@@ -768,15 +793,15 @@ export default function Dashboard() {
         </div>
         <p className="eg-ops-nav-label">工作台</p>
         <nav aria-label="Dashboard 页面">
-          {pages.map((p, i) => (
+          {[12,0,13,14,1,2,3,4,5,6,7,8,9,10,11].map(i => (
             <button
-              key={p}
+              key={pages[i]}
               aria-current={page === i ? "page" : undefined}
               className={page === i ? "active" : ""}
-              onClick={() => setPage(i)}
+              onClick={() => openPage(i)}
             >
               <span>{glyphs[i]}</span>
-              {p}
+              {pages[i]}
             </button>
           ))}
         </nav>
@@ -796,7 +821,7 @@ export default function Dashboard() {
             EvidenceGuard <i>/</i> 研发工作台 <i>/</i> {pages[page]}
           </span>
           <span className="eg-ops-badge">
-            {synthetic
+            {page === 12 ? "浏览器演示 · 示例数据" : synthetic
               ? "模拟样例"
               : mode === "cloud" ? "云端实时 · 免登录只读" : mode === "local"
                 ? "本地服务"
@@ -805,7 +830,7 @@ export default function Dashboard() {
                   : "等待数据"}
           </span>
         </header>
-        <div className="eg-ops-heading">
+        {page !== 12 && <div className="eg-ops-heading">
           <div>
             <p>OBSERVE · INSPECT · VERIFY</p>
             <h1>{pages[page]}</h1>
@@ -832,13 +857,14 @@ export default function Dashboard() {
                   : "连接本地服务"}
             </button>
           </div>
-        </div>
-        {cloud && <div className="eg-ops-cloud-controls">
-          <label>后端环境<select value={environment} onChange={e=>{setEnvironment(e.target.value);setMode("cloud");setLiveAt(0);setBundle(emptyBundle());}}>{environments.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
+        </div>}
+        {cloud && page !== 12 && <div className="eg-ops-cloud-controls">
+          <label>后端环境<select value={environment} onChange={e=>{setEnvironment(e.target.value);setMode("cloud");setLiveAt(0);setBundle(emptyBundle());setFilters(initialFilters);}}>{environments.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
           <span>当前访问为只读；原 App API 继续使用原有鉴权。</span>
           <span>{liveAt ? `最近读取 ${new Date(liveAt).toLocaleTimeString("zh-CN",{hour12:false})}` : "连接采集服务…"}</span>
         </div>}
-        {mode === "cloud" && <CloudStatus coverage={{...bundle.coverage, stale:cloudFailed || bundle.coverage?.stale}} />}
+        {mode === "cloud" && page !== 12 && <CloudStatus coverage={{...bundle.coverage, stale:cloudFailed || bundle.coverage?.stale}} />}
+        {!cloud && page !== 12 && <div className="eg-ops-notice" role="status"><span><strong>云端连接：</strong>{discovery} 当前网址：{location.host}。离线演示可以独立使用。</span><button onClick={() => setDiscoveryNumber(n => n + 1)}>重新连接云端</button></div>}
         <input
           ref={input}
           type="file"
@@ -895,7 +921,7 @@ export default function Dashboard() {
             </button>
           </div>
         )}
-        <div className={`eg-ops-provenance ${synthetic ? "synthetic" : ""}`}>
+        {page !== 12 && <div className={`eg-ops-provenance ${synthetic ? "synthetic" : ""}`}>
           <span className="eg-ops-dot" />
           <strong>
             {synthetic ? "模拟数据 · 不用于业务结论" : bundle.dataset.title}
@@ -905,8 +931,8 @@ export default function Dashboard() {
             {bundle.records.length} 条
           </span>
           {mode !== "local" && mode !== "cloud" && <span>离线内容不会自动更新</span>}
-        </div>
-        {page < 10 && <section className="eg-ops-filters" aria-label="全局筛选">
+        </div>}
+        {(page < 10 || page > 12) && <section className="eg-ops-filters" aria-label="全局筛选">
           <label>
             时间窗口
             <select
@@ -975,6 +1001,7 @@ export default function Dashboard() {
           </label>
           <button onClick={() => setFilters(initialFilters)}>重置</button>
         </section>}
+        {filtered && page !== 12 && <div className="eg-ops-notice" role="status"><span>全局筛选正在生效：当前 {rows.length} / {bundle.records.length} 条记录。搜索“{filters.query || "全部文字"}”与设备、时间条件会影响各数据页面。</span><button onClick={() => setFilters(initialFilters)}>清除全部筛选</button></div>}
         <div className="eg-ops-content">{content()}</div>
         <footer>
           时间为服务端接收或快照时间；客户端来源不等于硬件核验。· {SCHEMA}

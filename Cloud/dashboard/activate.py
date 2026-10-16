@@ -18,6 +18,7 @@ import time
 import urllib.request
 import urllib.error
 from eg_dashboard.service_config import parse_command
+from eg_dashboard.nginx_routes import plan as dashboard_tls_routes
 
 BASE=Path('/opt/evidenceguard-dashboard')
 SERVICES={
@@ -97,7 +98,8 @@ def activate(release, capture_content=False):
             raise RuntimeError('Backend changed during preflight; restart deployment after coordination: '+service)
 
     dropins=[Path('/etc/systemd/system')/(s+'.service.d/40-dashboard-observer.conf') for s,_,_,_ in services.values()]
-    files=dropins+[Path('/etc/systemd/system')/(n+'.service') for n in [COLLECTOR,WEB]]+[CONFIG,NGINX]
+    tls_routes=dashboard_tls_routes()
+    files=dropins+[Path('/etc/systemd/system')/(n+'.service') for n in [COLLECTOR,WEB]]+[CONFIG,NGINX]+list(tls_routes)
     backup=Path('/var/backups/evidenceguard-dashboard')/datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     backup.mkdir(parents=True,mode=0o700);backup.chmod(0o700)
     manifest={'release':str(release),'restarted':[],'files':[], 'services':{}}
@@ -110,6 +112,7 @@ def activate(release, capture_content=False):
     save()
     print('Rollback configuration: '+str(backup),flush=True)
     try:
+        for path,value in tls_routes.items():path.write_text(value)
         try:pwd.getpwnam(WEB)
         except KeyError:run('useradd','--system','--home-dir','/nonexistent','--shell','/usr/sbin/nologin',WEB)
         run('install','-d','-o','root','-g',WEB,'-m','750','/var/lib/evidenceguard-dashboard')

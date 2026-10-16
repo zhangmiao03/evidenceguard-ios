@@ -1,5 +1,15 @@
 # EvidenceGuard · iOS / Web / Cloud
 
+## 比赛网站：iOS 交互展示、图片分析与视频向量库（2026-10-16）
+
+作品入口：**https://demo.47.131.21.137.sslip.io/dashboard?view=showcase**。这是完整网站中的浏览器交互展示，可切换门口包裹、室内宠物、工作室场景，体验助手、摄像头 Skill、任务证据、记忆和设置；明确标注示例数据，不冒充原生 iOS 模拟器或真实硬件。监控入口为同域 `/dashboard`，继续免登录只读。使用带域名的 HTTPS 入口，不将 IP 直接改成 HTTPS。
+
+新增 `/dashboard?view=images` 读取实际 SDK 事件视觉核验、证据结果、视觉缓存和模型调用；`?view=vectors` 读取实际录像、片段、向量维度/范数/前 16 维、模型及签名兼容状态。合成测试录像保留 `synthetic_review` 来源；数据库快照不是历史调用回放，缺少记录不算成功。密钥、原始图片/视频和媒体访问地址不公开。
+
+已修复不同入口看到空数据的问题：HTTPS 的 `/dashboard/api/*` 曾进入 App 鉴权服务返回 401；现在 demo/team/review 的 Dashboard 路径均代理至独立只读服务，原 `/api` 鉴权保留。页面增加明确错误、限时读取、自动重连、环境切换清理筛选和手动清除筛选。
+
+完整网站 ZIP：**https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip**。解压后上传整个目录到网站根目录；静态托管能运行 iOS 演示和离线 JSON 导入，实时监控需要同源 `/dashboard/api` 后端。构建、部署、来源与验收见 [比赛网站发布说明](Docs/COMPETITION-WEBSITE.md)。
+
 ## demo 工具链发布与云端代码对齐（2026-10-15～16）
 
 产品 Web：**https://demo.47.131.21.137.sslip.io/**，使用现有 demo 团队访问令牌；公开监控仍是 **http://47.131.21.137/dashboard**。10 月 15 日已把缺少的工具 Runtime、事件与前台取帧接口部署到 demo，并同源托管产品 Web、官方浏览器 SDK 和原版 Demo。保留云端已有记忆、定时观察、OAuth/私有安装校验、通知修复及全部业务数据；team/review 未部署。

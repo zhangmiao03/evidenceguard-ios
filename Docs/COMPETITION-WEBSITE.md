@@ -1,0 +1,54 @@
+# 比赛网站发布与验证
+
+## 页面入口
+
+| 用途 | 地址 |
+| --- | --- |
+| 比赛作品 / iOS 交互展示 | https://demo.47.131.21.137.sslip.io/dashboard?view=showcase |
+| 真实运行监控 | https://demo.47.131.21.137.sslip.io/dashboard |
+| 图片分析 | https://demo.47.131.21.137.sslip.io/dashboard?view=images |
+| 视频向量库 | https://demo.47.131.21.137.sslip.io/dashboard?view=vectors |
+| 完整网站 ZIP | https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip |
+
+同一网站的所有监控页可切换 demo / team / review 环境。`http://47.131.21.137/dashboard` 仍可使用；HTTPS 使用匹配证书的域名。App 产品入口与鉴权继续独立存在。
+
+## 空数据原因与修复
+
+2026-10-16 实测 IP HTTP 返回 Dashboard 数据；demo HTTPS 可以打开 HTML，但 `/dashboard/api/info` 返回 401，其他 TLS 入口也路由到 App 服务。旧前端吞掉发现接口错误，所以不同访问地址出现“有人有数据，有人空白”。
+
+`eg_dashboard/nginx_routes.py` 只在每个既有 TLS server 中增加带标记的 `/dashboard` 与 `/dashboard/` location，转发到 127.0.0.1:8795。原 `/api`、上游、证书、HTTP 跳转保持原值。修改前备份，nginx 检查失败即还原；重复部署不重复添加。`activate.py` 将这三个文件纳入回滚清单。
+
+前端同源匿名读取，不转发 App 密钥。401/403、HTML fallback、超时均明确显示；自动重试从 3 秒递增至 30 秒，连上后每 5 秒取快照。环境切换清空筛选；筛选后无记录可一键恢复。失败保留旧数据并标记过期，不显示成新的正常结果。
+
+## 数据来源与边界
+
+图片页读取 `sdk_episodes` 的结构化 `review`、`evidence.reviewStatus/reason`、`visual_cache`，并列出已观测的 `image_review`、`frame_presence`、`video_verify` 模型记录。状态以数据库当前状态列为准，避免 payload 中旧 pending 状态覆盖实际 completed。核验文字与未知项可展开；库中结果可能早于采集启用，不能补造历史提示词。模型详情继续使用已有完整正文查看器。
+
+视频页读取 `recordings` 与 `video_segments`。展示实际模型、索引签名、片段起止时间、维度、范数、归一化状态、前 16 维数值、向量 JSON 的 SHA-256。采集器从当前运行进程获取 embedding signature，旧签名明确不匹配；进程身份不一致或缺少配置则显示未知。签名匹配不等于语义正确，也不是模型置信度。统计区区分库内总数、当前筛选和受限采样。
+
+每张表最多 120 条，采集保持只读并使用同一数据库读取事务；缺表是未知，空表是 0。媒体 URL、二进制、源文件路径和凭证不进入新投影。原始视觉分析仅针对离散图片，不证明连续状态。服务器已有 `synthetic_review` 录像是合成测试素材，其真实入库和向量结果与素材真实性分别标注。
+
+## iOS 交互展示
+
+浏览器复现当前产品的五个入口：助手、摄像头 Skill、任务、记忆、我的。可选择门口包裹、室内宠物和工作室；需求→确认创建 Skill→对象可见/离区/遮挡→任务证据→继续追问→添加/删除偏好→暂停/恢复/重置。官方 SDK 按钮展示能力检查边界，不加载 SDK、不申请硬件权限。所有变化只在浏览器内存，刷新恢复初始值。
+
+它不是原生 iOS Simulator，不编译 Swift，不验证 arm64 SDK、真实摄像头取流、云台或对讲。预览对话是有明确标记的离线脚本，不伪装成真实模型调用。真实运行应从左侧 Trace / 图片 / 向量 / 服务器页面核对。
+
+## 构建与发布
+
+```powershell
+npm --prefix Web run build -- --base /dashboard/
+python -m unittest discover -s Cloud/dashboard/tests -v
+npm --prefix Web test
+cd Web
+npx playwright test tests/browser/dashboard.spec.ts tests/browser/showcase.spec.ts --project=chromium --project=mobile-webkit
+cd ..
+python Cloud/dashboard/build_release.py
+python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no-system-proxy
+```
+
+上传器返回 release 目录后，通过 SSM 执行该目录的 `activate.py --release <同一目录> --capture-content`。它先验证实际部署的两套代码，保留当前业务 ExecStart 和发布目录，仅替换 observer 与 Dashboard，逐个重启服务并验证原 API 鉴权。部署后运行 `python Cloud/dashboard/verify_public.py`，覆盖三套 HTTPS Dashboard、实时快照、ZIP 下载与原 App 401。
+
+`Cloud/data/deploy/evidenceguard-website.zip` 包含根入口、`dashboard/index.html`、编译后的 JS/CSS 和说明。上传整个解压目录到静态主机根目录即可；本地可 `python -m http.server 8080` 后访问根页面。不要用 file:// 双击替代 HTTP 模块加载。静态主机的监控页支持导入脱敏追踪 JSON；若要实时监控，配置同源 Dashboard API 反向代理。ZIP 不包含密钥、云端数据库、真实媒体或离线真实数据副本。
+
+部署包 `dashboard.tar.gz` 附带只读 Python 采集服务与回滚脚本；它用于当前 AWS 服务部署，不是静态托管上传包。真实后端代码不会被这两个包覆盖。

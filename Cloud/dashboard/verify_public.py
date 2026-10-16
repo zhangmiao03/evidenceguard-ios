@@ -31,4 +31,10 @@ with httpx.Client(timeout=12,trust_env=False) as client:
         domain='https://'+label+'.47.131.21.137.sslip.io'
         assert client.get(domain+'/api/health').status_code==200
         assert client.get(domain+'/api/bootstrap').status_code==401
+        assert client.get(domain+'/dashboard').status_code==200
+        assert client.get(domain+'/dashboard/api/info').status_code==200
+        assert client.get(domain+'/dashboard/api/snapshot',params={'environment':label}).status_code==200
+        assert client.get(domain+'/dashboard/downloads/evidenceguard-website.zip').status_code==200
+        assert coverage.get('mediaIndex',{}).get('status')=='connected'
+        environments[label]['mediaTables']=coverage['mediaIndex']['tables']
     print(json.dumps({'checks':checks,'writeRequest':405,'HEAD':200,'environments':environments,'appHealth':200,'appUnauthenticatedAPI':401}))

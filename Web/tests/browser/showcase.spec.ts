@@ -1,0 +1,66 @@
+import {test,expect} from '@playwright/test';
+import {sampleBundle} from '../../src/dashboard/data.mjs';
+
+test('iOS tour completes Skill, unknown evidence and memory flow without business writes',async({page})=>{
+  const writes:string[]=[];
+  page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
+  await page.goto('/dashboard?view=showcase');
+  await expect(page.getByText('iOS 交互演示 · 示例数据 · 不连接硬件',{exact:true})).toBeVisible();
+  await page.locator('.eg-phone-suggestion').click();
+  await page.getByRole('button',{name:'确认创建 Skill',exact:true}).click();
+  await page.getByRole('navigation',{name:'iOS 功能导航'}).getByRole('button',{name:'任务',exact:false}).click();
+  await page.getByRole('button',{name:'查看当前任务证据'}).click();
+  await page.locator('.eg-showcase-states').getByRole('button',{name:'画面遮挡'}).click();
+  await expect(page.locator('.eg-phone-card').filter({hasText:'证据类型'})).toContainText('无法确认');
+  await page.getByRole('navigation',{name:'iOS 功能导航'}).getByRole('button',{name:'记忆'}).click();
+  await page.getByRole('button',{name:'记住当前场景的偏好'}).click();
+  await expect(page.getByRole('button',{name:'当前场景偏好已保存'})).toBeDisabled();
+  await page.getByRole('navigation',{name:'iOS 功能导航'}).getByRole('button',{name:'摄像头Skill'}).click();
+  await page.getByRole('button',{name:'暂停任务',exact:true}).click();
+  await expect(page.getByText('已暂停',{exact:true})).toBeVisible();
+  await page.getByRole('navigation',{name:'iOS 功能导航'}).getByRole('button',{name:'我的'}).click();
+  await page.getByRole('switch',{name:'演示通知'}).click();
+  await expect(page.getByRole('switch',{name:'演示通知'})).toHaveAttribute('aria-checked','false');
+  await page.locator('.eg-phone-context').getByRole('button',{name:'官方 SDK'}).click();
+  await expect(page.locator('.eg-phone-sdk')).toContainText('不加载 SDK');
+  await page.getByRole('button',{name:/室内宠物/}).click();
+  await expect(page.locator('.eg-phone-result')).toContainText('宠物正在沙发区域休息');
+  await page.getByLabel('演示对话输入').fill('刚才发生了什么？');
+  await page.getByRole('button',{name:'发送演示消息'}).click();
+  await expect(page.locator('.eg-phone-answer')).toContainText('演示脚本回应');
+  expect(writes).toEqual([]);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+test('auth routing failure is visible, automatically recovers, and stale filters can be cleared',async({page})=>{
+  let requests=0;
+  await page.route('**/dashboard/api/info',r=>r.fulfill(++requests<2?{status:401,contentType:'application/json',body:'{}'}:{contentType:'application/json',body:JSON.stringify({mode:'competition',environments:[{id:'demo',title:'手机演示'}]})}));
+  await page.route('**/dashboard/api/snapshot?*',r=>r.fulfill({contentType:'application/json',body:JSON.stringify(sampleBundle())}));
+  await page.goto('/dashboard');
+  await expect(page.getByText(/数据接口返回 401/)).toBeVisible();
+  await expect(page.getByRole('button',{name:'刷新云端数据'})).toBeVisible({timeout:8000});
+  await page.getByPlaceholder('Trace / 模型 / 事件 / 状态').fill('no-such-record');
+  await expect(page.getByRole('button',{name:'清除全部筛选'})).toBeVisible();
+  await page.getByRole('button',{name:'清除全部筛选'}).click();
+  await expect(page.getByPlaceholder('Trace / 模型 / 事件 / 状态')).toHaveValue('');
+});
+
+test('image results and vector segments retain provenance and readable details',async({page})=>{
+  const bundle:any=sampleBundle();
+  const resource=(id:string,name:string,data:any)=>({id,kind:'resource',name,traceId:'snapshot:'+id,spanId:id,at:1000,source:'snapshot',platform:'backend',status:'snapshot',durationMs:null,data});
+  bundle.records=[resource('ep','media_sdk_episodes',{id:'ep',cameraId:'camera-a',status:'completed',review:{review:{visible:'纸箱位于地垫内',uncertainties:'无法判断画外情况'}}}),resource('v','media_recordings',{id:'v',title:'测试录像',cameraId:'camera-a',sourceType:'synthetic_review',embeddingModel:'test-embedding',duration:10,status:'ready',signatureCompatible:true}),resource('s','media_video_segments',{id:'s',recordingId:'v',start:0,end:10,dimensions:1024,norm:1,normalized:true,signatureCompatible:true,status:'valid',vectorPreview:[.02,-.04]})];
+  bundle.coverage={mediaIndex:{status:'connected',sampledAt:1000,currentSignature:'sig',tables:{video_segments:{total:1}},invalidVectorsInSample:0}};
+  await page.goto('/dashboard?view=images');
+  await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+  await expect(page.getByText('纸箱位于地垫内',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'查看完整结果与来源'}).click();
+  await expect(page.getByRole('dialog')).toContainText('无法判断画外情况');
+  await page.getByRole('button',{name:'关闭详情'}).click();
+  await page.getByRole('navigation',{name:'Dashboard 页面'}).getByRole('button',{name:'视频向量库'}).click();
+  await expect(page.locator('.eg-media-indexgrid')).toContainText('合成测试素材 · 真实入库');
+  await expect(page.getByText('1024 维',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'展开向量、签名与校验摘要'}).click();
+  await expect(page.getByRole('dialog')).toContainText('vectorPreview');
+  await page.getByRole('button',{name:'关闭详情'}).click();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});

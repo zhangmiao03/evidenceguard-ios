@@ -207,6 +207,7 @@ def attach(app, ops, native):
              'contentCapture': content.enabled(),
              'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
+             'embeddingSignature': getattr(getattr(video_service, 'embedding', None), 'signature', None),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
              'tools': ops.safe(app.state.tools.schemas)}
     target = Path(recorder.path).with_name('observer-state.json')

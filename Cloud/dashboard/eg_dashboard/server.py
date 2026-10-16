@@ -51,7 +51,14 @@ def create_app(data=None,web=None):
 
     @app.api_route('/dashboard', methods=['GET', 'HEAD'])
     @app.api_route('/dashboard/', methods=['GET', 'HEAD'])
+    @app.api_route('/dashboard/index.html', methods=['GET', 'HEAD'])
     def shell():return FileResponse(web/'index.html')
+
+    @app.api_route('/dashboard/downloads/evidenceguard-website.zip', methods=['GET', 'HEAD'])
+    def website():
+        path=web/'downloads/evidenceguard-website.zip'
+        if not path.is_file():raise HTTPException(404,'Website package not present in this release')
+        return FileResponse(path,media_type='application/zip',filename='evidenceguard-website.zip')
 
     app.mount('/dashboard/assets',StaticFiles(directory=web/'assets'),name='dashboard-assets')
     return app

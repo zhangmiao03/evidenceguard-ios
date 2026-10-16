@@ -234,6 +234,13 @@ class Collector:
             coverage.update(resourceCounts=counts,resourceLimitPerTable=60,resourceSnapshotsAt=now,
                             resourcesTruncated=any(n>60 for n in counts.values()))
         except (OSError,ValueError,sqlite3.Error) as exc:coverage['resourceErrorType']=type(exc).__name__
+        try:
+            from .media import read_media
+            media,media_coverage=read_media(environment['database'],now,state.get('embeddingSignature') if same_process else None)
+            records.extend(media)
+            coverage['mediaIndex']=media_coverage
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['mediaIndex']={'status':'unavailable','errorType':type(exc).__name__}
         for name,model in state.get('models',{}).items():
             records.append(resource('model_configuration',{'operation':name,'model':model,
                 'status':'configured' if model else 'not_configured'},now))
