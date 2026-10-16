@@ -17,6 +17,13 @@ test('all three guided scenarios finish with baseline, change, uncertainty and a
     await expect(result).toContainText('已确认');
     await guide.getByRole('button',{name:'采样：条件触发',exact:true}).click();
     await expect(result).toContainText('需关注');
+    if(name!=='门口包裹'){
+      const frame=await phone.locator('.ios-frame-canvas').boundingBox();
+      const diagram=await phone.locator('.ios-scene-map').boundingBox();
+      expect(diagram!.width).toBeGreaterThan(frame!.width*.95);
+      expect(diagram!.height).toBeGreaterThan(frame!.height*.95);
+      await expect(phone.locator('.ios-scene-map')).toContainText('脚本状态示意 · 非采样照片');
+    }
     await guide.getByRole('button',{name:'采样：画面遮挡',exact:true}).click();
     await expect(result).toContainText('无法确认');
     await guide.getByRole('button',{name:'查看提醒与追问',exact:true}).click();
