@@ -38,10 +38,20 @@ export const toolTitle = (name) =>
     read_proactive_context: "读取观察上下文",
     search_memory: "检索记忆",
     list_skill_capabilities: "检查 Skill 能力",
+    list_camera_capabilities: "查询设备能力",
+    list_camera_events: "读取设备事件",
+    request_camera_snapshot: "请求手机新画面",
+    get_task_state: "查询任务状态",
+    search_evidence: "检索已保存证据",
+    request_recheck: "请求任务复核",
+    read_home_report: "读取家庭概况",
+    assess_camera_task_fit: "检查设备与任务适配",
+    save_personal_task: "保存个人任务",
   })[name] ||
   name ||
   "工具调用";
 export function taskTitle(rows) {
+  if(rows.some(r=>r.data.privateContent))return "私有查询 · 内容不公开";
   const search = rows.find((r) => r.name === "vector.search")?.data.query;
   if (search) return `查找录像：${short(search, 80)}`;
   for (const r of rows) {
@@ -172,6 +182,7 @@ export function phaseRecords(rows, phase) {
               "frame_presence",
               "image_review",
               "embedding",
+              "embedding_v2",
             ].includes(r.name)
           : phase === 3
             ? ["tool.started", "tool.finished"].includes(r.name)
@@ -182,6 +193,7 @@ export function phaseRecords(rows, phase) {
                   "frame_presence",
                   "image_review",
                   "embedding",
+                  "embedding_v2",
                 ].includes(r.name)
               : r.name === "agent.result" || r.name === "agent.finished",
   );

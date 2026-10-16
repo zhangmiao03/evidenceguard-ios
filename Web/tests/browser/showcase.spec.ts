@@ -50,7 +50,7 @@ test('auth routing failure is visible, automatically recovers, and stale filters
 test('image results and vector segments retain provenance and readable details',async({page})=>{
   const bundle:any=sampleBundle();
   const resource=(id:string,name:string,data:any)=>({id,kind:'resource',name,traceId:'snapshot:'+id,spanId:id,at:1000,source:'snapshot',platform:'backend',status:'snapshot',durationMs:null,data});
-  bundle.records=[resource('ep','media_sdk_episodes',{id:'ep',cameraId:'camera-a',status:'completed',review:{review:{visible:'纸箱位于地垫内',uncertainties:'无法判断画外情况'}}}),resource('v','media_recordings',{id:'v',title:'测试录像',cameraId:'camera-a',sourceType:'synthetic_review',embeddingModel:'test-embedding',duration:10,status:'ready',signatureCompatible:true}),resource('s','media_video_segments',{id:'s',recordingId:'v',start:0,end:10,dimensions:1024,norm:1,normalized:true,signatureCompatible:true,status:'valid',vectorPreview:[.02,-.04]})];
+  bundle.records=[resource('ep','media_sdk_episodes',{id:'ep',cameraId:'camera-a',status:'completed',review:{review:{visible:'纸箱位于地垫内',uncertainties:'无法判断画外情况'}}}),resource('v','media_recordings',{id:'v',title:'测试录像',cameraId:'camera-a',sourceType:'synthetic_review',embeddingModel:'test-embedding',duration:10,status:'ready',signatureCompatible:true}),resource('s','media_video_segments',{id:'s',indexVersion:2,kind:'frame',frameOffsetSeconds:1,recordingId:'v',start:0,end:10,dimensions:1024,norm:1,normalized:true,signatureCompatible:true,status:'valid',vectorPreview:[.02,-.04]})];
   bundle.coverage={mediaIndex:{status:'connected',sampledAt:1000,currentSignature:'sig',tables:{video_segments:{total:1}},invalidVectorsInSample:0}};
   await page.goto('/dashboard?view=images');
   await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
@@ -61,6 +61,8 @@ test('image results and vector segments retain provenance and readable details',
   await page.getByRole('navigation',{name:'Dashboard 页面'}).getByRole('button',{name:'视频向量库'}).click();
   await expect(page.locator('.eg-media-indexgrid')).toContainText('合成测试素材 · 真实入库');
   await expect(page.getByText('1024 维',{exact:true})).toBeVisible();
+  await expect(page.locator('.eg-media-vector')).toContainText('关键帧向量');
+  await expect(page.locator('.eg-media-vector')).toContainText('v2 视频 / 关键帧双路索引');
   await page.getByRole('button',{name:'展开向量、签名与校验摘要'}).click();
   await expect(page.getByRole('dialog')).toContainText('vectorPreview');
   await page.getByRole('button',{name:'关闭详情'}).click();

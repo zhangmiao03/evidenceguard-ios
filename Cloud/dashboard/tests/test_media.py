@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import sqlite3
+import struct
 import sys
 import tempfile
 import unittest
@@ -10,6 +11,32 @@ from eg_dashboard.media import read_media, visual_traces
 
 
 class MediaProjectionTests(unittest.TestCase):
+    def test_v2_index_only_exposes_published_video_and_frame_vectors(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'v2.db'
+            with sqlite3.connect(path) as db:
+                db.executescript('''CREATE TABLE retrieval_recordings(id TEXT, active_signature TEXT);
+                    CREATE TABLE retrieval_clips(id TEXT, recording_id TEXT, signature TEXT, start REAL, end REAL);
+                    CREATE TABLE retrieval_units(id TEXT, signature TEXT, dimensions INTEGER, vector BLOB);
+                    CREATE TABLE retrieval_embeddings(unit_id TEXT, clip_id TEXT, signature TEXT, kind TEXT, offset_ms INTEGER);
+                    CREATE TABLE video_query_images(id TEXT,data BLOB);''')
+                db.execute("INSERT INTO retrieval_recordings VALUES ('recording','published')")
+                vector=struct.pack('<1024f',1,*([0]*1023))
+                for sig in ['published','pending']:
+                    db.execute('INSERT INTO retrieval_clips VALUES (?,?,?,?,?)',('clip-'+sig,'recording',sig,0,10))
+                    for kind in ['video','frame']:
+                        uid=sig+kind
+                        db.execute('INSERT INTO retrieval_units VALUES (?,?,?,?)',(uid,sig,1024,vector))
+                        db.execute('INSERT INTO retrieval_embeddings VALUES (?,?,?,?,?)',(uid,'clip-'+sig,sig,kind,1000))
+                db.execute("INSERT INTO video_query_images VALUES ('private-query',X'ABCDEF')")
+            db.close()
+            rows,summary=read_media(path,100,'published')
+            self.assertEqual(len(rows),2)
+            self.assertEqual({r['data']['kind'] for r in rows},{'video','frame'})
+            self.assertTrue(all(r['data']['indexVersion']==2 and r['data']['normalized'] and r['data']['signatureCompatible'] for r in rows))
+            self.assertNotIn('private-query',json.dumps(rows))
+            self.assertEqual(summary['tables']['retrieval_embeddings']['total'],2)
+
     def test_agent_and_codex_traces_survive_polling_and_oversized_prompt(self):
         with sqlite3.connect(':memory:') as db:
             db.execute('CREATE TABLE records(id TEXT PRIMARY KEY,at REAL,payload TEXT)')
