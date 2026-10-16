@@ -24,8 +24,11 @@ test('new iOS guard requires a fresh frame, ROI, confirmation and baseline; paus
   await p.getByRole('button',{name:'获取摄像头新画面',exact:true}).click();
   await expect(next).toBeDisabled();
   const frame=p.getByRole('group',{name:'演示画面框选'});
-  await frame.click({position:{x:55,y:80}});
-  await frame.click({position:{x:160,y:155}});
+  const bounds=await frame.boundingBox();
+  expect(bounds).not.toBeNull();
+  // The fit-to-window phone is scaled; click two visible points in the frame.
+  await frame.click({position:{x:bounds!.width*.25,y:bounds!.height*.35}});
+  await frame.click({position:{x:bounds!.width*.70,y:bounds!.height*.80}});
   await expect(p.locator('.ios-selection')).toHaveCount(1);
   await next.click();
   await p.getByRole('button',{name:'确认并开启',exact:true}).click();
