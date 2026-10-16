@@ -26,6 +26,24 @@
 
 ## 管理连接
 
+2026-10-16（新加坡时间）重新通过 Codex 内置浏览器授权 AWS CLI 后，AWS 查询确认实例仍为 `i-010907ed19e2cc23a`，公网 IP 仍是 **47.131.21.137**，状态 `running` / SSM `Online`；五个应用与监控服务均 `active`。更换笔记本网络不需要改服务器 IP 或开放新的 SSH 来源。SSM 按实例 ID 连接。
+
+Windows 快捷脚本现在会读取已启用的系统 HTTP/HTTPS 代理，仅用于本次进程；不会更改系统代理或关闭证书验证。显式的 `HTTP_PROXY` / `HTTPS_PROXY` 优先；可用 `-NoSystemProxy`（PowerShell）或 `--no-system-proxy`（Python）禁止自动继承。当前机器的系统代理在 `127.0.0.1:7890`，脚本不写死这个地址。PAC/需交互认证的代理不自动解析，需要设置可用的代理环境变量。
+
+```powershell
+# 在仓库根目录执行；status 同时查询 AWS 当前公网 IP 与 SSM 状态。
+.\scripts\cloud_session.ps1 -Action status
+.\scripts\cloud_session.ps1
+
+# 执行只读检查；运行失败时先看 SSM command ID，使用 --resume 查询，避免重复执行。
+python scripts/cloud_command.py --command 'systemctl is-active evidenceguard-demo'
+
+# 仅当 AWS 临时登录过期时重新授权；不需要每次打开 Web 控制台。
+.\scripts\cloud_session.ps1 -Action login
+```
+
+AWS 控制台密码不作为 SSH 密码，也不存进脚本。CLI 临时凭证由 AWS CLI 管理；不要把登录缓存、验证码或密钥发送给其他会话或提交仓库。
+
 2026-10-15：Windows 本机已用 `evidenceguard-prod15` profile 完成临时 AWS CLI 登录，并实际打开 SSM shell、执行 `whoami` 后正常退出。PowerShell 快捷入口为 `.\scripts\cloud_session.ps1`；`-Action status` 查看状态，`-Action login` 更新过期登录。比赛只读监控入口为 **http://47.131.21.137/dashboard**。部署和权限边界见 [云端 Dashboard](CLOUD-DASHBOARD.md)。
 
 AWS 控制台选择新加坡，打开该实例的“连接 → SSM 会话管理器”。现有 SSM role 是 `EvidenceGuardSSMInstanceRole`，附加 AWS 官方 `AmazonSSMManagedInstanceCore`。它是实例身份，不会自动授予队友访问权限；本轮没有新增成员。
