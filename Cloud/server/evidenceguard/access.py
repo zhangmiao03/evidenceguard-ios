@@ -39,7 +39,7 @@ class TeamAccess(BaseHTTPMiddleware):
         if request.url.path.startswith('/api/sdk/openapi/'):
             bearer = 'Bearer ' + request.headers.get('X-EG-Access-Token', '')
         authorized = hmac.compare_digest(bearer.encode(), ('Bearer ' + self.token).encode())
-        oauth_callback = request.method=='GET' and request.url.path in {'/api/connectors/oauth/callback/gmail','/api/connectors/oauth/callback/feishu'}
+        oauth_callback = request.method=='GET' and request.url.path in {'/api/connectors/oauth/callback/gmail','/api/connectors/oauth/callback/feishu','/api/connectors/oauth/callback/feishu_cli'}
         # Serve the login shell without a secret; all API/media data remain
         # protected. StaticFiles performs path containment and existence checks.
         static_path = request.url.path in {'/', '/dashboard', '/dashboard/', '/favicon.ico'} or request.url.path.startswith(('/assets/', '/sdk/', '/official-demo/'))

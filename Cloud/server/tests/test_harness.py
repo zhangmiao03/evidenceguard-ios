@@ -210,6 +210,7 @@ def test_model_snapshot_request_produces_visible_receipt_and_image_message(tmp_p
         store=Store(tmp_path/'camera-run.sqlite')
         scheduler=TaskScheduler()
         cameras=AsyncMock()
+        cameras.live=None  # This fixture adapter has no mobile live relay.
         cameras.manifests.return_value=[DeviceManifest('cam-a','T8171','测试','primary','online','fixture',(),{'liveSnapshot':CapabilityState.SUPPORTED},'test')]
         now=time.time()
         cameras.snapshot.side_effect=lambda *args: SnapshotReceipt('request','completed',SnapshotKind.LIVE,FrameRef('cam-a-1-1','cam-a','main',time.time(),time.time(),'fixture','live','v1'),'新画面')

@@ -68,7 +68,7 @@ class EvidenceGuardSDKBridge {
     private var generation = 0
     private var discoveredSn = emptySet<String>()
     private val eventCache = mutableMapOf<String, MegaEvent>()
-    private var activeLive: EvidenceGuardLiveBridge? = null
+    private val activeLive = mutableMapOf<String, EvidenceGuardLiveBridge>()
     private var officialHost: EvidenceGuardOfficialHost? = null
     private val hardware = mutableMapOf<String, HardwareToolJson>()
 
@@ -156,13 +156,13 @@ class EvidenceGuardSDKBridge {
     fun createLive(sn: String): EvidenceGuardLiveBridge? {
         if (sn !in discoveredSn) return null
         val device = esInject<DeviceRepository>().getIotDeviceBy(sn)?.let { MegaDevice(it) } ?: return null
-        activeLive?.stop()
-        return EvidenceGuardLiveBridge(device).also { activeLive = it }
+        activeLive.remove(sn)?.stop()
+        return EvidenceGuardLiveBridge(device).also { activeLive[sn] = it }
     }
 
     fun stopLive() {
-        activeLive?.stop()
-        activeLive = null
+        activeLive.values.toList().forEach { it.stop() }
+        activeLive.clear()
     }
 
     fun connect(userId: String, token: String, environment: String, completion: (String) -> Unit) {

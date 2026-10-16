@@ -16,8 +16,9 @@ extension OfficialSDKConnection {
         guard let camera = devices.first(where: { IOSToolExecutor.deviceID($0.sn) == id }) else {
             throw APIProblem(message: "暂未恢复这台摄像头的官方会话，请到摄像头页重新连接。")
         }
+        let liveController = controller(for: id)
         while liveController.opening && Date() < deadline { try await Task.sleep(for: .milliseconds(150)) }
-        await liveController.start(camera: camera, connection: self, client: client)
+        await selectCamera(camera, client: client)
         while liveController.running && !liveController.ready && Date() < deadline {
             try await Task.sleep(for: .milliseconds(150))
         }
@@ -49,8 +50,8 @@ struct CameraLiveDestination: View {
     @State private var error: String?
     var body: some View {
         Group {
-            if let camera = store.officialSDK.devices.first(where: { IOSToolExecutor.deviceID($0.sn) == id }) {
-                OfficialLiveCameraView(camera: camera)
+            if store.officialSDK.devices.contains(where: { IOSToolExecutor.deviceID($0.sn) == id }) {
+                CameraOverviewView(connection: store.officialSDK)
             } else if let error { Text(error).padding() }
             else { ProgressView("正在连接摄像头…") }
         }.task {
@@ -74,10 +75,13 @@ struct LiveFrameUpload: Encodable {
     @Published private(set) var deviceID: String?
     @Published private(set) var running = false
     @Published private(set) var latestImage: UIImage?
+    @Published private(set) var lastSampledAt: Date?
     private var task: Task<Void, Never>?
     private var session: LiveSession?
     private var client: APIClient?
     private var generation = UUID()
+    @Published private(set) var pausedByUser = false
+    private(set) var lastAttempt = Date.distantPast
     @Published private(set) var opening = false
     @Published private(set) var closing = false
     private var releaseTask: Task<Void, Never>?
@@ -86,9 +90,9 @@ struct LiveFrameUpload: Encodable {
     #endif
 
     func start(camera: SDKDiscoveredCamera, connection: OfficialSDKConnection, client: APIClient) async {
-        if running && deviceID != IOSToolExecutor.deviceID(camera.sn) { stop(message: "正在切换摄像头…") }
+        if running && (deviceID != IOSToolExecutor.deviceID(camera.sn) || self.client?.baseURL != client.baseURL) { stop(message: "正在切换摄像头…") }
         guard !running, !opening, !connection.switchingWorkspace, connection.officialDemoController == nil else { return }
-        opening = true
+        opening = true; pausedByUser = false; lastAttempt = Date()
         defer { opening = false }
         running = true; self.client = client
         generation = UUID(); let current = generation
@@ -144,17 +148,18 @@ struct LiveFrameUpload: Encodable {
             while !Task.isCancelled && generation == current {
                 let nextActivity = Int(player.activitySequence())
                 if nextActivity > activity, let image = player.capture() {
-                    activity = nextActivity; sequence += 1; lastSample = Date(); latestImage = image
+                    activity = nextActivity; sequence += 1; lastSample = Date(); latestImage = image; lastSampledAt = lastSample
                 }
                 let age = lastSample.map { Int(Date().timeIntervalSince($0) * 1000) }
-                ready = age.map { $0 < 3000 } ?? false
-                if ready && !firstFrameReported {
+                let fresh = age.map { $0 < 3000 } ?? false
+                if fresh && !firstFrameReported {
                     firstFrameReported = true
                     client.observe(name: "live.first_frame", traceID: current.uuidString,
                         durationMS: (ProcessInfo.processInfo.systemUptime - monotonicStart) * 1000, deviceID: session.deviceId)
                 }
+                try await client.liveHeartbeat(session, state: fresh ? "streaming" : "connecting", sequence: sequence, age: age)
+                ready = fresh
                 status = ready ? "画面已连接，可以提问" : "等待有效视频帧…"
-                try await client.liveHeartbeat(session, state: ready ? "streaming" : "connecting", sequence: sequence, age: age)
                 let commands = try await client.liveCommands(session)
                 for command in commands {
                     // Require a further SDK media activity callback after the
@@ -182,7 +187,7 @@ struct LiveFrameUpload: Encodable {
                         // The requester may have cancelled while we sampled.
                         // The next heartbeat still detects a stale session.
                     }
-                    activity = Int(player.activitySequence()); latestImage = image; lastSample = Date()
+                    activity = Int(player.activitySequence()); latestImage = image; lastSample = Date(); lastSampledAt = lastSample
                 }
                 if !ready && Date().timeIntervalSince(lastSample ?? startedAt) > 45 { throw APIProblem(message: "没有取得有效新帧，请检查设备与网络后重新开流") }
                 try await Task.sleep(for: .milliseconds(700))
@@ -192,6 +197,8 @@ struct LiveFrameUpload: Encodable {
         }
     }
     #endif
+
+    func pause() { pausedByUser = true; stop(message: "画面已暂停") }
 
     func stop(message: String = "已停止直播") {
         if running { client?.observe(name: "live.stopped", traceID: generation.uuidString, deviceID: deviceID) }
@@ -211,7 +218,7 @@ struct LiveFrameUpload: Encodable {
             try? await Task.sleep(for: .milliseconds(650))
             self.closing = false
         }
-        session = nil; renderView = nil; latestImage = nil; ready = false; running = false; status = message
+        session = nil; renderView = nil; ready = false; running = false; status = message
     }
 
     private func releaseSession(_ session: LiveSession, client: APIClient) async {
@@ -227,6 +234,12 @@ struct LiveFrameUpload: Encodable {
         }.value
     }
 
+    func stopForCameraSwitch() async {
+        stop(message: "已连接账号，按需自动取图")
+        while opening { try? await Task.sleep(for: .milliseconds(50)) }
+        await releaseTask?.value
+    }
+
     func stopForWorkspaceSwitch() async {
         client?.observe(name: "sdk.mode_changed", traceID: UUID().uuidString, deviceID: deviceID)
         stop(message: "正在切换到官方 SDK")
@@ -237,7 +250,7 @@ struct LiveFrameUpload: Encodable {
     }
 }
 
-private struct SDKRenderView: UIViewRepresentable {
+struct SDKRenderView: UIViewRepresentable {
     let rendered: UIView
     func makeUIView(context: Context) -> UIView {
         let host = UIView(); host.backgroundColor = .black
@@ -259,7 +272,7 @@ private struct SDKRenderView: UIViewRepresentable {
 struct OfficialLiveCameraView: View {
     @EnvironmentObject private var store: AppStore
     let camera: SDKDiscoveredCamera
-    var body: some View { LiveCameraContent(controller: store.officialSDK.liveController, camera: camera) }
+    var body: some View { LiveCameraContent(controller: store.officialSDK.controller(for: IOSToolExecutor.deviceID(camera.sn)), camera: camera) }
 }
 
 private struct LiveCameraContent: View {
@@ -286,10 +299,11 @@ private struct LiveCameraContent: View {
                 }.frame(height: 250).clipShape(RoundedRectangle(cornerRadius: 16))
                 Label(controller.status, systemImage: controller.ready ? "dot.radiowaves.left.and.right" : "video.slash").font(.subheadline)
                 HStack {
-                    Button(controller.running ? "停止直播" : (controller.closing || controller.opening ? "正在释放会话…" : "重新连接")) {
-                        if controller.running { controller.stop() }
-                        else { Task { await controller.start(camera: camera, connection: store.officialSDK, client: store.client) } }
-                    }.buttonStyle(.bordered).disabled(!controller.running && (controller.closing || controller.opening))
+                    if !controller.running {
+                        Button(controller.closing || controller.opening ? "正在连接…" : "立即重连") {
+                            Task { await store.officialSDK.selectCamera(camera, client: store.client) }
+                        }.buttonStyle(.bordered).disabled(controller.closing || controller.opening)
+                    }
                     Button("获取一张新画面") {
                         guard let id = controller.deviceID else { return }
                         Task { do { let value = try await store.client.captureLive(id); feedback = value.reason } catch { feedback = error.localizedDescription } }
@@ -303,7 +317,7 @@ private struct LiveCameraContent: View {
                 Text("App 在前台时，切回助手仍可查看这台摄像头。锁屏或离开 App 会停止；记录的是客户端取样时间，不代表持续守护。").font(.caption).foregroundStyle(Brand.muted)
             }.padding(16)
         }.pageStyle("实时查看与 Agent")
-            .task { await controller.start(camera: camera, connection: store.officialSDK, client: store.client); await store.refresh() }
+            .task { await store.officialSDK.selectCamera(camera, client: store.client); await store.refresh() }
             .onChange(of: scenePhase) { _, phase in if phase != .active { controller.stop(message: "App 已离开前台，直播已停止"); cancelQuestion() } }
             .onChange(of: controller.running) { _, running in if !running { cancelQuestion() } }
             .onDisappear { cancelQuestion() }

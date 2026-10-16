@@ -34,6 +34,63 @@ def picture(request, sequence=2):
                 imageBase64=base64.b64encode(f.getvalue()).decode(), sampledAt=time.time())
 
 
+def test_capture_waits_for_connecting_device_then_requires_its_new_frame(tmp_path):
+    async def run():
+        app = create_app(tmp_path/'connecting.sqlite', start_worker=False)
+        hub = app.state.camera.live
+        device = imported(hub)
+        opened = hub.start(SessionStart(deviceId=device['id'], platform='ios'), 'phone')
+        session = hub.authorize(opened['id'], 'phone', opened['token'])
+        capture = asyncio.create_task(app.state.tools.call('request_camera_snapshot', device_id=device['id']))
+        await asyncio.sleep(.2)
+        assert not capture.done() and hub.commands(session) == []
+        hub.heartbeat(session, Heartbeat(state='streaming', sequence=1, frameAgeMs=0))
+        for _ in range(80):
+            commands = hub.commands(session)
+            if commands: break
+            await asyncio.sleep(.02)
+        assert commands
+        hub.upload(session, FrameUpload(**picture(commands[0]['requestId'])))
+        result = await capture
+        assert result['status'] == 'completed' and result['cameraId'] == device['id']
+        await app.state.agent.shutdown(); app.state.store.close()
+    asyncio.run(run())
+
+
+def test_single_player_demands_switch_device_without_accepting_other_camera_frame(tmp_path):
+    async def run():
+        app = create_app(tmp_path/'switch.sqlite', start_worker=False)
+        hub = app.state.camera.live
+        first = imported(hub)
+        second = imported(hub, sn='T8214TEST0002')
+        _, a = ready(hub, first['id'])
+        capture = asyncio.create_task(app.state.tools.call('request_camera_snapshot', device_id=second['id']))
+        await asyncio.sleep(.05)
+        assert hub.capture_demands('phone') == [second['id']]
+        assert hub.capture_demands('other-installation') == []
+        assert hub.commands(a) == []
+        hub.stop(a)
+        _, b = ready(hub, second['id'])
+        for _ in range(80):
+            commands = hub.commands(b)
+            if commands: break
+            await asyncio.sleep(.02)
+        assert commands
+        with pytest.raises(ValueError): hub.upload(a, FrameUpload(**picture(commands[0]['requestId'])))
+        hub.upload(b, FrameUpload(**picture(commands[0]['requestId'])))
+        result = await capture
+        assert result['status'] == 'completed' and result['cameraId'] == second['id']
+        assert not hub.demands
+        cancelled = asyncio.create_task(app.state.tools.call('request_camera_snapshot', device_id=first['id']))
+        await asyncio.sleep(.05)
+        assert hub.capture_demands('phone') == [first['id']]
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError): await cancelled
+        assert not hub.demands
+        await app.state.agent.shutdown(); app.state.store.close()
+    asyncio.run(run())
+
+
 def test_event_and_live_discovery_share_one_camera_without_stale_live_claims(tmp_path, monkeypatch):
     from test_sdk_ingest import event
     monkeypatch.setenv('EG_CAMERA_SOURCE', 'official_sdk')

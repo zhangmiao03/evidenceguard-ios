@@ -65,7 +65,7 @@ struct ConnectedAppsView: View {
     var body: some View {
         List {
             Section {
-                Text("连接后，你可以直接问 anker：最近有哪些重要邮件，或某个飞书群在讨论什么。读取的内容会交给云端助手处理。")
+                Text("连接后，可以让 anker 按需查看与你有关的日程、消息和资料，再结合摄像头记录给出建议。可读范围由平台授权决定，读取的内容会交给云端助手处理。")
             }
             ForEach(apps) { app in
                 Section(app.name) {
@@ -91,6 +91,11 @@ struct ConnectedAppsView: View {
             Section("手机里的信息") {
                 NavigationLink { PhoneContextView() } label: { Label("日历与提醒事项", systemImage: "calendar") }
                 Text("先在手机预览，再选择共享。anker 无法直接读取其他 App 的聊天、短信或通知。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
+            Section("联网与地点") {
+                Text("可以直接问 anker 某地的天气或外部信息。已在聊天中明确告诉 anker 的城市，可以结合个人记忆用于查询；没有记录或地点有歧义时会再确认。")
+                Text("家庭所在地、当前城市和日程地点分别处理。查询天气不需要详细门牌，也不会用服务器位置推断你的住址。当前联网查询不会自动订阅降雨提醒。")
                     .font(.caption).foregroundStyle(Brand.muted)
             }
             Section {

@@ -19,6 +19,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 from .personal import installation
 from .harness.tools import Arguments, ToolRegistry
+from .external_sources import PublicSources, register_public_tools
+from .feishu_cli import FeishuCLI, SCOPES as FEISHU_CLI_SCOPES
 
 GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
 FEISHU_SCOPES = 'im:chat:readonly im:message:readonly im:message.group_msg:get_as_user offline_access'
@@ -26,6 +28,7 @@ CALLBACK_SCHEME = 'com.zhangmiao.evidenceguard.connect'
 PROVIDERS = {
     'gmail': ('Gmail', 'https://accounts.google.com/o/oauth2/v2/auth', 'https://oauth2.googleapis.com/token', GMAIL_SCOPE),
     'feishu': ('飞书', 'https://accounts.feishu.cn/open-apis/authen/v1/authorize', 'https://open.feishu.cn/open-apis/authen/v2/oauth/token', FEISHU_SCOPES),
+    'feishu_cli': ('飞书个人信息 · CLI', 'https://accounts.feishu.cn/open-apis/authen/v1/authorize', 'https://open.feishu.cn/open-apis/authen/v2/oauth/token', FEISHU_CLI_SCOPES),
 }
 
 
@@ -65,6 +68,8 @@ class Connectors:
         self.store = store
         self.locks = {}
         self.transport = None  # Test-only HTTP transport; production URLs stay fixed.
+        self.public_sources = PublicSources()
+        self.feishu_cli = FeishuCLI(self)
         with store.transaction():
             store.db.executescript('''
                 CREATE TABLE IF NOT EXISTS private_clients (client TEXT PRIMARY KEY, proof TEXT NOT NULL);
@@ -85,7 +90,7 @@ class Connectors:
 
     def config(self, provider):
         if provider not in PROVIDERS: raise ValueError('不支持的连接应用')
-        prefix='EG_'+provider.upper()
+        prefix='EG_'+('FEISHU' if provider=='feishu_cli' else provider.upper())
         return dict(client_id=os.getenv(prefix+'_CLIENT_ID',''),client_secret=os.getenv(prefix+'_CLIENT_SECRET',''),
                     redirect_uri=os.getenv('EG_CONNECTOR_ORIGIN','').rstrip('/')+'/api/connectors/oauth/callback/'+provider)
 
@@ -95,6 +100,7 @@ class Connectors:
         return Fernet(key.encode())
 
     def ready(self, provider):
+        if provider=='feishu_cli' and not self.feishu_cli.ready: return False
         config=self.config(provider)
         origin=urlsplit(config['redirect_uri'])
         try: self.vault()
@@ -105,7 +111,9 @@ class Connectors:
         with self.store.lock:
             connected={r[0] for r in self.store.db.execute('SELECT provider FROM connector_tokens WHERE client=?',(client,)).fetchall()}
         return [dict(id=p,name=values[0],configured=self.ready(p),connected=p in connected,
-                     scope='读取邮件内容，不发送或删除邮件' if p=='gmail' else '读取授权可见的群列表和群消息，不发送消息') for p,values in PROVIDERS.items()]
+                     scope='读取邮件内容，不发送或删除邮件' if p=='gmail' else
+                     '按需读取授权可见的日历、任务、文档、消息和邮件；不发送、不修改，不代表全部历史已导入' if p=='feishu_cli' else
+                     '读取授权可见的群列表和群消息，不发送消息') for p,values in PROVIDERS.items()]
 
     def begin(self, client, provider):
         if not self.ready(provider): raise ValueError('连接应用尚未完成服务端配置，请联系团队')
@@ -256,6 +264,13 @@ class Connectors:
         result=ToolRegistry(); result._tools=dict(registry._tools); result._specs=dict(registry._specs)
         async def phone(): return self.phone(client)
         result.register('read_phone_context',phone,description='读取用户从 iPhone 预览后主动共享的日历/提醒事项快照；不直接访问手机。无数据时明确说明。')
+        with self.store.lock:
+            has_profiles=self.store.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='personal_profiles'").fetchone()
+            row=self.store.db.execute('SELECT payload FROM personal_profiles WHERE id=?',(client,)).fetchone() if has_profiles else None
+        timezone=json.loads(row[0]).get('preferences',{}).get('timezone','Asia/Shanghai') if row else 'Asia/Shanghai'
+        register_public_tools(result,self.public_sources,timezone)
+        if 'feishu_cli' in connected and self.feishu_cli.ready:
+            self.feishu_cli.register(result,client,timezone)
         if 'gmail' in connected:
             registry=result
             async def search(**kw): return await self.gmail_search(client,**kw)

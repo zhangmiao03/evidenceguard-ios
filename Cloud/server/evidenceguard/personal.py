@@ -123,7 +123,8 @@ class PersonalAgent:
     def inbox(self, client):
         with self.store.lock:
             rows = self.store.db.execute('SELECT payload FROM personal_inbox WHERE client=? ORDER BY rowid DESC LIMIT 50', (client,)).fetchall()
-        return [json.loads(row[0]) for row in rows]
+        from .briefings import present
+        return [present(json.loads(row[0])) for row in rows]
 
     def read(self, client, key):
         with self.store.transaction():

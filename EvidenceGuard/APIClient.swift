@@ -52,11 +52,13 @@ struct APIClient {
     var baseURL: URL
     private let transport: URLSession
     private let observations: OpsDelivery
+    private let installationProof: (URL) throws -> String
     private var pinnedAccessToken: String?
     var accessToken: String { pinnedAccessToken ?? ServiceAccess.token(for: baseURL) }
     func scoped() -> APIClient { var copy = self; copy.pinnedAccessToken = accessToken; return copy }
-    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
+    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared, installationProof: @escaping (URL) throws -> String = PushBinding.secret(for:)) {
         self.baseURL = baseURL; self.transport = transport; self.observations = observations
+        self.installationProof = installationProof
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
@@ -202,7 +204,7 @@ struct APIClient {
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
     func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil, referenceImageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var referenceImageId: String?; var clientPlatform = "ios" }
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var referenceImageId: String?; var clientPlatform = "ios"; var guardFlowVersion = 1 }
         return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID, referenceImageId: referenceImageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
@@ -226,8 +228,33 @@ struct APIClient {
     func absoluteURL(_ path: String?) -> URL? {
         guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
+    func visualScenes() async throws -> [VisualScene] { try await get("/api/visual-scenes") }
+    func visualScene(_ id: String) async throws -> VisualScene { try await get("/api/visual-scenes/\(id)") }
+    func createScene(cameraID: String, message: String, requestID: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes", body: ["cameraId":cameraID, "message":message, "requestId":requestID])
+    }
+    func interpretScene(_ scene: VisualScene, message: String, requestID: String) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var message: String; var requestId: String }
+        return try await send("/api/visual-scenes/\(scene.id)/interpret", body: Body(revision:scene.revision, message:message, requestId:requestID))
+    }
+    func sceneAction(_ scene: VisualScene, action: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes/\(scene.id)/\(action)", body: ["revision":scene.revision])
+    }
+    func selectScene(_ scene: VisualScene, frameID: String, box: ROI) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var frameId: String; var box: ROI }
+        return try await send("/api/visual-scenes/\(scene.id)/selection", body: Body(revision:scene.revision, frameId:frameID, box:box))
+    }
+    func sceneImage(_ path: String) async throws -> Data {
+        guard path.hasPrefix("/api/media/"), let url = absoluteURL(path) else { throw APIProblem(message:"画面地址无效，请重新获取。") }
+        var request = URLRequest(url:url); try authorize(&request)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await transport.data(for:request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw APIProblem(message:"画面加载失败，请重新获取。") }
+        return data
+    }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
     func registeredCameras() async throws -> [RegisteredCamera] { try await get("/api/devices") }
+    func cameraDemands() async throws -> [String] { try await get("/api/media-demands") }
     func importDevices(account: String, environment: String, cameras: [SDKDiscoveredCamera]) async throws -> [RegisteredCamera] {
         struct Item: Encodable { var sn: String; var model: String; var name: String }
         struct Body: Encodable { var accountId: String; var environment: String; var platform = "ios"; var devices: [Item] }
@@ -311,7 +338,7 @@ struct APIClient {
         }
         request.setValue(MobileServiceConfiguration.installationID, forHTTPHeaderField: "X-EG-Installation-ID")
         if baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") {
-            request.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Private-Key")
+            request.setValue(try installationProof(baseURL), forHTTPHeaderField: "X-EG-Private-Key")
         }
         let token = accessToken
         guard !token.isEmpty else { return }

@@ -134,7 +134,7 @@ def test_publication_rechecks_opt_in_schedule_and_latest_facts(tmp_path,monkeypa
             return Decision(valueScore=100,reason='旧结果',sourceIds=[])
         r.proactive=AsyncMock(side_effect=model); p.tick(now); await e.step(now)
         if change=='facts':
-            assert '没有收到新的事件或画面' in e.messages(c)[0]['body']
+            assert '还没收到这段时间的画面' in e.messages(c)[0]['body']
             assert '还没有接入摄像头' not in e.messages(c)[0]['body']
         else: assert not e.messages(c)
         if change=='schedule':
@@ -184,7 +184,8 @@ def test_report_counts_use_device_event_time_exclude_fixture_and_do_not_claim_id
     report=due_report(p.profile(c)['preferences'],now); sources=facts(app.state.store,report,now)
     text=render(report,sources)['body']
     assert sources[0]['eventCount']==1 and sources[0]['sampleCount']==0
-    assert '有人 1 次' in text and '1 台摄像头缺少本时段记录' in text
+    assert '有人活动的信号' in text and '还没看清具体发生了什么' in text
+    assert '设备标记' not in text and '取样' not in text and 'T8171' not in text
     assert '房主' not in text and '安全' not in text and '离线' not in text
     assert all(s.get('continuousCoverage') is not True for s in sources)
     app.state.store.close()
@@ -197,7 +198,7 @@ def test_report_push_has_separate_quota_but_opt_out_is_rechecked(tmp_path,monkey
     async def check():
         app,p,e,r,c=configured(tmp_path,monkeypatch); now=time.time()
         local=datetime.fromtimestamp(now,ZoneInfo('Asia/Shanghai'))
-        p.preferences(c,Preferences(enabled=True,morningReport=True,morningHour=local.hour,
+        p.preferences(c,Preferences(enabled=True,morningReport=True,morningHour=local.hour,eveningReport=False,
                                     timezone='Asia/Shanghai',quietStart=0,quietEnd=0))
         push=PushService(app.state.store,p,Provider()); e.push=push
         push.register(c,SECRET,registration()); push.presence(c,SECRET,False)
@@ -274,3 +275,50 @@ def test_afternoon_activation_and_persisted_old_morning_job_do_not_send(tmp_path
         r.proactive.assert_not_awaited()
         app.state.store.close()
     asyncio.run(check())
+
+
+def test_report_reads_saved_pictures_and_leads_with_visible_events(tmp_path,monkeypatch):
+    from evidenceguard.briefings import review_pictures, present
+    async def check():
+        app,p,e,r,c=configured(tmp_path,monkeypatch); now=at('2026-10-15T08:00')
+        ingest=app.state.ingest
+        ingest.register_devices(SDKDevices(devices=[SDKDevice(deviceSn='T8171-eval',model='T8171',deviceName='门口')]))
+        camera=ingest.camera_id('T8171-eval')
+        for n,(source,when) in enumerate([('official_sdk',now-300),('synthetic_demo',now-200),('official_sdk',now-90000)]):
+            item=dict(id='picture-'+str(n),cameraId=camera,sourceType=source,capturedAt=when,imageUrl='/api/media/'+'a'*64,mediaStatus='saved')
+            app.state.store.db.execute('INSERT INTO evidence VALUES (?,?,?,?)',(item['id'],'',when,json.dumps(item)))
+        report=due_report(p.profile(c)['preferences'],now)
+        sources=facts(app.state.store,report,now)
+        visual=type('Visual',(),{'review':AsyncMock(return_value=dict(status='completed',review=dict(visible='门口有一个纸箱，旁边站着一名戴帽子的人。',uncertainties='不能确认人物身份。')))})()
+        enriched=await review_pictures(sources,visual,report)
+        visual.review.assert_awaited_once()
+        rendered=render(report,enriched)
+        assert '07:55，门口有一个纸箱，旁边站着一名戴帽子的人。' in rendered['body']
+        assert rendered['body'].startswith('早间报告 · ')
+        assert '其他时段还不能确认' in rendered['body']
+        assert '设备标记' not in rendered['body'] and '次画面取样' not in rendered['body']
+        old=dict(id='same-id',body='旧技术日志',report=report,sources=sources,read=True,feedback='handled')
+        updated=present(old)
+        assert updated['id']=='same-id' and updated['read'] and updated['feedback']=='handled'
+        assert old['body']=='旧技术日志' and '很安全' not in updated['body']
+        assert not any('synthetic_demo'==s.get('sourceType') for s in enriched)
+        visual.review.side_effect=RuntimeError('private-provider-error')
+        fallback=render(report,await review_pictures(sources,visual,report))
+        assert '还没看清' in fallback['body'] and 'private-provider' not in fallback['body']
+        app.state.store.close()
+    asyncio.run(check())
+
+
+def test_visual_report_does_not_turn_a_picture_into_whole_home_safety():
+    from evidenceguard.briefings import visible_text
+    assert visible_text(dict(visualReview=dict(status='completed',review=dict(visible='全屋很安全，没有发生任何事情。'))))==''
+    assert visible_text(dict(visualReview=dict(status='unavailable',review=dict(visible='有人进门。'))))==''
+    assert visible_text(dict(visualReview=dict(status='completed',review=dict(visible='门前没有看到人。'))))=='门前没有看到人。'
+
+
+def test_report_removes_watermark_and_furniture_list_from_legacy_visual_review():
+    from evidenceguard.briefings import visible_text
+    legacy='左上角显示“eufy SECURITY”标识；右上角显示时间戳；画面被遮挡，看不清部分区域；玻璃反射中可见三个人，反射区域后方可见白色窗框、墙面和柜子。'
+    result=visible_text(dict(visualReview=dict(status='completed',review=dict(visible=legacy))))
+    assert result=='画面被遮挡，看不清部分区域。玻璃反射中可见三个人。'
+    assert len(result)<=101
