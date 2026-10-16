@@ -1,5 +1,7 @@
 # 比赛网站发布与验证
 
+当前维护状态（2026-10-16 19:28，新加坡时间）：运行版本为 `6b749dfdf54d6830`，保留上一版 `073ca161a4de655e` 供回滚；唯一有效的版本回滚配置是 `/var/backups/evidenceguard-dashboard/20261016T112647276589Z`。文末记录了中间版本清理，前文早期发布路径仅供历史追溯，已清理的目录不能再用于回滚。
+
 ## 页面入口
 
 | 用途 | 地址 |
@@ -95,3 +97,14 @@ python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no
 - demo 公开缓存的 11 项去重媒体（10 图、1 视频）均验证返回 200、内容 SHA-256 一致、字节 Range 返回 206。模型图片放大、输入/结果关联、无任意外链请求由浏览器测试覆盖。
 - 查看本次检索：在视频向量库将“后端环境”切到“Apple 审核”；查看真实图片识别：选择“手机演示”。不同环境的数据保持隔离，不为了展示而复制成另一套环境的记录。
 - iOS 展示使用项目自有场景照片，五个入口可交互，仍是有标记的浏览器演示。本次验收不等于原生 iOS 构建或真实设备取流测试。当前业务未实现图片作为向量查询输入；相关空态明示这一边界。
+
+## 手机 SDK 边界与空间清理（2026-10-16）
+
+- 提交 `b9b0c81`：将展示入口改为“手机 SDK 说明”，明示摄像头控制统一在手机 App 官方 SDK 执行；Web 展示不具备这些接口。README 与本页同步。已通过生产构建及四种浏览器的完整演示交互检查，预览没有业务写请求。
+- 19:26 新发布目录 `/opt/evidenceguard-dashboard/releases/6b749dfdf54d6830`；部署包 SHA-256 `6b749dfdf54d683093f40a3dbac1c02dca1a1b07cb056ff44ae8b658dd911461`，网站 ZIP SHA-256 `6fec7f266b1523020f19250c8509a2d41984e50d8c9a7e526113f77301ff38c2`。
+- 先只读检查实际 systemd 配置、进程引用、采集配置与回滚 manifest，形成固定清单；执行前再次核对目录身份、内容规模与引用未变化。删除范围限定为 Dashboard 的发布目录、对应上传分片、过期版本回滚配置，拒绝符号链接、跨挂载或超出范围的路径。
+- 已删除 9 个旧 release、11 组 `/tmp/eg-dashboard-upload-*` 分片、9 份过期版本回滚目录，共释放 17,858,560 字节（约 17 MiB）。磁盘仍约 24 GiB 可用、占用 16%。没有清理业务源码、数据库、录像、图片或模型运行记录。
+- 保留当前 `6b749dfdf54d6830`、上一版 `073ca161a4de655e` 及 `20261016T112647276589Z` 回滚配置；独立的原 HTTPS 路由备份 `https-20261016T082200Z` 仅 8 KiB，继续保留。
+- 当前版本的回滚命令：`python3 /opt/evidenceguard-dashboard/releases/6b749dfdf54d6830/activate.py --rollback /var/backups/evidenceguard-dashboard/20261016T112647276589Z`。已确认所引用的上一版文件完整；本次没有实际执行回滚。
+- 清理后五个相关服务均为 active，三环境 Dashboard/健康接口、原 App 未鉴权 401、Dashboard 写请求 405、媒体与向量表均通过复核。清理结果保存在服务器 `/var/tmp/evidenceguard-dashboard-cleanup-result.json`；清单在同目录的 `evidenceguard-dashboard-cleanup-plan.json`。
+- 后续部署完成验证后按“实际使用中的版本＋上一可回滚版本”保留；先核对真实引用及回滚依赖再清理。未设置无人值守的定时删除。
