@@ -66,7 +66,7 @@ test('history text/image search stays separate from live view and prior reply fr
   await p.getByRole('button',{name:'发送演示消息'}).click();
   const image=p.locator('.ios-message.assistant img');
   const original=await image.getAttribute('src');
-  await page.locator('.eg-showcase-states').getByRole('button',{name:'条件触发'}).click();
+  await expect(page.locator('.eg-showcase-states').getByRole('button',{name:'条件触发'})).toBeDisabled();
   await expect(image).toHaveAttribute('src',original!);
   await p.getByRole('button',{name:'对话范围与摄像头'}).click();
   await p.getByRole('button',{name:'历史资料',exact:true}).click();

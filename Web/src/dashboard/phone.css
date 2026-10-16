@@ -47,7 +47,7 @@
 .ios-current .ios-card header svg{color:var(--ios-blue)}
 .eg-ops .ios-current .ios-primary,.eg-ops .ios-current .ios-outline{display:flex;width:100%;min-height:46px;border-radius:15px;margin:12px 0 5px;font-weight:600}
 .eg-ops .ios-current .ios-primary{color:white;background:#176ff5}
-.eg-ops .ios-current .ios-primary:hover{background:#085de0}
+.eg-ops .ios-current .ios-primary:hover{background:#085de0;color:white}
 .eg-ops .ios-current .ios-outline{background:#f6faff;color:var(--ios-blue);border:1px solid #d2e3ff}
 .eg-ops .ios-current .ios-danger{color:#c92d35}
 .ios-current .ios-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}

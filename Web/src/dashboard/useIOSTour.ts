@@ -42,6 +42,12 @@ export function useIOSTour() {
     setGuards(items=>items.some(g=>g.id===id)?items:[...items,draftFor(selected)]);
     setTab(1);setStack(['guard']);setToolsOpen(false);setError('');setRevision('');
   }
+  function restartScene(){
+    // Explicit guide reset affects browser examples only, never a device or API.
+    setGuards(items=>[...items.filter(g=>g.id!==sceneId).map(g=>tourScenarios.find(s=>s.id===g.sceneId)?.device===scene.device?{...g,status:'draft' as const,stage:1 as const,frame:false,box:null,baseline:false,result:'pending' as const,reason:'切换演示场景，已暂停'}:g),draftFor(scene)]);
+    setTopics(items=>items.map(t=>t.id==='main'?{...t,messages:t.messages.filter(m=>m.sceneId!==sceneId)}:t));
+    setTopicId('main');setCondition('baseline');setMode('live');setInput('');setPreferences(p=>({...p,proactive:true}));beginGuard();
+  }
   function generate(){if(!editor?.prompt.trim())return;patchGuard({stage:1,frame:false,box:null,result:'pending',reason:'等待框选与确认'});}
   function revise(){
     if(!editor)return;
@@ -88,7 +94,7 @@ export function useIOSTour() {
   const outcome=currentGuard?guardLabels[currentGuard.result]:'尚未创建守护';
   return {sceneId,scene,condition,tab,route,stack,root,go,back,chooseScene,observe,outcome,toolsOpen,setToolsOpen,showFrame,setShowFrame,
     camera,selectCamera,mode,setMode,topic,topicId,topics,input,setInput,ask,newTopic,selectTopic,
-    guards,editor,editorScene,currentGuard,beginGuard,patchGuard,generate,revise,revision,setRevision,activate,pause,compareEndpoints,error,
+    guards,editor,editorScene,currentGuard,beginGuard,restartScene,patchGuard,generate,revise,revision,setRevision,activate,pause,compareEndpoints,error,
     automaticMemory,setAutomaticMemory,memoryFilter,setMemoryFilter,memories,setMemories,memoryText,setMemoryText,temporary,setTemporary,removing,setRemoving,remember,openMemory,
     nearby,setNearby,deviceName,setDeviceName,deviceKind,setDeviceKind,bluetooth,setBluetooth,connectBluetooth,
     nickname,setNickname,toast,setToast,preferences,toggle,morningHour,setMorningHour,eveningHour,setEveningHour,

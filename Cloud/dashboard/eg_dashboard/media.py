@@ -107,8 +107,10 @@ def read_media(path, now, signature=None, assets=None, video_root=None):
             total=db.execute('SELECT count(*)'+join).fetchone()[0]
             matching=db.execute('SELECT count(*)'+join+' WHERE e.signature=?',(signature,)).fetchone()[0] if signature else None
             summary['tables']['retrieval_embeddings']={'available':True,'total':total,'matchingSignature':matching,'truncated':total>120}
-            for clip_id,rid,sig,kind,offset,start,end,dimensions,raw in db.execute(
-                'SELECT c.id,r.id,e.signature,e.kind,e.offset_ms,c.start,c.end,u.dimensions,CASE WHEN length(u.vector)=4096 THEN u.vector ELSE NULL END'+join+' ORDER BY e.rowid DESC LIMIT 120'):
+            columns={c[1] for c in db.execute('PRAGMA table_info(retrieval_embeddings)')}
+            thumbnail_column='e.thumbnail' if 'thumbnail' in columns else 'NULL'
+            for clip_id,rid,sig,kind,offset,start,end,dimensions,raw,thumbnail in db.execute(
+                'SELECT c.id,r.id,e.signature,e.kind,e.offset_ms,c.start,c.end,u.dimensions,CASE WHEN length(u.vector)=4096 THEN u.vector ELSE NULL END,'+thumbnail_column+join+' ORDER BY e.rowid DESC LIMIT 120'):
                 vector=struct.unpack('<1024f',raw) if raw is not None and dimensions==1024 else ()
                 norm=math.hypot(*vector) if vector and all(math.isfinite(x) for x in vector) else None
                 valid=norm is not None and math.isfinite(norm) and norm>0
@@ -117,6 +119,20 @@ def read_media(path, now, signature=None, assets=None, video_root=None):
                     norm=round(norm,8) if valid else None,normalized=abs(norm-1)<1e-5 if valid else False,
                     vectorPreview=list(vector[:16]) if valid else [],vectorHash=hashlib.sha256(raw).hexdigest() if raw else None,
                     signatureCompatible=sig==signature if signature else None,status='valid' if valid else 'invalid',snapshotOnly=True,indexVersion=2)
+                # Only published corpus frames from this recording/index. Query
+                # images remain private. Never infer the frame from a nearby call.
+                if kind=='frame' and assets and video_root and isinstance(thumbnail,str):
+                    from pathlib import Path
+                    import re
+                    root=Path(video_root).resolve()
+                    expected=rf'{re.escape(str(rid))}/index-{re.escape(str(sig)[:16])}/frame-[0-9]{{5}}\.jpg'
+                    if re.fullmatch(expected,thumbnail) and re.fullmatch(r'video-[a-f0-9]{16}',str(rid)):
+                        file=root/thumbnail
+                        if file.is_file() and not any(p.is_symlink() for p in [file,file.parent,file.parent.parent]) and file.resolve().is_relative_to(root) and file.stat().st_size<=8_000_000:
+                            from .media_assets import valid_bytes
+                            raw_image=file.read_bytes()
+                            preview=assets.add(raw_image,'image/jpeg',provenance='indexed_frame') if valid_bytes(raw_image,'image/jpeg') else None
+                            if preview:value['media']=[preview]
                 rows.append(resource('media_video_segments',value,now))
         else: summary['tables']['retrieval_embeddings']={'available':False,'total':None}
     return rows,summary

@@ -29,6 +29,7 @@ test('image results and vector segments retain provenance and readable details',
   await page.getByRole('button',{name:'关闭详情'}).click();
   await page.getByRole('navigation',{name:'Dashboard 页面'}).getByRole('button',{name:'视频向量库'}).click();
   await expect(page.locator('.eg-media-indexgrid')).toContainText('合成测试素材 · 真实入库');
+  await page.getByText('本窗口向量详情 · 1 条',{exact:true}).click();
   await expect(page.getByText('1024 维',{exact:true})).toBeVisible();
   await expect(page.locator('.eg-media-vector')).toContainText('关键帧向量');
   await expect(page.locator('.eg-media-vector')).toContainText('v2 视频 / 关键帧双路索引');

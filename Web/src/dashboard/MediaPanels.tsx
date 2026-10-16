@@ -1,8 +1,8 @@
 import {useState} from 'react';
 import {MediaPreview} from './MediaPreview';
-import {SearchHistory} from './SearchHistory';
 import {deviceLabel,eventLabel,statusLabel} from './labels';
 import './media.css';
+import './mediaReading.css';
 export type MediaRow={id:string;kind:string;name:string;at:number;status:string;data:Record<string,any>;durationMs?:number|null;traceId?:string};
 export const time=(n:any)=>typeof n==='number'&&n>0?new Date(n*1000).toLocaleString('zh-CN',{hour12:false}):'未采集';
 export const sec=(n:any)=>typeof n==='number'?`${n.toFixed(1)} s`:'—';
@@ -26,15 +26,4 @@ export function ImageAnalysis({rows,coverage,onSelect}:Props){
     {!items.length&&<section className="eg-ops-panel eg-media-empty"><h3>当前范围没有这类记录</h3><p>检查环境、时间范围与筛选；这里只展示实际已采集的数据。</p></section>}
   </div>;
 }
-export function VideoIndex({rows,coverage,onSelect}:Props){
-  const recordings=rows.filter(r=>r.name==='media_recordings'),segments=rows.filter(r=>r.name==='media_video_segments');
-  const [chosen,setChosen]=useState('');const active=recordings.find(r=>r.data.id===chosen)||recordings[0];
-  const clips=segments.filter(r=>r.data.recordingId===active?.data.id).sort((a,b)=>a.data.start-b.data.start);
-  return <div className="eg-media"><section className="eg-ops-panel eg-media-intro"><span className="eg-media-eyebrow">VIDEO & SEMANTIC MEMORY</span><h2>看得见的录像，查得到的记忆</h2><p>播放入库录像，查看片段如何建立索引，再核对每次检索找到了哪些画面。</p><small>真实数据快照 · {time(coverage?.sampledAt)} · 每表最多 {coverage?.limitPerTable||120} 条</small></section>
-    <SearchHistory rows={rows} recordings={recordings} onSelect={onSelect}/>
-    <div className="eg-media-indexgrid"><section className="eg-ops-panel"><h2>录像库 · {recordings.length} 条</h2><div className="eg-media-calllist">{recordings.map((r,i)=><button key={r.id} aria-pressed={active?.id===r.id} onClick={()=>setChosen(r.data.id)}><span>{r.data.title||`录像 ${i+1}`}<small>{origin(r.data.sourceType)} · {sec(r.data.duration)}</small></span>{statusLabel(r.data.status)} →</button>)}</div>{!recordings.length&&<p>没有已采集录像。不会用演示素材填充真实数据。</p>}</section>
-    <section className="eg-ops-panel"><h2>{active?.data.title||'选择一条录像'}</h2>{active&&<><p className="eg-ops-note">{origin(active.data.sourceType)} · {deviceLabel(active.data.cameraId,rows)}</p><MediaPreview items={active.data.media} title={active.data.title||'入库录像'}/><p>{compatible(active.data.signatureCompatible)} · {active.data.embeddingModel||'向量模型未记录'}</p><button onClick={()=>onSelect(active)}>查看录像元数据</button></>}
-      <div className="eg-media-timeline" aria-label="录像切片时间轴">{clips.map((r,i)=><button key={r.id} onClick={()=>onSelect(r)}>{unitLabel(r,i)} · {sec(r.data.start)} → {sec(r.data.end)}</button>)}</div>
-      {clips.map((r,i)=><div className="eg-media-vector" key={r.id}><div className="eg-media-cardhead"><strong>{unitLabel(r,i)} · {sec(r.data.start)} — {sec(r.data.end)}</strong><span>{r.data.dimensions??'未知'} 维</span><span className="eg-ops-badge">{statusLabel(r.data.status)}</span></div><p>{compatible(r.data.signatureCompatible)} · {r.data.indexVersion===2?"v2 视频 / 关键帧双路索引":"v1 视频索引"}</p><details><summary>向量技术详情</summary><small>范数 {r.data.norm??'无效'} · {r.data.normalized?'已归一化':'未归一化 / 无效'}</small><div className="eg-media-bars" aria-label="向量前 16 维预览">{(r.data.vectorPreview||[]).map((v:number,j:number)=><span key={j} title={`维度 ${j+1}: ${v}`} style={{height:`${Math.max(4,Math.min(50,Math.abs(v)*400))}px`}}/>)}</div><small>前 16 维数值预览，不是概率。</small><p className="eg-media-code">索引签名：{r.data.signature||'未采集'}</p></details><button onClick={()=>onSelect(r)}>展开向量、签名与校验摘要</button></div>)}
-    </section></div></div>;
-}
+export {VideoIndex} from './VideoLibrary';

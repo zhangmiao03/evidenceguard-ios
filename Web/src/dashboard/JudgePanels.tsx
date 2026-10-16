@@ -11,6 +11,7 @@ import {
   phaseRecords,
 } from "./judge.mjs";
 import { deviceLabel, eventLabel, statusLabel } from "./labels";
+import {MediaEntry} from "./ImageMemory";
 import { MediaPreview } from "./MediaPreview";
 import { RecordContent } from "./RecordContent";
 import "./judge.css";
@@ -188,7 +189,7 @@ function TaskResult({
       <p>
         {task.answer
           ? readable(task.answer)
-          : "此任务未保留最终回复正文。模型调用成功不能代替任务完成回执。"}
+          : task.records.some((r:Row)=>r.data.privateContent)?"这次私有查询已运行；最终正文仅在授权 App 内查看。":"此任务未保留最终回复正文。模型调用成功不能代替任务完成回执。"}
       </p>
       {task.final && (
         <button onClick={() => onSelect(task.final)}>
@@ -251,6 +252,7 @@ export function JudgeOverview({ rows, onSelect, onPage }: Props) {
           </div>
         </div>
       </section>
+      <MediaEntry rows={rows} onPage={n=>onPage?.(n)}/>
       <div className="judge-stats">
         <Stat
           label="可回放的 Agent 任务"

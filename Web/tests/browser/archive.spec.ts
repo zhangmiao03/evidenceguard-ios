@@ -10,6 +10,7 @@ test('full inventories paginate, retain old replies and distinguish display hash
     return r.fulfill({json:{summary,sampledAt:summary.sampledAt,total:filtered?0:images?170:96,nextCursor:images&&!cursor?'page2':null,items:filtered?[]:images?[{id:cursor?'older-image':'latest-image',cameraId:'camera',sourceType:'official_live_ios',receivedAt:1000,sampledAt:999,bytes:100,media:[],sha256:'a'.repeat(64),previewStatus:'available'}]:[reply('old-reply','legacy_receipt'),reply('new-reply','backend_match'),reply('wrong-reply','backend_mismatch')]}});
   });
   await page.goto('/dashboard?view=images');
+  await page.getByRole('button',{name:'完整图片台账',exact:true}).click();
   const archive=page.getByRole('region',{name:'全部图片台账'});
   await expect(archive.getByText('已存图片记录',{exact:true})).toBeVisible();
   await expect(archive.getByText('170',{exact:true}).first()).toBeVisible();
