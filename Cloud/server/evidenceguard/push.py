@@ -80,6 +80,11 @@ class APNsProvider:
             'draft': '草案整理好了，等你看看。',
         }.get(delivery['kind'], '有件事想提醒你，点开看看。')}, 'sound': 'default',
             'thread-id': 'evidenceguard-' + scope}, 'eg': {'deliveryId': delivery['id'], 'scope': scope}}
+        if delivery.get('foregroundGuard'):
+            body['aps']['alert']['body'] = '你设置的守护发现了变化，点开查看画面。'
+            body['eg']['foreground'] = 'guard'
+        elif delivery['kind'] == 'test':
+            body['eg']['foreground'] = 'test'
         response = await client.post('https://' + host + '/3/device/' + device['token'], json=body,
             headers={'authorization': self.authorization(), 'apns-topic': self.topic,
                      'apns-push-type': 'alert', 'apns-priority': '10',
@@ -249,6 +254,7 @@ class PushService:
 
     def eligible(self, item, device, now):
         subscribed_report = False
+        confirmed_guard = False
         if now >= item['expires_at']: return 'expired', 'Expired', None
         if not device or not device['enabled']: return 'cancelled', 'Disabled', None
         if item['opened_at']: return 'cancelled', 'Opened', None
@@ -259,6 +265,10 @@ class PushService:
             if not row: return 'cancelled', 'Removed', None
             message = json.loads(row[0])
             subscribed_report = bool(message.get('report'))
+            confirmed_guard = message.get('kind') == 'visual_scene' and any(
+                source.get('type') == 'camera_evidence' and source.get('evidenceId')
+                for source in message.get('sources', []))
+            item['foregroundGuard'] = bool(confirmed_guard)
             if not p['enabled'] or message.get('read') or message.get('feedback') in {'read','handled','dismiss','snooze'}:
                 return 'cancelled', 'NoLongerNeeded', None
             job_row = self.store.db.execute('SELECT payload FROM proactive_jobs WHERE id=?', (message['jobId'],)).fetchone()
@@ -269,8 +279,11 @@ class PushService:
                 if gate: return ('retry' if gate[0]=='deferred' else gate[0], 'PolicyChanged', gate[1])
         if self.personal.engine.quiet(p, now): return 'retry', 'QuietHours', now+60
         # A short lease is renewed while this app is visible, never background polling.
-        if device['active'] and now-device['seen_at'] < 75: return 'retry', 'AppVisible', now+30
-        if subscribed_report: return None  # Two explicit report slots; still obey opt-out, quiet hours, expiry and dedupe.
+        if device['active'] and now-device['seen_at'] < 75 and not confirmed_guard: return 'retry', 'AppVisible', now+30
+        # Explicitly enabled guard conditions, like subscribed reports, are not
+        # ordinary unsolicited suggestions. Keep opt-out, quiet hours, expiry,
+        # evidence publication dedupe and read-state checks above.
+        if subscribed_report or confirmed_guard: return None
         zone = ZoneInfo(p['timezone'])
         day = datetime.fromtimestamp(now, zone).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
         count,last = self.store.db.execute("""SELECT COUNT(*),MAX(accepted_at) FROM push_outbox

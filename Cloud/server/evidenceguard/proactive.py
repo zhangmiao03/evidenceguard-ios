@@ -78,14 +78,14 @@ class ProactiveEngine:
     def messages(self, client):
         with self.store.lock:
             rows = self.store.db.execute('SELECT payload FROM assistant_messages WHERE client=? ORDER BY created_at DESC LIMIT 50', (client,)).fetchall()
-        return [json.loads(r[0]) for r in reversed(rows)]
+        return [briefings.present(json.loads(r[0])) for r in reversed(rows)]
 
     def message(self, client, key):
         # A push or explicit reply can refer to a message outside the bootstrap window.
         with self.store.lock:
             row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (key, client)).fetchone()
         if not row: raise KeyError(key)
-        return json.loads(row[0])
+        return briefings.present(json.loads(row[0]))
 
     def activity(self, client):
         with self.store.lock:
@@ -388,7 +388,8 @@ class ProactiveEngine:
         job['runId'] = job['id']+f"-attempt-{job['attempts']}"
         context['report'] = job['report']
         try:
-            # No extra image call is needed: these are factual counts/statuses.
+            sources = await briefings.review_pictures(sources, getattr(self.runtime,'visual_review',None), job['report'])
+            context['sources'] = sources
             decision = await self.runtime.proactive(job['runId'], context)
             selected = decision.sourceIds
         except asyncio.CancelledError:
@@ -404,6 +405,11 @@ class ProactiveEngine:
             # Read fresh source facts under the publication lock. Ignore model
             # prose and old ranking when preferences/source state has changed.
             fresh = self.sources(job,current)
+            reviewed = {s['id']:s for s in sources if s['type']=='report_picture'}
+            for source in fresh:
+                old = reviewed.get(source['id'])
+                if old and all(source.get(k)==old.get(k) for k in ('cameraId','observedAt','imageUrl','sourceType')):
+                    source['visualReview'] = old.get('visualReview')
             if fingerprint != hashlib.sha256(json.dumps(self.personal.context(job['client']),sort_keys=True).encode()).hexdigest():
                 selected = []
                 generation = 'facts_refreshed'

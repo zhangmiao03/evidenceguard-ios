@@ -46,6 +46,7 @@ class Judgment(Input):
     state: Literal['inside', 'outside', 'unknown']
     regionClear: bool
     identityClear: bool
+    viewMatchesReference: bool = False
     reason: str = Field(min_length=1, max_length=500)
 
 

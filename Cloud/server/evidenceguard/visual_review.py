@@ -48,7 +48,8 @@ class VisualReview:
         # A source is (media key, observation time). Cache is also bound to model
         # and timestamps; duplicate ingest or follow-up does not pay to look again.
         sources = sources[:3]
-        key = hashlib.sha256(json.dumps([camera,episode,sources,getattr(self.provider,'model',''),getattr(self.provider,'base',''),'visual-review-v2'],sort_keys=True).encode()).hexdigest()
+        report = episode.startswith('report-')
+        key = hashlib.sha256(json.dumps([camera,episode,sources,getattr(self.provider,'model',''),getattr(self.provider,'base',''),'report-visual-v1' if report else 'visual-review-v2'],sort_keys=True).encode()).hexdigest()
         async with self.lock:
             with self.store.lock:
                 row = self.store.db.execute('SELECT payload FROM visual_cache WHERE id=?',(key,)).fetchone()
@@ -62,7 +63,7 @@ class VisualReview:
             reason = self.reserve(camera,episode,len(frames))
             if reason: return dict(status='budget_exhausted',reason=reason)
             try:
-                review = await self.provider.describe_observations(frames)
+                review = await self.provider.describe_observations(frames, **({'report':True} if report else {}))
             except asyncio.CancelledError: raise
             except Exception:
                 return dict(status='unavailable',reason='视觉核验未完成；没有把失败当作正常')

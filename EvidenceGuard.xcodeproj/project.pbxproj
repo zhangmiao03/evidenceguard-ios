@@ -71,6 +71,10 @@
 		FEE334583A87D919BD54C412 /* OfficialSDKConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B518902B51F961B41EBBE6B2 /* OfficialSDKConnection.swift */; };
 		A61016190000000000000001 /* VisualSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016190000000000000001 /* VisualSceneView.swift */; };
 		A61016190000000000000002 /* VisualSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016190000000000000001 /* VisualSceneView.swift */; };
+		A61016200000000000000001 /* CameraOverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016200000000000000001 /* CameraOverviewView.swift */; };
+		A61016200000000000000011 /* CameraOverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016200000000000000001 /* CameraOverviewView.swift */; };
+		A61016200000000000000002 /* BluetoothDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016200000000000000002 /* BluetoothDevicesView.swift */; };
+		A61016200000000000000012 /* BluetoothDevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61016200000000000000002 /* BluetoothDevicesView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -126,6 +130,8 @@
 		DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OfficialSDKSettingsView.swift; sourceTree = "<group>"; };
 		F5AF25A92CAB301D04CFFFAC /* AnkerWebRTC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AnkerWebRTC.framework; path = "Vendor/ESIotKit-DemoApp-iOS/libs/ios-frameworks/AnkerWebRTC.framework"; sourceTree = "<group>"; };
 		B61016190000000000000001 /* VisualSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualSceneView.swift; sourceTree = "<group>"; };
+		B61016200000000000000001 /* CameraOverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraOverviewView.swift; sourceTree = "<group>"; };
+		B61016200000000000000002 /* BluetoothDevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothDevicesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -204,6 +210,8 @@
 				B10000000000000000000008 /* SkillsView.swift */,
 				B10000000000000000000009 /* TeachAIView.swift */,
 				B1000000000000000000000A /* CreateSkillView.swift */,
+				B61016200000000000000001 /* CameraOverviewView.swift */,
+				B61016200000000000000002 /* BluetoothDevicesView.swift */,
 				B61016190000000000000001 /* VisualSceneView.swift */,
 				B1000000000000000000000B /* EvidenceView.swift */,
 				137724B271EE445FA568A4D9 /* ConnectionsView.swift */,
@@ -417,6 +425,8 @@
 				A10000000000000000000008 /* SkillsView.swift in Sources */,
 				A10000000000000000000009 /* TeachAIView.swift in Sources */,
 				A1000000000000000000000A /* CreateSkillView.swift in Sources */,
+				A61016200000000000000001 /* CameraOverviewView.swift in Sources */,
+				A61016200000000000000002 /* BluetoothDevicesView.swift in Sources */,
 				A61016190000000000000001 /* VisualSceneView.swift in Sources */,
 				A1000000000000000000000B /* EvidenceView.swift in Sources */,
 				5EC39AFD453E47A78F7D2C47 /* ConnectionsView.swift in Sources */,
@@ -452,6 +462,8 @@
 				EE111F30229AC282E806937E /* SkillsView.swift in Sources */,
 				3D136FE55E0C7D322A628011 /* TeachAIView.swift in Sources */,
 				AC4F89CD101B1763A7451E63 /* CreateSkillView.swift in Sources */,
+				A61016200000000000000011 /* CameraOverviewView.swift in Sources */,
+				A61016200000000000000012 /* BluetoothDevicesView.swift in Sources */,
 				A61016190000000000000002 /* VisualSceneView.swift in Sources */,
 				84DCB6F0790367CACB8C854D /* EvidenceView.swift in Sources */,
 				AB7FAD8FCAF24A79AE8BED39 /* ConnectionsView.swift in Sources */,

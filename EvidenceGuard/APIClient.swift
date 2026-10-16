@@ -176,7 +176,7 @@ struct APIClient {
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
     func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios" }
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios"; var guardFlowVersion = 1 }
         return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
@@ -226,6 +226,7 @@ struct APIClient {
     }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
     func registeredCameras() async throws -> [RegisteredCamera] { try await get("/api/devices") }
+    func cameraDemands() async throws -> [String] { try await get("/api/media-demands") }
     func importDevices(account: String, environment: String, cameras: [SDKDiscoveredCamera]) async throws -> [RegisteredCamera] {
         struct Item: Encodable { var sn: String; var model: String; var name: String }
         struct Body: Encodable { var accountId: String; var environment: String; var platform = "ios"; var devices: [Item] }

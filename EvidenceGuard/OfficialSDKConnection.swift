@@ -94,7 +94,56 @@ enum SDKCredentialVault {
     @Published private(set) var switchingWorkspace = false
     @Published private(set) var workspaceMessage = ""
     @Published var workspaceError: String?
-    let liveController = LiveCameraController()
+    @Published private(set) var liveControllers: [String: LiveCameraController] = [:]
+    // Foreground connection is a product invariant, not an opt-out preference.
+    // Ignore the old cameraAutoConnect=false value when upgrading.
+    func controller(for id: String) -> LiveCameraController {
+        if let value = liveControllers[id] { return value }
+        let value = LiveCameraController(); liveControllers[id] = value; return value
+    }
+    func stopAllCameras() {
+        for value in liveControllers.values { value.stop(message: "画面连接已暂停") }
+    }
+    private var cameraOrigin: URL?
+    private var lastDiscovery = Date.distantPast
+    @Published private(set) var activeCameraID: String?
+    private var switchingCamera = false
+    private var preferredCamera: String?
+    // The vendor native video decoder is not safe for concurrent players.
+    // Keep exactly one player alive and switch it automatically on demand.
+    func selectCamera(_ camera: SDKDiscoveredCamera, client: APIClient) async {
+        while switchingCamera && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
+        guard !Task.isCancelled else { return }
+        switchingCamera = true; defer { switchingCamera = false }
+        let id = IOSToolExecutor.deviceID(camera.sn)
+        preferredCamera = id; activeCameraID = id
+        for (key, value) in liveControllers where key != id && (value.running || value.opening || value.closing) {
+            await value.stopForCameraSwitch()
+        }
+        guard !Task.isCancelled else { return }
+        await controller(for: id).start(camera: camera, connection: self, client: client)
+    }
+    func maintainCameras(client: APIClient, selectedID: String) async {
+        if cameraOrigin != client.baseURL {
+            if cameraOrigin != nil { stopAllCameras() }
+            cameraOrigin = client.baseURL
+        }
+        guard !switchingCamera, !switchingWorkspace, officialDemoController == nil, canDiscover else { return }
+        if devices.isEmpty && !checking && Date().timeIntervalSince(lastDiscovery) >= 15 {
+            lastDiscovery = Date(); discoverConfigured(client: client)
+        }
+        guard !checking else { return }
+        let cameras = devices.filter(\.isCompetitionCamera)
+        let demands = (try? await client.cameraDemands()) ?? []
+        let requested = demands.first ?? preferredCamera ?? selectedID
+        guard let camera = cameras.first(where: { IOSToolExecutor.deviceID($0.sn) == requested }) ?? cameras.first,
+              !switchingWorkspace, officialDemoController == nil, !Task.isCancelled else { return }
+        let value = controller(for: IOSToolExecutor.deviceID(camera.sn))
+        if !value.running && !value.opening && !value.closing,
+           Date().timeIntervalSince(value.lastAttempt) >= 10 {
+            await selectCamera(camera, client: client)
+        }
+    }
     @Published private(set) var checking = false
     @Published private(set) var message = SDKConfiguration.current.usesManagedAccount
         ? "已配置摄像头账号，等待连接设备" : "等待主办方发放账号与 Token"
@@ -282,7 +331,7 @@ enum SDKCredentialVault {
         toolExecutor.invalidate()
         eventSyncOrigin = nil
         UserDefaults.standard.removeObject(forKey: "sdkEventSyncOrigin")
-        liveController.stop()
+        stopAllCameras()
         connectedCredentials = nil
         finishRelay(.failure(CancellationError()))
         requestGeneration += 1
@@ -331,7 +380,7 @@ enum SDKCredentialVault {
         defer { switchingWorkspace = false }
         workspaceMessage = "正在停止本项目直播与取帧…"
         await toolExecutor.shutdown()
-        await liveController.stopForWorkspaceSwitch()
+        for value in liveControllers.values { await value.stopForWorkspaceSwitch() }
         disconnect()
         // EvidenceGuardLiveBridge releases the native player after 500 ms.
         do { try await Task.sleep(for: .milliseconds(650)) }

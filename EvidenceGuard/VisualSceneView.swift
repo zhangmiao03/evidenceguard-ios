@@ -12,23 +12,61 @@ struct VisualSceneFrame: Codable, Equatable {
 struct VisualSceneObservation: Codable, Equatable {
     var state: String; var reason: String; var lastAt: Double?
 }
+struct VisualSceneResult: Codable, Equatable {
+    var state: String; var label: String; var reason: String
+}
 struct VisualScene: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var prompt: String; var revision: Int
     var status: String; var stage: String; var plan: VisualScenePlan?
     var question: String; var unsupportedReason: String; var reason: String
     var frame: VisualSceneFrame?; var box: ROI?; var summary: String; var limitation: String
+    var result: VisualSceneResult?
+    var resultState: String { result?.state ?? (status == "draft" ? "pending" : "unknown") }
+    var resultLabel: String { result?.label ?? (status == "draft" ? "待确认" : "无法确认") }
     var canActivate: Bool; var observation: VisualSceneObservation; var evidenceIds: [String]
-    var label: String {
-        if status == "completed" { return "已完成" }
-        if status == "active" {
-            return observation.state == "unknown" ? "等待有效画面" : "正在观察"
+    var label: String { resultLabel }
+}
+
+/// Camera-page drafts and chat drafts share the same persisted record.
+struct CameraGuardDestination: View {
+    @EnvironmentObject private var store: AppStore
+    let id: String
+    @State private var scene: VisualScene?
+    @State private var error: String?
+    @State private var retry = 0
+    var body: some View {
+        Group {
+            if let scene { VisualSceneEditor(initialScene: scene) }
+            else if let error {
+                VStack(spacing: 18) {
+                    Text(error).foregroundStyle(.secondary)
+                    Button("重新加载守护") { retry += 1 }.buttonStyle(.borderedProminent)
+                }.padding()
+            } else { ProgressView("正在读取守护…") }
+        }.task(id: "\(store.client.baseURL)-\(id)-\(retry)") {
+            let source = store.client
+            scene = nil; error = nil
+            do {
+                let value = try await source.visualScene(id)
+                guard !Task.isCancelled, source.baseURL == store.client.baseURL else { return }
+                scene = value
+            } catch is CancellationError { }
+            catch { self.error = "守护暂未加载成功，请检查连接后重试。" }
         }
-        if stage == "generating" { return "正在理解需求" }
-        return "草稿 · 待确认"
     }
 }
 
-/// Shared entry in the camera and task tabs. Server records survive navigation.
+extension AppStore {
+    func openCameraGuard(_ id: String) {
+        selectedTab = .cameraSkills
+        tabPaths[AppTab.cameraSkills.rawValue] = [.cameraGuard(id)]
+    }
+    func beginCameraGuard(cameraID: String?) {
+        selectedTab = .cameraSkills
+        tabPaths[AppTab.cameraSkills.rawValue] = [.newCameraGuard(cameraID)]
+    }
+}
+
 struct VisualScenesSection: View {
     @EnvironmentObject private var store: AppStore
     @State private var scenes: [VisualScene] = []
@@ -36,11 +74,12 @@ struct VisualScenesSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("自定义场景").font(.headline)
+                Text("我的守护").font(.headline)
                 Spacer()
-                NavigationLink { VisualSceneEditor() } label: { Label("创建 Skill", systemImage: "plus") }
-                    .accessibilityIdentifier("scene.create")
             }
+            NavigationLink { VisualSceneEditor() } label: {
+                Label("添加守护", systemImage: "plus.circle.fill").font(.headline).frame(maxWidth: .infinity, minHeight: 48)
+            }.buttonStyle(.borderedProminent).accessibilityIdentifier("scene.create")
             if scenes.isEmpty { Text("说一句需求，框出关注的对象或区域，再确认开启。").font(.subheadline).foregroundStyle(Brand.muted) }
             ForEach(scenes) { scene in
                 NavigationLink { VisualSceneEditor(initialScene: scene) } label: {
@@ -84,7 +123,10 @@ struct VisualSceneEditor: View {
     @State private var origin: URL?
     @State private var requestID = UUID().uuidString
     @State private var lastSubmission = ""
-    init(initialScene: VisualScene? = nil) { _scene = State(initialValue: initialScene) }
+    private let initialCameraID: String?
+    init(initialScene: VisualScene? = nil, initialCameraID: String? = nil) {
+        _scene = State(initialValue: initialScene); self.initialCameraID = initialCameraID
+    }
     private var step: Int {
         guard let scene else { return 0 }
         if scene.status != "draft" || scene.stage == "review" { return 2 }
@@ -110,7 +152,7 @@ struct VisualSceneEditor: View {
                     Text("草稿会自动保存；只有点“确认并开启”才开始观察。").font(.caption).foregroundStyle(Brand.muted)
                 }
             }.padding(20)
-        }.navigationTitle(scene?.plan?.title ?? "创建 Skill").navigationBarTitleDisplayMode(.inline)
+        }.navigationTitle(scene?.plan?.title ?? "添加守护").navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() }.disabled(busy) } }
             .task { await loadExisting() }
@@ -120,7 +162,7 @@ struct VisualSceneEditor: View {
     private var pollKey: String { (scene?.id ?? "") + ":" + (scene?.stage ?? "") + ":" + (scene?.status ?? "") }
     private func loadExisting() async {
         origin = store.client.baseURL
-        cameraID = scene?.cameraId ?? (store.camera(store.selectedCameraID)?.id ?? store.data.cameras.first?.id ?? "")
+        cameraID = scene?.cameraId ?? initialCameraID ?? (store.camera(store.selectedCameraID)?.id ?? store.data.cameras.first?.id ?? "")
         if let current = scene {
             await operation {
                 scene = try await store.client.visualScene(current.id)
@@ -157,7 +199,7 @@ struct VisualSceneEditor: View {
                 ForEach(store.data.cameras) { camera in Text(camera.name).tag(camera.id) }
             }.accessibilityIdentifier("scene.camera")
             if store.data.cameras.isEmpty {
-                Text("请先连接摄像头，再为它创建场景。").foregroundStyle(.orange)
+                Text("请先连接摄像头，再为它添加守护。").foregroundStyle(.orange)
                 NavigationLink("连接摄像头", value: AppRoute.officialSDK)
             }
         }
@@ -172,7 +214,7 @@ struct VisualSceneEditor: View {
             .accessibilityIdentifier("scene.prompt")
             .disabled(busy || scene?.stage == "generating")
         Button { Task { await generate() } } label: {
-            HStack { if busy || scene?.stage == "generating" { ProgressView() }; Text(scene?.stage == "generating" ? "正在理解你的需求…" : "生成场景") }.frame(maxWidth: .infinity)
+            HStack { if busy || scene?.stage == "generating" { ProgressView() }; Text(scene?.stage == "generating" ? "正在理解你的需求…" : "生成守护") }.frame(maxWidth: .infinity, minHeight: 44)
         }.buttonStyle(.borderedProminent)
             .disabled(busy || scene?.stage == "generating" || selectedCamera.isEmpty || message.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
             .accessibilityIdentifier("scene.generate")
@@ -219,7 +261,7 @@ struct VisualSceneEditor: View {
             } else {
                 Text(scene.observation.reason).accessibilityIdentifier("scene.observation")
                 if scene.status == "active" {
-                    Button("暂停看护") { Task { await operation { self.scene = try await store.client.sceneAction(scene, action: "pause"); frozenImage = nil; box = nil } } }
+                    Button("暂停守护") { Task { await operation { self.scene = try await store.client.sceneAction(scene, action: "pause"); frozenImage = nil; box = nil } } }
                         .disabled(busy).accessibilityIdentifier("scene.pause")
                 }
                 ForEach(scene.evidenceIds.reversed(), id: \.self) { id in

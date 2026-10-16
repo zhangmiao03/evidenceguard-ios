@@ -61,6 +61,7 @@ class LifecycleRequest(BaseModel):
     switchFrom: dict[str,str] = Field(default_factory=dict)
 class AgentRequest(BaseModel):
     clientPlatform: Literal['ios','web'] | None = None
+    guardFlowVersion: Literal[1] | None = None
     message: str = Field(min_length=1,max_length=2000)
     conversationId: str = Field(min_length=1,max_length=100)
     requestId: str = Field(min_length=1,max_length=100)
@@ -126,6 +127,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     proactive.ingest=ingest
     watch=CameraWatch(store,captures,visual_review,proactive)
     scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
+    agent.visual_scenes=scenes
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -514,7 +516,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             if not client or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
             reply=proactive.message(client,body.replyToMessageId)
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
-        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')))
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),guard_flow_version=body.guardFlowVersion)
         if client: value['clientId']=client; store.save_run(value)
         return value
     @app.get('/api/agent/conversations')

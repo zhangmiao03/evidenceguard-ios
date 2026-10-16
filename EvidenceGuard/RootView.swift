@@ -13,19 +13,27 @@ private struct ProductRootView: View {
     @EnvironmentObject private var store: AppStore
     @AppStorage("showFeedback") private var showFeedback = true
     var body: some View {
-        VStack(spacing: 0) {
-            AssistantCameraPanel(controller: store.officialSDK.liveController).padding(.horizontal, 12)
+        ZStack {
+            CameraRenderHost(connection: store.officialSDK).allowsHitTesting(false).accessibilityHidden(true)
+            Color(.systemBackground).ignoresSafeArea()
         TabView(selection: $store.selectedTab) {
             tab(.assistant) { TeachAIView() }.tabItem { Label("助手", systemImage: "bubble.left.and.bubble.right.fill") }.badge(store.unreadAssistantCount).tag(AppTab.assistant)
-            tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头Skill", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
-            tab(.tasks) { TasksView() }.tabItem { Label("任务", systemImage: "checklist") }.tag(AppTab.tasks)
+            tab(.cameraSkills) { CameraSkillsView() }.tabItem { Label("摄像头守护", systemImage: "video.fill") }.tag(AppTab.cameraSkills)
+            tab(.tasks) { DevicesHomeView() }.tabItem { Label("设备", systemImage: "sensor.tag.radiowaves.forward.fill") }.tag(AppTab.tasks)
             tab(.memory) { MemoryView() }.tabItem { Label("记忆", systemImage: "brain.head.profile") }.tag(AppTab.memory)
             tab(.profile) { ProfileView() }.tabItem { Label("我的", systemImage: "person.crop.circle") }.tag(AppTab.profile)
         }
         }
         .tint(Brand.blue)
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { store.officialSDK.liveController.stop(message: "App 已离开前台，画面采集已停止") }
+            if phase == .background { store.officialSDK.stopAllCameras() }
+        }
+        .task(id: "\(scenePhase == .active)-\(store.client.baseURL)") {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                await store.officialSDK.maintainCameras(client: store.client, selectedID: store.selectedCameraID)
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            }
         }
         .background { SDKEventSyncWorker(connection: store.officialSDK, client: store.client,
                                         active: scenePhase == .active) { await store.refresh() } }
@@ -45,12 +53,15 @@ private struct ProductRootView: View {
     }
     @ViewBuilder private func destination(_ route: AppRoute) -> some View {
         switch route {
+        case .legacyTasks: TasksView()
         case .connectedApps: ConnectedAppsView()
         case .cameraObservation: CameraObservationSettingsView()
         case .pushDelivery(let id, let scope): PushDeliveryView(id: id, scope: scope)
         case .pushConversation(let id, let skill, let mode): ConversationView(conversationID: id, skillID: skill, initialMode: mode)
         case .demoScene: DemoSceneView()
         case .skill(let id): SkillDetailView(id: id)
+        case .cameraGuard(let id): CameraGuardDestination(id: id)
+        case .newCameraGuard(let camera): VisualSceneEditor(initialCameraID: camera)
         case .evidence(let id): EvidenceDetailView(id: id)
         case .evidenceList(let skill): EvidenceView(skillID: skill)
         case .cameras: CameraListView()

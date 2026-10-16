@@ -83,7 +83,6 @@ struct OfficialSDKSettingsView: View {
                     .font(.caption).foregroundStyle(Brand.muted)
             }
             Section {
-                Button("断开 SDK 会话") { connection.disconnect() }.disabled(connection.devices.isEmpty && !connection.checking)
                 if !connection.usesManagedAccount {
                 Button("清除本机 SDK 凭证", role: .destructive) {
                     do { try connection.clearCredentials(); credentials = SDKCredentials(); feedback = nil }

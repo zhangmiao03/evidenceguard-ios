@@ -37,6 +37,10 @@ def install_live_routes(app, camera, captures):
         manifests = {m.id: m.api_dict() for m in await hub.manifests()}
         return [d | manifests[d['id']] for d in hub.records()]
 
+    @app.get('/api/media-demands')
+    async def demands(request: Request):
+        return hub.capture_demands(installation(request.headers.get('X-EG-Installation-ID')))
+
     @app.get('/api/captures')
     async def recent_captures():
         # Completed camera receipts persist independently of volatile sessions.

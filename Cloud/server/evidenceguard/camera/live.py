@@ -76,6 +76,7 @@ class LiveDevices:
         self.store = store
         self.sessions: dict[str, dict] = {}
         self.pending: dict[str, dict] = {}
+        self.demands: dict[str, dict] = {}
         self.frames: dict[str, tuple] = {}
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS live_devices (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
@@ -122,6 +123,13 @@ class LiveDevices:
         return next((s for s in self.sessions.values() if s['deviceId'] == device_id
                      and s['state'] not in {'stopped', 'failed'}
                      and now - s['heartbeatAt'] <= self.heartbeat_ttl), None)
+
+    def capture_demands(self, client):
+        # Camera media is shared inside this demo household. Only a client
+        # already maintaining a foreground session can service capture demands.
+        if not any(s['client'] == client and self.current(s['deviceId']) is s for s in self.sessions.values()): return []
+        now = time.time()
+        return list(dict.fromkeys(d['deviceId'] for d in self.demands.values() if d['deadline'] > now))
 
     def ready(self, session):
         return bool(session and session['state'] == 'streaming' and session['sequence'] > 0

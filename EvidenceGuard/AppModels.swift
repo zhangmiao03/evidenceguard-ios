@@ -58,6 +58,9 @@ enum ChatPresentation {
         "camera_ptz_mode_set":"调整摄像头跟踪模式", "camera_panorama_generate":"生成全景画面", "operation_cancel":"取消操作",
         "list_camera_capabilities":"查看摄像头能力", "request_camera_snapshot":"查看摄像头新画面", "list_tasks":"查看任务",
         "save_personal_task":"保存你交代的事项",
+        "create_camera_guard":"整理守护需求", "revise_camera_guard":"更新守护条件",
+        "read_camera_guard":"查看守护结果", "list_camera_guards":"查看我的守护",
+        "web_search":"搜索外部资料", "fetch_url":"读取来源内容", "get_weather":"查看天气", "read_feishu_context":"查看飞书资料",
         "get_task_state":"查看任务进度", "search_evidence":"查找事件资料", "read_stored_image":"查看已保存的图片",
         "search_recordings":"查找并核对录像", "draft_visual_skill":"整理守护草案", "list_skill_capabilities":"查看可用守护能力",
         "list_camera_events":"查看摄像头事件", "request_recheck":"重新查看现场", "read_home_report":"整理家庭报告",
@@ -259,6 +262,7 @@ struct LocalChatState: Codable {
 struct AgentRun: Codable, Identifiable, Equatable {
     var id: String; var conversationId: String; var skillId: String?; var message: String; var status: String; var createdAt: Double
     var text: String?; var error: String?; var draft: VisualSkill?; var toolReceipts: [ToolReceipt]
+    var guardDraftId: String?
     var captures: [CameraCapture]?
     var hardwareOperations: [HardwareValue]?
     var executionMode: String?
@@ -314,7 +318,8 @@ enum AppTab: Int, CaseIterable {
 }
 
 enum AppRoute: Hashable {
-    case connectedApps, cameraObservation
+    case cameraGuard(String), newCameraGuard(String?)
+    case connectedApps, cameraObservation, legacyTasks
     case pushDelivery(String, String)
     case liveCamera(String)
     case pushConversation(String, String?, String)
@@ -491,7 +496,14 @@ struct AutomaticMemoryStatus: Codable, Equatable {
 struct PersonalNotice: Codable, Identifiable, Equatable {
     var id: String; var kind: String; var title: String; var body: String
     var createdAt: Double; var read: Bool; var skillId: String?
-    var kindLabel: String { ["event":"事件触发", "schedule":"定时概况", "followup":"后续提醒"][kind] ?? "助手提醒" }
+    var kindLabel: String {
+        switch kind {
+        case "schedule", "camera_observation": "定时"
+        case "followup", "revisit", "instruction": "用户指令"
+        case "doorbell", "special": "特殊"
+        default: "事件"
+        }
+    }
 }
 struct PersonalSnapshot: Codable, Equatable {
     var preferences: PersonalPreferences; var revision: Int

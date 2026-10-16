@@ -21,6 +21,8 @@ class SceneUnavailable(ValueError):
 class VisualScenes:
     PERIOD = 15
     MAX_GAP = 90
+    RESULT_TTL = 60
+    HEALTH_GRACE = 120
 
     def __init__(self, store, captures, harness, proactive):
         self.store, self.captures, self.harness, self.proactive = store, captures, harness, proactive
@@ -56,12 +58,40 @@ class VisualScenes:
         return json.loads(row[0])
 
     def public(self, scene):
-        value = {k: v for k, v in scene.items() if k not in {'clientId', 'requestId', 'inputs', 'due'}}
+        value = {k: v for k, v in scene.items() if k not in {'clientId', 'requestId', 'inputs', 'due', 'healthSince', 'healthNotified'}}
         value['summary'] = summary(scene['plan'])
         value['limitation'] = LIMITATION
         value['canActivate'] = bool(scene['stage'] == 'review' and scene['plan'] and scene['box'] and scene['frame']
                                    and not scene['question'] and not scene['unsupportedReason'] and self.harness.ready)
+        value['result'] = self.result(scene)
+        value['triggerCategory'] = 'event'
         return value
+
+    def result(self, scene, now=None):
+        now = time.time() if now is None else now
+        observation = scene['observation']
+        def value(state, label, reason): return dict(state=state, label=label, reason=reason)
+        if scene['status'] == 'draft': return value('pending', '待确认', scene['reason'])
+        if scene['status'] == 'completed': return value('completed', '已提醒 · 已完成', observation['reason'])
+        if scene['status'] != 'active': return value('pending', '已暂停', '重新确认后才能继续检查')
+        at = observation.get('lastAt')
+        if at is None or not -0.5 <= now-at <= self.RESULT_TTL or observation['state'] == 'unknown':
+            reason = observation['reason'] if at is None else '最近检查已过期，等待有效新画面'
+            label = '无法确认'
+            if '重新框选' in reason: label = '请重新框选'
+            elif any(text in reason for text in ('会话未就绪', '连接画面', '没有取得新画面', '检查已过期')): label = '等待摄像头画面'
+            elif any(text in reason for text in ('建立', '等待新的画面', '等待新画面')): label = '正在识别目标'
+            return value('unknown', label, reason)
+        desired = 'inside' if scene['plan']['trigger'] == 'enters' else 'outside'
+        if observation['state'] != desired:
+            return value('confirmed', '最近检查通过', observation['reason'])
+        if scene.get('lastAlertAt', 0) > scene.get('lastNormalAt', 0):
+            return value('issue', '需要关注', observation['reason'])
+        if not observation['armed']:
+            reason = ('先把目标放回选框内，识别成功后再移走。' if scene['plan']['trigger'] == 'leaves'
+                      else '先保持选框内没有目标，识别成功后再让目标进入。')
+            return value('unknown', '等待初始状态', reason)
+        return value('checking', '正在确认异常', '发现关注状态，正在按已确认的时长继续检查')
 
     def editable(self, key, client, revision):
         scene = self.get(key, client)
@@ -185,7 +215,9 @@ class VisualScenes:
             if any(s['status'] == 'active' and s['cameraId'] == scene['cameraId'] for s in self.list_all()):
                 raise ValueError('这台摄像头已有运行中的自定义场景，请先暂停它。')
             scene.update(status='active', revision=revision+1, confirmedRevision=revision,
-                         observation=self.empty_observation('已开启，等待建立新观察基线'), reason='已开启，等待新的画面')
+                         observation=self.empty_observation('已开启，等待建立新观察基线'), reason='已开启，等待新的画面',
+                         healthSince=time.time(), healthNotified=False, lastAlertAt=0, lastNormalAt=0,
+                         validatedViewRevision=scene['frame'].get('viewRevision'))
             self.save(scene, time.time())
         return scene
 
@@ -199,6 +231,15 @@ class VisualScenes:
             self.save(scene)
         return scene
 
+    @staticmethod
+    def is_reconnection(previous, current):
+        # A new native session starts at view version zero. An explicit control
+        # in the same session changes the view and still requires re-selection.
+        if not isinstance(previous, str) or not isinstance(current, str): return False
+        old, sep1, _ = previous.rpartition(':')
+        new, sep2, version = current.rpartition(':')
+        return bool(sep1 and sep2 and old.startswith('live-') and new.startswith('live-') and old != new and version == '0')
+
     async def step(self, now=None):
         now = time.time() if now is None else now
         async with self.worker_lock:
@@ -206,13 +247,18 @@ class VisualScenes:
                 row = self.store.db.execute("SELECT payload FROM visual_scenes WHERE due<=? AND json_extract(payload,'$.status')='active' ORDER BY due LIMIT 1", (now,)).fetchone()
                 if not row: return False
                 original = json.loads(row[0]); self.save(original, now + self.PERIOD)
-            receipt = None
+            receipt = None; reconnected = False
             try:
                 receipt = await self.captures.capture(original['cameraId'], purpose='用户开启的自定义场景观察')
                 self.validate_frame(receipt)
-                if receipt.get('viewRevision') != original['frame'].get('viewRevision'):
+                previous = original.get('validatedViewRevision') or original['frame'].get('viewRevision')
+                current = receipt.get('viewRevision')
+                reconnected = self.is_reconnection(previous, current)
+                if current != previous and not reconnected:
                     raise SceneUnavailable('摄像头视角已变化，请暂停并重新框选。')
                 result = Judgment.model_validate(await self.harness.observe(original, receipt, self.store)).model_dump()
+                if reconnected and not result['viewMatchesReference']:
+                    raise SceneUnavailable('重连后无法确认选框仍对应原区域，请检查画面并重新框选。')
                 if not result['regionClear'] or (result['state']=='inside' and not result['identityClear']): result['state']='unknown'
             except asyncio.CancelledError: raise
             except Exception as error:
@@ -220,8 +266,11 @@ class VisualScenes:
             with self.store.transaction():
                 scene = self.get(original['id'], original['clientId'])
                 if scene['revision'] != original['revision'] or scene['status'] != 'active': return True
+                if reconnected and result.get('viewMatchesReference'):
+                    scene.update(validatedViewRevision=receipt['viewRevision'], observation=self.empty_observation('重连后已核对视角，重新建立观察基线'))
                 alert = self.advance(scene, result, receipt, time.time())
                 if alert: self.publish(scene, receipt)
+                self.check_health(scene, time.time())
                 self.save(scene, time.time() + self.PERIOD)
             return True
 
@@ -240,14 +289,40 @@ class VisualScenes:
                        armed=old['armed'], since=old['since'], count=old['count'])
         if state != desired:
             current.update(armed=True, since=None, count=0)
+            scene['lastNormalAt'] = observed
         elif current['armed']:
             current.update(since=old['since'] if old['since'] is not None else observed, count=old['count']+1)
         scene['observation'] = current
         if current['armed'] and current['count'] >= 2 and observed-current['since'] >= plan['confirmationSeconds']:
             current.update(armed=False, since=None, count=0)
+            scene['lastAlertAt'] = observed
             if plan['completion'] == 'once': scene['status'] = 'completed'
             return True
         return False
+
+    def check_health(self, scene, now):
+        """One actionable, installation-scoped notice per unresolved gap."""
+        result = self.result(scene, now)
+        if scene['status'] != 'active' or result['state'] != 'unknown':
+            scene.update(healthSince=None, healthNotified=False)
+            return
+        if scene.get('healthSince') is None: scene['healthSince'] = now
+        if now-scene['healthSince'] < self.HEALTH_GRACE or scene.get('healthNotified'): return
+        preferences = self.proactive.personal.profile(scene['clientId'])['preferences']
+        if not preferences['enabled'] or self.proactive.quiet(preferences, now): return
+        key = 'scene-health-' + uuid.uuid4().hex
+        message = dict(id='message-'+key, jobId=key, runId=None, role='assistant', origin='proactive',
+                       kind='visual_scene', title=scene['plan']['title']+'需要检查',
+                       body=scene['plan']['title']+'：持续无法确认。'+result['reason']+'。请打开 App 检查摄像头画面和 Skill 条件；这不代表已发生异常事件。',
+                       why='已开启的 Skill 持续缺少有效判断',
+                       sources=[dict(id='camera:'+scene['cameraId'], type='camera', cameraId=scene['cameraId'])],
+                       createdAt=now, read=False, feedback=None, skillId=None, triggerKey=key,
+                       delivery='in_app', valueScore=None)
+        encoded = json.dumps(message, ensure_ascii=False)
+        self.store.db.execute('INSERT INTO assistant_messages VALUES (?,?,?,?,?)', (message['id'],scene['clientId'],key,now,encoded))
+        self.store.db.execute('INSERT INTO personal_inbox VALUES (?,?,?,?)', (message['id'],scene['clientId'],key,encoded))
+        if self.proactive.push: self.proactive.push.message(scene['clientId'], message, {'expiresAt':now+3600})
+        scene['healthNotified'] = True
 
     def publish(self, scene, receipt):
         key = 'scene-evidence-' + uuid.uuid4().hex

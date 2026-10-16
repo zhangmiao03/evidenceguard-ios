@@ -23,6 +23,115 @@ CLIENT = '2c322328-71f2-4c2f-ac05-1cc27c3c4342'
 OTHER = 'c58ab789-506e-49ea-a14f-270ce80093e6'
 
 
+def test_result_distinguishes_confirmed_rules_from_fresh_evidence(env):
+    async def check():
+        scenes, store, _, _ = env
+        scene = await selected(env)
+        assert scenes.public(scene)['result']['state'] == 'pending'
+        scene = await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        assert scenes.result(scene)['state'] == 'unknown'
+        now = time.time()
+        scenes.advance(scene, dict(state='inside', reason='包裹在区域内'), frame(store, now, 'normal'), now)
+        assert scenes.result(scene, now)['state'] == 'confirmed'
+        assert scenes.result(scene, now + 61)['state'] == 'unknown'
+        scenes.advance(scene, dict(state='outside', reason='区域内未见包裹'), frame(store, now+16, 'outside-1'), now+16)
+        assert scenes.result(scene, now+16)['state'] == 'checking'
+        assert scenes.advance(scene, dict(state='outside', reason='区域内仍未见包裹'), frame(store, now+32, 'outside-2'), now+32)
+        assert scenes.result(scene, now+32)['state'] == 'issue'
+        scenes.advance(scene, dict(state='inside', reason='包裹重新可见'), frame(store, now+48, 'normal-2'), now+48)
+        assert scenes.result(scene, now+48)['state'] == 'confirmed'
+        scenes.advance(scene, dict(state='unknown', reason='画面遮挡'), None, now+64)
+        assert scenes.result(scene, now+64)['state'] == 'unknown'
+    asyncio.run(check())
+
+
+def test_missing_initial_baseline_does_not_claim_normal_or_invent_departure(env):
+    async def check():
+        scenes, store, _, _ = env
+        scene = await selected(env)
+        scene = await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        now = time.time()
+        for i in range(4):
+            at = now+i*16
+            assert not scenes.advance(scene, dict(state='outside', reason='未见目标'), frame(store, at, str(i)), at)
+        assert scenes.result(scene, at)['state'] == 'unknown'
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize('matches', [False, True])
+def test_reconnection_needs_explicit_reference_alignment_and_new_baseline(env, matches):
+    async def check():
+        scenes, store, captures, harness = env
+        scene = await selected(env)
+        scene['frame']['viewRevision'] = 'live-original:0'
+        with store.transaction(): scenes.save(scene)
+        scene = await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        scene['observation'].update(armed=True, since=time.time()-20, count=2)
+        with store.transaction(): scenes.save(scene, time.time()-1)
+        captures.capture.return_value = frame(store, key='reconnected') | dict(viewRevision='live-new:0')
+        harness.observe.return_value = dict(state='outside', regionClear=True, identityClear=False,
+                                           viewMatchesReference=matches, reason='区域内未见目标')
+        await scenes.step()
+        updated = scenes.get(scene['id'], CLIENT)
+        assert not updated['observation']['armed']
+        assert not scenes.proactive.messages(CLIENT)
+        if matches:
+            assert updated['validatedViewRevision'] == 'live-new:0'
+            assert updated['observation']['state'] == 'outside'
+        else:
+            assert updated['validatedViewRevision'] == 'live-original:0'
+            assert updated['observation']['state'] == 'unknown'
+    asyncio.run(check())
+
+
+def test_health_notice_is_scoped_deduplicated_and_resets_on_recovery(env):
+    from evidenceguard.personal import Preferences
+    async def check():
+        scenes, store, _, _ = env
+        scenes.proactive.personal.preferences(CLIENT, Preferences(enabled=True, quietStart=0, quietEnd=0))
+        scene = await selected(env)
+        scene = await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        now = time.time()
+        scene['healthSince'] = now-121
+        with store.transaction():
+            scenes.check_health(scene, now)
+            scenes.check_health(scene, now+10)
+            scenes.save(scene)
+        assert len(scenes.proactive.messages(CLIENT)) == 1
+        assert scenes.proactive.messages(OTHER) == []
+        assert store.evidence() == []  # An unavailable check is not fabricated camera evidence.
+        again = scenes.get(scene['id'], CLIENT)
+        with store.transaction(): scenes.check_health(again, now+20)
+        assert len(scenes.proactive.messages(CLIENT)) == 1
+        scenes.advance(again, dict(state='inside', reason='目标可见'), frame(store, now+30), now+30)
+        scenes.check_health(again, now+30)
+        assert not again['healthNotified']
+        scenes.advance(again, dict(state='unknown', reason='断流'), None, now+40)
+        with store.transaction():
+            scenes.check_health(again, now+40)
+            scenes.check_health(again, now+161)
+        assert len(scenes.proactive.messages(CLIENT)) == 2
+    asyncio.run(check())
+
+
+def test_health_notice_respects_opt_out_and_quiet_hours(env):
+    from evidenceguard.personal import Preferences
+    from datetime import datetime, timezone
+    async def check():
+        scenes, store, _, _ = env
+        scene = await selected(env)
+        scene = await scenes.activate(scene['id'], CLIENT, scene['revision'])
+        now = time.time(); scene['healthSince'] = now-121
+        with store.transaction(): scenes.check_health(scene, now)
+        assert scenes.proactive.messages(CLIENT) == []
+        hour = datetime.fromtimestamp(now, timezone.utc).hour
+        scenes.proactive.personal.preferences(CLIENT, Preferences(enabled=True, quietStart=hour, quietEnd=(hour+1)%24))
+        with store.transaction(): scenes.check_health(scene, now)
+        assert scenes.proactive.messages(CLIENT) == []
+        assert not scene['healthNotified']
+    asyncio.run(check())
+
+
 @pytest.fixture
 def env(tmp_path):
     store = Store(tmp_path / 'scene.sqlite3')
@@ -285,3 +394,44 @@ def test_api_routes_authenticate_installation_and_keep_scene_private(tmp_path):
         assert client.get('/api/visual-scenes').status_code==409
         assert client.get('/api/visual-scenes',headers={'X-EG-Installation-ID':CLIENT}).json()==[]
         assert client.get('/api/visual-scenes/missing',headers={'X-EG-Installation-ID':CLIENT}).status_code==404
+
+
+def test_roi_pixels_and_provider_override_do_not_mix_credentials(monkeypatch):
+    import base64
+    provider=SimpleNamespace(base='https://configured.example/v1',model='doubao-test',key='household-secret',ready=True)
+    port=SceneHarness(SimpleNamespace(ready=True),SimpleNamespace(provider=provider))
+    monkeypatch.setenv('EG_SCENE_VISION_MODEL_ID','qwen3.8-max')
+    assert not port.ready
+    assert port.vision_port().key==''
+    monkeypatch.setenv('EG_SCENE_VISION_BASE_URL','https://guard.example/v1/')
+    monkeypatch.setenv('EG_SCENE_VISION_API_KEY','guard-secret')
+    assert port.ready and port.vision_port().key=='guard-secret'
+    assert provider.key=='household-secret'
+    source=Image.new('RGB',(100,100),'blue')
+    for x in range(20,40):
+        for y in range(30,60):source.putpixel((x,y),(0,255,0))
+    data=io.BytesIO();source.save(data,format='PNG')
+    parts=port.image_parts(data.getvalue(),dict(x=.2,y=.3,width=.2,height=.3),'当前')
+    crop=Image.open(io.BytesIO(base64.b64decode(parts[3]['image_url']['url'].split(',')[1])))
+    assert crop.size==(20,30)
+    assert crop.getpixel((10,15))[1]>240  # Actual selected pixels, not the full frame.
+
+
+@pytest.mark.parametrize('model,option',[('doubao-test','thinking'),('qwen3.8-max','enable_thinking')])
+def test_observe_passes_marked_reference_current_roi_and_preserves_alignment_gate(env,monkeypatch,model,option):
+    async def check():
+        from evidenceguard.harness.providers import OpenAICompatibleProvider
+        scenes,store,_,_=env;scene=await selected(env)
+        visual=SimpleNamespace(provider=SimpleNamespace(base='https://vision.example/v1',model=model,key='test',ready=True),reserve=lambda *a,**k:None)
+        port=SceneHarness(SimpleNamespace(ready=True),visual)
+        answer=dict(state='outside',regionClear=True,identityClear=False,viewMatchesReference=True,reason='选框内已没有目标')
+        request=AsyncMock(return_value=dict(content=json.dumps(answer)))
+        monkeypatch.setattr(OpenAICompatibleProvider,'_request',request)
+        result=await port.observe(scene,frame(store,key='current'),store)
+        assert result['state']=='outside'  # Absence does not require identifying an absent object.
+        messages,options=request.call_args.args
+        assert len([p for p in messages[1]['content'] if p['type']=='image_url'])==4
+        assert option in options
+        answer['viewMatchesReference']=False;request.return_value=dict(content=json.dumps(answer))
+        assert (await port.observe(scene,frame(store,key='changed'),store))['state']=='unknown'
+    asyncio.run(check())

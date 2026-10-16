@@ -21,6 +21,7 @@ PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4
 def env(tmp_path):
     store = Store(tmp_path/'state.sqlite')
     cameras=AsyncMock()
+    cameras.live=None  # Fixture images have no mobile foreground connection.
     worker=ObservationWorker(store,cameras)
     s=store.create_draft('看住测试目标',['cam-a','cam-b'])
     s=store.confirm(s['id'],1)

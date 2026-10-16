@@ -44,6 +44,7 @@ def manifests():
 
 def cameras():
     camera=AsyncMock()
+    camera.live=None  # Fixture cameras do not expose a mobile foreground relay.
     camera.manifests.return_value=manifests()
     camera.frame_bytes.return_value=(b'test-image','image/jpeg')
     camera.snapshot.side_effect=lambda d,k,*args: SnapshotReceipt('sdk-receipt','completed',k,

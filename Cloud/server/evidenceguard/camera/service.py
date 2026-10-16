@@ -37,8 +37,9 @@ class CameraService:
             receipt = dict(id=request_id, cameraId=device_id, skillId=skill_id, status='failed',
                            reason='摄像头暂不可用', requestedAt=time.time(), purpose=purpose)
             self.store.event(skill_id or request_id, 'camera_requested', receipt)
+            live = getattr(self.cameras, 'live', None)
             try:
-                async with asyncio.timeout(8):
+                async with asyncio.timeout(28):
                     if getattr(self,'hardware_busy',lambda _:False)(device_id):
                         raise ValueError('设备控制尚未结束或结果未知，暂不使用当前视角判断')
                     if self.store.capture_context(device_id, skill_id) != epoch:
@@ -47,6 +48,16 @@ class CameraService:
                     if owner and owner.get('replay'): raise ValueError('此摄像头正在执行录像回放测试；请查看任务回放证据，不把模拟设备新图混入回放')
                     manifest = next((m for m in await self.cameras.manifests() if m.id == device_id), None)
                     if not manifest: raise ValueError('摄像头不存在')
+                    # Ask the foreground single-player client to select this
+                    # device and wait for its decoded frame/cloud heartbeat.
+                    # A fresh challenged snapshot is still required afterward.
+                    if live and any(d['id'] == device_id for d in live.records()):
+                        live.demands[request_id] = dict(deviceId=device_id, deadline=time.time()+28)
+                    if manifest.connection != 'online' and live and any(live.current(d['id']) for d in live.records()):
+                        until = time.monotonic() + 20
+                        while manifest.connection != 'online' and time.monotonic() < until:
+                            await asyncio.sleep(.15)
+                            manifest = next((m for m in await self.cameras.manifests() if m.id == device_id), manifest)
                     if manifest.connection != 'online':
                         if manifest.adapter.startswith('official'):
                             raise ValueError('摄像头已登记，当前实时画面会话未就绪。请在 App 前台连接画面后重试；这不表示设备未添加或设备离线。')
@@ -87,6 +98,8 @@ class CameraService:
                 receipt.update(status='failed', reason=str(error))
             except Exception:
                 receipt.update(status='failed', reason='获取新画面超时或失败，没有更新观察结论')
+            finally:
+                if live: live.demands.pop(request_id, None)
             self.store.event(skill_id or request_id, 'camera_completed' if receipt['status']=='completed' else 'camera_failed', receipt)
             return receipt
         return await self.scheduler.submit(TaskEnvelope(request_id, 'camera', skill_id), perform)
