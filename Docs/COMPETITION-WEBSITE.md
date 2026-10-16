@@ -54,3 +54,15 @@ python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no
 `Cloud/data/deploy/evidenceguard-website.zip` 包含根入口、`dashboard/index.html`、编译后的 JS/CSS 和说明。上传整个解压目录到静态主机根目录即可；本地可 `python -m http.server 8080` 后访问根页面。不要用 file:// 双击替代 HTTP 模块加载。静态主机的监控页支持导入脱敏追踪 JSON；若要实时监控，配置同源 Dashboard API 反向代理。ZIP 不包含密钥、云端数据库、真实媒体或离线真实数据副本。
 
 部署包 `dashboard.tar.gz` 附带只读 Python 采集服务与回滚脚本；它用于当前 AWS 服务部署，不是静态托管上传包。真实后端代码不会被这两个包覆盖。
+
+## 本次验收记录（2026-10-16，新加坡时间）
+
+- 实现提交：`49642c5`；视觉 Trace 补充修复：`6a99a9e`，均已推送至 `dongrunze`。
+- 最终服务目录：`/opt/evidenceguard-dashboard/releases/5601b0e41dc659b4`；部署包 SHA-256：`5601b0e41dc659b435877ed0c50cd2a6283dc062a647e96e6351093ff55947e5`。
+- 17:51 部署的回滚目录：`/var/backups/evidenceguard-dashboard/20261016T095146570861Z`。仅对本次 Dashboard/observer 配置回滚，不替换业务代码。
+- 网站 ZIP SHA-256：`b3cb90f28da5373e54f9acdb4b56876e2dc4607978884cb046de4ea7e6108bbe`，线上下载内容与本地包逐字节一致。
+- Python 监控测试 23 项；Web 单元测试 16 项；桌面 Chromium/手机 WebKit 共 16 项，新增页面在 Firefox/桌面 WebKit 再验证 6 项，均通过。生产构建通过。
+- 服务器实际两套业务树、各自元数据/正文模式，共 4 次兼容检查通过；其中模型循环用隔离测试响应，不计作生产模型调用。三套服务 health 200、原 App 未鉴权 API 401、Dashboard 写请求 405，HTTPS 页面与快照均 200。
+- 线上 demo 实际数据：7 组 SDK 图片事件核验、12 条视觉缓存；额外保留的 7 组图片 Trace 共 28 条，均有真实 `image_review` 模型记录、关联提示词和返回正文，未截断。视觉模型为 `doubao-seed-2-1-lite-260915`。
+- 线上向量：1 段 10 秒 `synthetic_review` 测试录像，Embedding 模型 `doubao-embedding-vision-251215`，实际向量 1024 维、范数 1、当前签名匹配。没有把测试素材说成摄像头实拍。
+- 已在内置浏览器打开正式网址，检查图片分析正文、向量库和 iOS 展示；独立静态 HTTP 服务也可打开 ZIP 根入口。真实摄影与模型结果来自既有后端记录；本次没有声称重新完成原生 iOS 编译或硬件取流验收。
