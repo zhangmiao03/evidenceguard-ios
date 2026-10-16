@@ -19,7 +19,9 @@ ROOT=Path(__file__).resolve().parents[2]
 
 def upload(path, no_system_proxy=False):
     raw=Path(path).read_bytes();digest=hashlib.sha256(raw).hexdigest()
-    if len(raw)>2_000_000:raise ValueError('Observer archive is unexpectedly large')
+    # Native anker artwork is bundled in both the web tree and the website ZIP.
+    # Keep a bounded transfer while allowing these reviewed static assets.
+    if len(raw)>5_000_000:raise ValueError('Observer archive is unexpectedly large')
     staging='/tmp/eg-dashboard-upload-'+digest[:16]
     release='/opt/evidenceguard-dashboard/releases/'+digest[:16]
     with tempfile.TemporaryDirectory(prefix='eg-upload-') as temp:
