@@ -116,3 +116,16 @@ test("over-limit full content is explicitly marked as truncated", () => {
   assert.equal(clean.records[0].data.capture.truncated, true);
   assert.ok(clean.records[0].data.content.answer.endsWith("[truncated: capture limit]"));
 });
+
+test("Codex boundaries and repeated usage snapshots do not inflate HTTP or token metrics", () => {
+  const bundle = sampleBundle();
+  const original = metrics(bundle.records);
+  const base = bundle.records[0];
+  bundle.records.push({ ...base, id: "codex-1", kind: "model", status: "executor_ok", durationMs: 500000,
+    data: { transport: "codex_app_server", usage: { total_tokens: 9999 } } });
+  bundle.records.push({ ...base, id: "codex-usage", kind: "event", name: "codex.usage",
+    data: { transport: "codex_app_server", content: { tokenUsage: { totalTokens: 9999 } } } });
+  const current = metrics(bundle.records);
+  assert.equal(current.codexSteps, 1);
+  for (const key of ["calls", "usageCalls", "tokens", "httpSuccess", "p95"]) assert.equal(current[key], original[key]);
+});

@@ -198,6 +198,7 @@ class Collector:
             state=json.loads(Path(environment['state']).read_text())
         except (OSError,ValueError):state={}
         coverage['contentCapture']=bool(state.get('contentCapture'))
+        coverage['executor']=state.get('executor','unknown')
         if not self.disk_cache or time.monotonic()-self.scan_at>30:
             self.disk_cache={}
             for env in self.config['environments'].values():

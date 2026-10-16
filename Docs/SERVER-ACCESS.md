@@ -30,6 +30,8 @@
 
 Windows 快捷脚本现在会读取已启用的系统 HTTP/HTTPS 代理，仅用于本次进程；不会更改系统代理或关闭证书验证。显式的 `HTTP_PROXY` / `HTTPS_PROXY` 优先；可用 `-NoSystemProxy`（PowerShell）或 `--no-system-proxy`（Python）禁止自动继承。当前机器的系统代理在 `127.0.0.1:7890`，脚本不写死这个地址。PAC/需交互认证的代理不自动解析，需要设置可用的代理环境变量。
 
+本轮续期后也已验证 AWS 直连可用。当前代理曾偶发 `UNEXPECTED_EOF_WHILE_READING`，出现该错误时可使用上述直连参数；上传脚本也支持 `python Cloud/dashboard/upload_release.py ARCHIVE --no-system-proxy`。若输出已有 SSM command ID，先用 `cloud_command.py --resume ID --no-system-proxy` 查询原命令结果，再决定是否重试，避免重复执行部署。
+
 ```powershell
 # 在仓库根目录执行；status 同时查询 AWS 当前公网 IP 与 SSM 状态。
 .\scripts\cloud_session.ps1 -Action status

@@ -38,7 +38,7 @@ python scripts/cloud_command.py --resume COMMAND_UUID
 
 | 页面 | 实际来源与口径 |
 | --- | --- |
-| 运行总览 / Agent 与模型 | 真实模型 HTTP 尝试、成功状态、耗时、供应商 Usage；没有 Usage 显示未知 |
+| 运行总览 / Agent 与模型 | 真实 HTTP 尝试与 Codex 执行步骤分开统计；HTTP 成功率/耗时分位/Token 只用 HTTP 回执 |
 | 对话与 Trace | 任务开始、上下文准备、模型请求、工具执行、再次判断与结束回执；可进入模型和提示词详情 |
 | 提示词与上下文 | 进程实际加载的固定系统提示词、工具 Schema、每次请求的角色和参数快照 |
 | 设备、Skill、任务、证据 | 业务数据库只读元数据快照，不回放或执行旧任务 |
@@ -53,6 +53,16 @@ Agent 不一定调用工具；缺失回执不等于成功。Trace 展示执行�
 正文采集由部署参数 `--capture-content` 显式开启，对应 `EG_DASHBOARD_CAPTURE_CONTENT=1`。新记录可以查看完整的脱敏系统/用户/工具消息、请求参数和工具 Schema、模型原始响应、工具参数与结果，以及运行时真正返回 App 的最终回复。模型结果与运行时回退回复分别呈现，不能互相冒充。每次 HTTP 请求与提示词通过 `promptId` 关联；第二轮消息保留 `tool_call_id`。
 
 记录详情提供分区正文和原始 JSON；Trace 的“查看最终回复”直接定位 `agent.result`。正文可随 JSON 导出/离线导入保留。未开启时仍使用元数据模式；历史记录无法恢复正文，页面明确标注。不是把已有的业务对话库整库公开。
+
+### Codex App Server 执行器
+
+2026-10-16 实际检查发现 demo 已使用 `codex-app-server-v1`。它通过独立子进程 stdio 调用 Responses 模型，并不调用原 `OpenAICompatibleProvider.complete` 或 HTTP 观察入口。仅拦截 HTTP 会漏掉这一条执行链路，不能把漏采解释为没有模型请求。
+
+增量观察器可选适配 `CodexTurn`，旧版没有该模块时正常工作。每个 `complete()` 步骤记录输入 messages/tools、关联 `promptId`、返回给运行时的文本或工具请求、耗时与状态；`transport=codex_app_server`、`wireHttpVisible=false` 明确边界。另外采集实际发送的 `thread/start`（含适配器追加后的 `baseInstructions` 和动态工具 Schema）、`thread/inject_items`、`turn/start`、工具回执，以及收到的工具请求、最终文本与 turn 完成状态。
+
+这些是主程序与执行器的真实输入输出。Codex 内部 HTTP 报文、内置提示词及内部推理没有开放给此观察器；不能声称拿到了供应商原始请求。步骤数不计入 HTTP 请求数/成功率/P95；`thread/tokenUsage/updated` 按执行器用量快照保留，重复快照不求和、不冒充每步骤消费。HTTP 分支仍记录其实际请求和响应。
+
+包装器不修改传入对象、工具选择、返回对象、权限、模型设置或重试策略。原错误和取消原样传播，写库/脱敏失败只损失观察数据。测试覆盖这两种执行器及正文开关；真实验证脚本同时校验公开投影与追踪数据库一致，最终回复与 API 原始运行结果经相同脱敏后相等。
 
 密钥字段、当前进程实际凭证值、Bearer/Basic/JWT、私钥、Cookie、签名地址和媒体二进制在写入追踪库前过滤，采集器及浏览器再次过滤；模型内部推理不展示，`reasoning_tokens` 用量计数保留。模型输入输出是脱敏快照，不承诺与网络原始字节一致。每次捕获正文预算 512,000 字符、单字符串 256,000 字符、单集合 2,000 项，超过时标注截断；不会把截断记录标为完整。全文模式队列限制为 64 条，写满仍丢弃埋点而不阻塞业务。没有编辑提示词、执行工具、调用模型、改任务或删除数据的公开接口。
 
@@ -103,6 +113,8 @@ python Cloud/dashboard/build_release.py
 python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz
 ```
 
+若当前 Windows 系统代理报 TLS EOF，而直连 AWS 正常，上传和 `cloud_command.py` 均可加 `--no-system-proxy`；不要关闭证书校验。命令已返回 SSM ID 后连接失败，先用 `--resume ID` 查询原命令，不重复执行发布。
+
 打包只包含 Dashboard/观察器、Web 产物、测试和仓库文件哈希，不包含 `.env`、AWS 凭证、官方 SDK、业务数据库或服务器源码副本。上传分块和最终包核对 SHA-256，按内容哈希创建 release；上传本身不启动服务。将输出中的实际 release 路径用于：
 
 ```powershell
@@ -127,7 +139,7 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 真实测试仅创建标记测试会话，没有取图、云台、声音、通知或其他硬件动作。`smoke_live.py` 使用真实模型额度，只供显式一次验证，不能循环当健康检查。
 - 本轮未运行 iOS Simulator 或真机 SDK；摄像头协议回归不能代替实际播放、双向音频和弱网验收。Mac 交接见 [IOS-MAC-VERIFICATION.md](IOS-MAC-VERIFICATION.md)。
 
-## 最终部署回执
+## 2026-10-15 部署回执（历史）
 
 - 活跃 release：`/opt/evidenceguard-dashboard/releases/f212ce8abc27d477`；发布包 SHA-256：`f212ce8abc27d4774f2dd62944b905a7da7728109ce9eb3c2d34a54edd0ff738`。源码实现提交 `a7ef5bf`。
 - 对应回滚目录：`/var/backups/evidenceguard-dashboard/20261015T005440494935Z`。

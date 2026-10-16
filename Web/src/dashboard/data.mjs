@@ -173,7 +173,7 @@ export function selectRecords(bundle, filters) {
 }
 
 export function metrics(rows) {
-  const calls = rows.filter((r) => r.kind === "model");
+  const calls = rows.filter((r) => r.kind === "model" && r.data.transport !== "codex_app_server");
   const usage = calls.filter(
     (r) => object(r.data.usage) && finite(r.data.usage.total_tokens),
   );
@@ -184,6 +184,7 @@ export function metrics(rows) {
   return {
     events: rows.filter((r) => r.kind === "event").length,
     calls: calls.length,
+    codexSteps: rows.filter((r) => r.kind === "model" && r.data.transport === "codex_app_server").length,
     traces: new Set(
       rows.filter((r) => r.kind !== "resource").map((r) => r.traceId),
     ).size,

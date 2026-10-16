@@ -109,6 +109,31 @@ test("invalid import preserves current data and missing backend remains offline"
   await expect(page.getByText("尚未加载数据", { exact: true })).toBeVisible();
 });
 
+test("Codex inspector states the observed boundary and shows actual protocol instructions", async ({ page }) => {
+  const bundle = sampleBundle();
+  bundle.records = bundle.records.filter((r: any) => r.traceId === "demo-run-1");
+  const model = bundle.records.find((r: any) => r.kind === "model");
+  const capture = { version: 1, mode: "full_redacted", truncated: false };
+  model.name = "codex_step"; model.status = "executor_ok";
+  model.data = { ...model.data, capture, transport: "codex_app_server", usage: null, wireHttpVisible: false,
+    content: { response: { role: "assistant", content: "CODEX-ACTUAL-OUTPUT" } } };
+  bundle.records.push({ ...model, id: "codex-protocol", kind: "event", name: "codex.request",
+    data: { capture, transport: "codex_app_server", method: "thread/start", content: { message: {
+      method: "thread/start", params: { baseInstructions: "HOST-INSTRUCTIONS-AND-ADAPTER-SUFFIX", dynamicTools: [] } } } } });
+  await page.goto("/dashboard");
+  await page.getByLabel("导入追踪 JSON").setInputFiles({ name: "codex.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+  await expect(page.getByText(/Codex 执行步骤：1/)).toBeVisible();
+  await page.getByRole("navigation").getByRole("button", { name: "Agent 与模型" }).click();
+  await page.locator(".eg-ops-row-link").filter({ hasText: "demo-vision-model" }).first().click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Codex 返回主程序的输出（脱敏）" })).toBeVisible();
+  await expect(page.getByRole("dialog")).toContainText("CODEX-ACTUAL-OUTPUT");
+  await expect(page.getByRole("dialog")).toContainText("此步骤不计作 HTTP 请求");
+  await page.getByRole("button", { name: "关闭详情" }).click();
+  await page.locator(".eg-ops-row-link").filter({ hasText: "codex.request" }).click();
+  await expect(page.getByRole("dialog")).toContainText("HOST-INSTRUCTIONS-AND-ADAPTER-SUFFIX");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+});
+
 test("all dashboard pages render without horizontal page overflow", async ({
   page,
 }) => {

@@ -17,7 +17,7 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[2]
 
 
-def upload(path):
+def upload(path, no_system_proxy=False):
     raw=Path(path).read_bytes();digest=hashlib.sha256(raw).hexdigest()
     if len(raw)>2_000_000:raise ValueError('Observer archive is unexpectedly large')
     staging='/tmp/eg-dashboard-upload-'+digest[:16]
@@ -25,7 +25,9 @@ def upload(path):
     with tempfile.TemporaryDirectory(prefix='eg-upload-') as temp:
         def run(name,script):
             p=Path(temp)/(name+'.sh');p.write_text(script,encoding='utf-8',newline='\n')
-            result=subprocess.run([sys.executable,str(ROOT/'scripts/cloud_command.py'),'--file',str(p),'--timeout','180'],cwd=ROOT,capture_output=True,text=True,encoding='utf-8')
+            command=[sys.executable,str(ROOT/'scripts/cloud_command.py'),'--file',str(p),'--timeout','180']
+            if no_system_proxy:command.append('--no-system-proxy')
+            result=subprocess.run(command,cwd=ROOT,capture_output=True,text=True,encoding='utf-8')
             if result.returncode:raise RuntimeError(result.stderr+'\n'+result.stdout)
             return result.stdout.strip()
         print(run('prepare',f"set -eu\ninstall -d -m 700 {staging}\n"),flush=True)
@@ -47,4 +49,5 @@ def upload(path):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('archive',type=Path)
-    args=parser.parse_args();upload(args.archive)
+    parser.add_argument('--no-system-proxy',action='store_true')
+    args=parser.parse_args();upload(args.archive,args.no_system_proxy)
