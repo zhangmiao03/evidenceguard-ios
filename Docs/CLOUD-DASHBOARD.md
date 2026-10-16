@@ -147,3 +147,16 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 公网无登录 GET/HEAD `/dashboard` 200；写入 405；非法环境 422；不存在的管理路由 404。三套快照均连接、未过期、启动指纹与当前磁盘一致。三套原 HTTPS `/api/health` 200、未授权 `/api/bootstrap` 401。可重复执行 `python Cloud/dashboard/verify_public.py`，不调用模型。
 - 仓库差异：demo 21 个 Python 文件；team/review 各 34 个，详情见页面。这里的“进程与启动指纹一致”与“仓库代码一致”是两个独立判断。
 - 浏览器检查了实际页面、环境切换、模型→提示词关联、持续自动刷新、390px 移动布局；页面无横向溢出。实际导出的 75 条记录 JSON 通过后端 schema 校验并包含服务器采样信息。
+
+## 2026-10-16 正文采集与 Codex 真实验证
+
+- 实现提交 `29b87fbc5769e61aeb5501c9ccaf5f2abf307d6d` 已推送 `dongrunze`；活跃观察器 release `/opt/evidenceguard-dashboard/releases/b0629775779e3eeb`，包 SHA-256 `b0629775779e3eebc7034059cc3de7ee037a8abcbc64d1649a53f37d02e2d92d`。
+- 激活 SSM 命令 `552b67e0-2fe2-4530-b005-849183792f4e` 成功，回滚配置 `/var/backups/evidenceguard-dashboard/20261016T053129122679Z`。保留 demo 当前 `briefings-20261015` 业务 release，其余两套也保持原业务目录及参数。
+- 18 项 Dashboard 测试、14 项 Web 数据/协议测试、10 项 Chromium/移动 WebKit 页面测试通过。两套服务器业务代码分别以元数据/全文模式做兼容检查，共 4 次通过，验证 HTTP 模型→工具→模型、原鉴权与摄像头列表；没有替换服务器业务源码。
+- 先前 Trace `dashboard-smoke-96b1bcd78c5443b78f13560d01ab98cd` 暴露 Codex 漏采，不能用作完整正文验证。修复后仅发起一次新真实任务：`dashboard-smoke-c78f3c52fbb94696a0ecbe25bd81d00a`，2026-10-16 13:32:15–13:32:20（新加坡时间），状态 `completed`。
+- 当前配置模型 `doubao-seed-2-1-lite-260915`；3 个真实 Codex 执行步骤、3 份关联输入快照、2 个只读工具 `list_camera_capabilities` / `list_tasks`，42 条关联记录。底层 HTTP 不可见；0 个观测到的 HTTP 回执不能解释成没有模型请求。两次执行器用量更新按快照展示。
+- 真实验证 SSM 命令 `4e94b093-ebe6-4b73-b36d-28094183a1ff` 成功。公开记录逐项等于 SQLite 的脱敏投影，实际下发的 `baseInstructions`、`turn/start` 输入、工具返回协议和最终文本均存在；所有该服务配置中的密钥值均未出现在测试 Trace。
+- 最终回复与实际运行 API 的脱敏正文相等，61 个字符，SHA-256 `e37b9915e75923f83a98677948d1c050ce5ec16d53de0125641b7bc576f85b6a`。回执保存在服务器 `/var/tmp/dashboard-smoke-c78f3c52fbb94696a0ecbe25bd81d00a.json`，权限 0600。真实结果是没有已接入摄像头、没有已创建任务，因此没有验证实物视频、云台或音频。
+- Codex **内置浏览器**打开线上 `/dashboard`，实际进入上述 Trace、最后一步模型输入输出、`list_tasks` 参数 `{}` / 返回 `[]`、最终 App 回复，均显示正文且与回执一致。页面保留完整调用边界说明。
+- 公网 `/dashboard` GET/HEAD 200、写入 405、无效环境 422、管理路由 404；三套 HTTPS 健康检查 200、未授权业务 API 401。三套进程与启动指纹一致，观察器均为本次 release；相对参考仓库 demo 17 项 Python 差异、team/review 各 34 项，不能据此宣称业务代码与仓库完全一致。
+- 快捷连接已在内置浏览器完成 AWS CLI 重新授权并实测 SSM。当前实例与公网 IP 均未变；本机直连 AWS 可用，使用 `-NoSystemProxy` / `--no-system-proxy` 避免当前系统代理偶发 TLS EOF。连接方法和发布协调信息已发送到“代码开发”聊天。
