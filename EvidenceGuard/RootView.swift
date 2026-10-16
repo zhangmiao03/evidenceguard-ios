@@ -53,7 +53,7 @@ private struct ProductRootView: View {
         case .personalInbox: PersonalInboxView()
         case .camera(let id): CameraDetailView(id: id)
         case .alerts: AlertsView()
-        case .conversation(let id, let skill): ConversationView(conversationID: id, skillID: skill)
+        case .conversation(let id, let skill): ConversationView(conversationID: id, skillID: skill, allowsConversationSwitching: skill == nil, initialMode: store.conversationModes[id] ?? "live")
         case .evidenceConversation(let id): ConversationView(conversationID: "evidence-" + id, skillID: nil, historyEvidenceID: id)
         case .settings: ServiceSettingsView()
         case .officialSDK: OfficialSDKSettingsView(connection: store.officialSDK)

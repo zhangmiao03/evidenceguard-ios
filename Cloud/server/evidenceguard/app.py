@@ -278,6 +278,9 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     @app.put('/api/personal/conversation')
     async def bind_personal_conversation(request: Request, body: BindConversation):
         return conversations.bind_main(personal_client(request),body.conversationId)
+    @app.get('/api/personal/messages/{key}')
+    async def personal_message(request: Request, key: str):
+        return proactive.message(personal_client(request), key)
     @app.post('/api/personal/messages/{key}/feedback')
     async def personal_feedback(request: Request, key: str, body: Feedback):
         return proactive.feedback(personal_client(request),key,body.action)
@@ -486,12 +489,14 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         if store.run(body.requestId): run_access(body.requestId,request)
         client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
         context=personal.context(client)
-        if context and proactive.owner(body.conversationId)==client:
+        main = conversations.root(body.conversationId)
+        if context and proactive.owner(main)==client:
+            context['mainConversationId'] = main
             # Independent assistant messages are actual history, not invented user prompts.
             context['proactiveMessages']=[{k:m.get(k) for k in ('id','body','why','createdAt','feedback')} for m in proactive.messages(client)[-8:]]
         if body.replyToMessageId:
-            reply=next((m for m in proactive.messages(client) if m['id']==body.replyToMessageId),None) if client else None
-            if not reply or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
+            if not client or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
+            reply=proactive.message(client,body.replyToMessageId)
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
         value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')))
         if client: value['clientId']=client; store.save_run(value)

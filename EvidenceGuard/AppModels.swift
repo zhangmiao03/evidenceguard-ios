@@ -156,7 +156,35 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var cameraId: String?
     var historyFilter: HistoryFilter?
     var historyScope: HistoryFilter?
+    var completedAt: Double?
     var isRunning: Bool { status == "queued" || status == "running" }
+}
+
+enum ChatTimelineItem: Identifiable {
+    case user(AgentRun), reply(AgentRun), proactive(AssistantMessage)
+    var id: String {
+        switch self {
+        case .user(let run): return "0-user:" + run.id
+        case .reply(let run): return "1-reply:" + run.id
+        case .proactive(let message): return "2-message:" + message.id
+        }
+    }
+    var createdAt: Double {
+        switch self {
+        case .user(let run): return run.createdAt
+        case .reply(let run): return run.completedAt ?? run.createdAt
+        case .proactive(let message): return message.createdAt
+        }
+    }
+    static func items(runs: [AgentRun], messages: [AssistantMessage]) -> [Self] {
+        var unique: [String: Self] = [:]
+        for run in runs {
+            for item in [Self.user(run), .reply(run)] { unique[item.id] = item }
+        }
+        for message in messages { let item = Self.proactive(message); unique[item.id] = item }
+        return unique.values.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+    }
+    static func messageID(_ id: String) -> String { "2-message:" + id }
 }
 struct RunEvent: Decodable, Identifiable {
     var runId: String; var sequence: Int; var type: String; var at: Double?

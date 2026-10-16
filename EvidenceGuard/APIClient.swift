@@ -138,6 +138,7 @@ struct APIClient {
     func messageFeedback(_ id: String, action: String) async throws -> PersonalSnapshot {
         try await send("/api/personal/messages/\(id)/feedback", body: ["action": action])
     }
+    func assistantMessage(_ id: String) async throws -> AssistantMessage { try await get("/api/personal/messages/\(id)") }
     func conversation(_ id: String) async throws -> [AgentRun] { try await get("/api/agent/conversations/\(id)") }
     func conversations() async throws -> [ConversationSummary] { try await get("/api/agent/conversations") }
     func newConversation(requestID: String) async throws -> ConversationSummary {

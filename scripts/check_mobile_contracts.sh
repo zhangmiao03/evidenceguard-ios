@@ -12,3 +12,7 @@ swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/ReminderSet
 "$check_dir/reminder-check"
 swiftc EvidenceGuard/AppModels.swift Tests/WorkspaceRouting/main.swift -o "$check_dir/workspace-check"
 "$check_dir/workspace-check"
+swiftc EvidenceGuard/AppModels.swift Tests/AssistantTimeline/main.swift -o "$check_dir/timeline-check"
+"$check_dir/timeline-check"
+swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/MobileServiceConfiguration.swift EvidenceGuard/ReminderSettings.swift EvidenceGuard/AppStore.swift Tests/AssistantStore/Stubs.swift Tests/AssistantStore/main.swift -o "$check_dir/store-check"
+"$check_dir/store-check"

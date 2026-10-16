@@ -234,6 +234,7 @@ struct DemoSceneView: View {
 
 struct PersonalInboxView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var error: String?
     var body: some View {
         List {
             Section {
@@ -241,7 +242,7 @@ struct PersonalInboxView: View {
                 Button("回到助手继续处理") { store.openAI() }
             }
             if store.data.personal?.inbox.isEmpty ?? true {
-                Text("暂时没有助手提醒。开启后，新的任务事件、未处理事项的后续提醒和每日概况会出现在这里。")
+                Text("暂时没有助手消息。开启提醒或订阅报告后，新消息会直接出现在 anker 主对话，这里保留历史记录。")
                     .foregroundStyle(Brand.muted)
             }
             ForEach(store.data.personal?.inbox ?? []) { notice in
@@ -249,10 +250,17 @@ struct PersonalInboxView: View {
                     HStack { Text(notice.title).font(.headline); if !notice.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) } }
                     Text(notice.body).font(.subheadline)
                     Text("\(notice.kindLabel) · \(displayTime(notice.createdAt))").font(.caption).foregroundStyle(Brand.muted)
+                    Button("在助手对话中查看") {
+                        Task {
+                            do { try await store.openAssistantMessage(notice.id); error = nil }
+                            catch { self.error = "这条记录暂时无法在对话中打开：" + error.localizedDescription }
+                        }
+                    }
                     if let id = notice.skillId { NavigationLink("查看任务和证据", value: AppRoute.skill(id)) }
                     if !notice.read { Button("标记已读") { Task { await store.perform { store.data.personal = try await store.client.readNotice(notice.id) } } }.disabled(store.busy) }
                 }.padding(.vertical, 8)
             }
+            if let error { Text(error).font(.caption).foregroundStyle(.orange) }
         }.pageStyle("助手提醒").refreshable { await store.refresh() }
     }
 }
@@ -272,14 +280,14 @@ struct ProactiveMessageCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(message.title).font(.headline)
+                Image("AnkerAvatar").resizable().scaledToFit().frame(width: 24, height: 24)
+                Text(AssistantIdentity.name).font(.subheadline.weight(.medium))
                 Spacer()
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
-            if message.body != message.title { Text(message.body).font(.body).textSelection(.enabled) }
-            Text("\(AssistantIdentity.name) · \(displayTime(message.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
-            Label(testSource ? "测试 / 回放资料" : "事件记录", systemImage: "clock")
-                .font(.caption).foregroundStyle(Brand.muted)
+            Text(message.body.isEmpty ? message.title : message.body).font(.body).textSelection(.enabled)
+            Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
+            if testSource { Label("测试 / 回放资料", systemImage: "clock").font(.caption).foregroundStyle(Brand.muted) }
             DisclosureGroup("查看来源") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(message.why).font(.caption)
@@ -300,7 +308,7 @@ struct ProactiveMessageCard: View {
                 } else if let skill = message.skillId {
                     NavigationLink("查看守护", value: AppRoute.skill(skill)).buttonStyle(.borderedProminent)
                 }
-                Button("接着聊") { respond("read"); onReply() }
+                Button("回复这条消息") { respond("read"); onReply() }
                 Spacer(minLength: 0)
                 if message.feedback == "handled" { Text("已处理此提醒").font(.caption).foregroundStyle(Brand.muted) }
                 else {
@@ -318,6 +326,6 @@ struct ProactiveMessageCard: View {
             .accessibilityIdentifier("chat.proactive.\(message.id)")
     }
     private func respond(_ action: String) {
-        Task { await store.perform { store.data.personal = try await store.client.messageFeedback(message.id, action: action) } }
+        Task { await store.perform { try await store.feedbackAssistantMessage(message.id, action: action) } }
     }
 }

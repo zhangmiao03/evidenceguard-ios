@@ -3,21 +3,23 @@ import SwiftUI
 struct TeachAIView: View {
     @EnvironmentObject private var store: AppStore
     var body: some View {
-        ConversationView(conversationID: store.activeConversationID, skillID: nil,
+        ConversationView(conversationID: store.generalConversation, skillID: nil,
                          allowsConversationSwitching: true,
-                         initialMode: store.conversationModes[store.activeConversationID] ?? store.conversations.first { $0.id == store.activeConversationID }?.lastMode ?? "live")
-            .id(store.activeConversationID)
+                         initialMode: store.conversationModes[store.generalConversation] ?? "live")
+            .id(store.client.baseURL)
     }
 }
 
-private enum ChatTimelineItem: Identifiable {
-    case run(AgentRun), proactive(AssistantMessage)
-    var id: String { switch self { case .run(let r): return r.id; case .proactive(let m): return m.id } }
-    var createdAt: Double { switch self { case .run(let r): return r.createdAt; case .proactive(let m): return m.createdAt } }
+private struct ChatVisibleFrames: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
 }
 
 struct ConversationView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.scenePhase) private var scenePhase
     let conversationID: String
     let skillID: String?
     let historyEvidenceID: String?
@@ -66,12 +68,12 @@ struct ConversationView: View {
         return store.data.cameras.filter { skill.devices.contains($0.id) }
     }
     private var selectedCamera: CameraDevice? { cameraID == "all" ? nil : availableCameras.first { $0.id == cameraID } ?? availableCameras.first }
-    private var activeRun: AgentRun? { runs.last { $0.isRunning } }
+    private var activeRun: AgentRun? { runs.last { $0.isRunning && $0.conversationId == effectiveConversationID } }
     private var proactiveMessages: [AssistantMessage] {
-        skillID == nil && executionMode == "live" && conversationID == store.generalConversation ? store.data.personal?.messages ?? [] : []
+        skillID == nil && isMainConversation ? store.assistantMessages : []
     }
     private var timeline: [ChatTimelineItem] {
-        (runs.map { ChatTimelineItem.run($0) } + proactiveMessages.map { ChatTimelineItem.proactive($0) }).sorted { $0.createdAt < $1.createdAt }
+        ChatTimelineItem.items(runs: runs, messages: proactiveMessages)
     }
     private var canSend: Bool {
         !sending && activeRun == nil && !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && store.isConnected && store.data.agent.ready
@@ -98,8 +100,14 @@ struct ConversationView: View {
                     ForEach(timeline) { item in
                         switch item {
                         case .proactive(let message):
-                            ProactiveMessageCard(message: message) { replyingTo = message; inputFocused = true }
-                        case .run(let run):
+                            ProactiveMessageCard(message: message) {
+                                changeMode("live"); replyingTo = message; inputFocused = true
+                            }
+                            .id(item.id)
+                            .background(GeometryReader { geometry in
+                                Color.clear.preference(key: ChatVisibleFrames.self, value: [message.id: geometry.frame(in: .global)])
+                            })
+                        case .user(let run):
                         HStack {
                             Spacer(minLength: 36)
                             VStack(alignment: .leading, spacing: 6) {
@@ -111,7 +119,7 @@ struct ConversationView: View {
                             }.padding(14)
                                 .background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 16))
                         }
-                        reply(run)
+                        case .reply(let run): reply(run)
                         }
                     }
                     if let syncError { Text(syncError).font(.caption).foregroundStyle(.orange) }
@@ -119,11 +127,37 @@ struct ConversationView: View {
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(16)
             }
+            .background(GeometryReader { geometry in
+                Color.clear.preference(key: ChatVisibleFrames.self, value: ["viewport": geometry.frame(in: .global)])
+            })
+            .onPreferenceChange(ChatVisibleFrames.self) { frames in
+                guard isMainConversation, scenePhase == .active, store.selectedTab == .assistant,
+                      !showConversations, !showScope, !voice, !rangeSheet,
+                      store.editor == nil, store.errorMessage == nil,
+                      store.tabPaths[AppTab.assistant.rawValue].isEmpty,
+                      let viewport = frames["viewport"] else { return }
+                for message in proactiveMessages where !message.read {
+                    if let frame = frames[message.id], frame.height > 0,
+                       frame.intersection(viewport).height >= min(frame.height / 2, 120) {
+                        Task { await store.readAssistantMessage(message.id) }
+                    }
+                }
+            }
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-            .onChange(of: timeline.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: timeline.map(\.id), initial: true) { _, _ in
+                if isMainConversation, let id = store.assistantMessageFocus {
+                    proxy.scrollTo(ChatTimelineItem.messageID(id), anchor: .top)
+                } else { proxy.scrollTo("bottom", anchor: .bottom) }
+            }
+            .onChange(of: store.assistantMessageFocus) { _, id in
+                if isMainConversation, let id { proxy.scrollTo(ChatTimelineItem.messageID(id), anchor: .top) }
+            }
+            .simultaneousGesture(DragGesture().onChanged { _ in
+                if isMainConversation { store.assistantMessageFocus = nil }
+            })
             .onChange(of: activeRun?.status) { _, status in
-                if status == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+                if status == nil && store.assistantMessageFocus == nil { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
             }
         }
         .agentPageStyle(conversationTitle)
@@ -151,7 +185,7 @@ struct ConversationView: View {
             input = store.conversationDrafts[effectiveConversationID] ?? historyEvidenceID.map { "请读取这条已保存的证据，解释可见内容和不确定之处：\($0)" } ?? ""
             if let pending = store.pendingChatRequests[effectiveConversationID], pending.message == input.trimmingCharacters(in: .whitespacesAndNewlines) {
                 cameraID = pending.camera ?? "all"; historyFilter = pending.filter
-                replyingTo = store.data.personal?.messages?.first { $0.id == pending.replyID }
+                replyingTo = store.assistantMessages.first { $0.id == pending.replyID }
                 error = "上次发送尚未确认，内容已保留。重试会核对同一请求，避免重复发送。"
             }
             if cameraID.isEmpty { cameraID = skillID.flatMap { store.skill($0)?.target.cameraId } ?? store.selectedCameraID }
@@ -161,6 +195,7 @@ struct ConversationView: View {
             }
         }
         .onChange(of: input) { _, value in store.conversationDrafts[effectiveConversationID] = value }
+        .onAppear { if allowsConversationSwitching { store.activeConversationID = conversationID } }
         .onDisappear { inputFocused = false; store.conversationDrafts[effectiveConversationID] = input }
         .onChange(of: store.composerRevision) { _, _ in
             guard allowsConversationSwitching else { return }
@@ -303,7 +338,7 @@ struct ConversationView: View {
     private func changeMode(_ value: String) {
         guard value != executionMode else { return }
         store.conversationDrafts[effectiveConversationID] = input
-        executionMode = value; runs = []; events = []; error = nil; syncError = nil
+        executionMode = value; if !isMainConversation { runs = [] }; events = []; error = nil; syncError = nil
         showCamera = false; replyingTo = nil
         store.conversationModes[conversationID] = value
         input = store.conversationDrafts[effectiveConversationID] ?? ""
@@ -334,9 +369,9 @@ struct ConversationView: View {
 
     private func reply(_ run: AgentRun) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("\(AssistantIdentity.name) · \(displayTime(run.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
+            Text("\(AssistantIdentity.name) · \(displayTime(run.completedAt ?? run.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
             if run.isRunning {
-                HStack { ProgressView(); Text(events.last?.progressLabel ?? "正在处理…").font(.subheadline) }
+                HStack { ProgressView(); Text((run.conversationId == effectiveConversationID ? events.last?.progressLabel : nil) ?? "正在处理…").font(.subheadline) }
                 Button("停止本次回复", role: .cancel) { Task { await cancel(run) } }.accessibilityIdentifier("chat.cancel")
             }
             if let text = run.text {
@@ -422,6 +457,7 @@ struct ConversationView: View {
     }
 
     private func prepareRetry(_ run: AgentRun) {
+        changeMode(run.executionMode ?? "live")
         input = run.message
         if executionMode == "history" {
             historyFilter = run.historyFilter
@@ -431,9 +467,16 @@ struct ConversationView: View {
     }
     private func reload() async {
         let id = effectiveConversationID
+        let client = store.client
         do {
-            let loaded = try await store.client.conversation(id)
-            guard id == effectiveConversationID && !Task.isCancelled else { return }
+            let loaded: [AgentRun]
+            if isMainConversation {
+                // Presentation is unified; tool scopes and retry IDs stay separate.
+                async let live = client.conversation(conversationID)
+                async let history = client.conversation(conversationID + "-history")
+                loaded = try await live + history
+            } else { loaded = try await client.conversation(id) }
+            guard id == effectiveConversationID && client.baseURL == store.client.baseURL && !Task.isCancelled else { return }
             runs = loaded
             if let pending = store.pendingChatRequests[id], loaded.contains(where: { $0.id == pending.id }) {
                 store.pendingChatRequests.removeValue(forKey: id)
@@ -451,6 +494,7 @@ struct ConversationView: View {
     }
     private func send() async {
         guard canSend else { return }
+        if isMainConversation { store.assistantMessageFocus = nil }
         sending = true; defer { sending = false }
         let message = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let filter = executionMode == "history" ? historyFilter : nil
