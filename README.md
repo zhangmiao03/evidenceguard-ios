@@ -14,6 +14,8 @@ Linux 隔离环境 **306 项后端测试通过**，包括 Windows 上曾跳过�
 
 完整逐文件差异、发布哈希、私有备份路径、复现命令及当前验证边界见 [demo 发布与联调记录](Docs/DEMO-TOOLCHAIN-DEPLOYMENT.md)。**旧部署备份不能直接回滚后续 Codex/早晚报告版本**；脚本检查真实 ExecStart 与后续 drop-in，发现已换运行版本会拒绝覆盖。Mac/Xcode、真实摄像头和门铃、实际取流/控制、锁屏和网络切换仍须分别验收。
 
+提交 `932451c` 的 [GitHub Checks](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38856958726) 已核实：四个 job 都因账户付款/消费额度限制未启动，步骤数为 0；不能作为 iOS 编译通过或测试失败的证据。上方通过结果来自本地及 demo 隔离验证。恢复账户额度后可重跑，Mac 仍按交接文档独立验收。
+
 ## 比赛云端 Dashboard 与服务器快捷连接
 
 云端只读入口：**http://47.131.21.137/dashboard**，按比赛要求免登录。可切换 demo / team / review，查看真实模型调用、系统提示词、工具执行循环、Trace、部署 Python 文件与仓库基准的差异，以及每 5 秒采样的 CPU / 内存 / 磁盘 / 网络和后端进程。原有 App API、摄像头取流与媒体鉴权保持原配置；公开页面只读取脱敏快照。

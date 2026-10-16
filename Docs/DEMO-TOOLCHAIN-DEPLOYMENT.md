@@ -188,3 +188,9 @@ Web 新发现的兼容问题已修复：JSON 解码会保留新服务返回的�
 两轮都核对了服务端冻结契约、`executor_started/executor_completed`、最终响应、API 工具回执和 observer 工具记录，工具为 `list_camera_capabilities` 与 `list_tasks`。测试安装关闭自动记忆，没有硬件操作或推送。当前登记设备和执行器设备均为 0，结果仅证明 HTTP/Agent/工具契约连通，不是 iPhone 二进制或物理摄像头验收。
 
 当时 observer 尚未直接采集 Codex 子进程的模型 HTTP/提示词；`realModelCalls=null`、`promptSnapshots=0` 是明确的观测缺口，不能解读为未调用模型，也不填造 HTTP 200 次数。随后合入的 `29b87fb` 已补齐 Codex 步骤、输入协议和结果边界的记录，仍与模型 HTTP 请求明确区分；旧 run 没有回填。这不改变本轮已核验的 Codex 生命周期与工具回执。
+
+### GitHub 提交与 CI
+
+业务代码和发布证据已推送到 `dongrunze@932451c99d596f77c5c2946ed43911234d1f6e98`，PR #5 更新，未合并 main；该提交与当时远端分支一致，已包含 `main@cc16c98`，同时保留 `5ab4ec2/1a2f7d8/29b87fb`。用户原有五份未跟踪接口分析文档保持原样，没有代为加入提交。
+
+该提交 [PR Checks 38856958726](https://github.com/zhangmiao03/evidenceguard-ios/actions/runs/38856958726) 和 push 检查 `38856953399` 返回 failure。逐项读取 cloud、ios-simulator、webkit-macos、web 的 job/annotations 后确认：步骤数均为 0，GitHub 提示近期账户付款失败或消费上限需调整，工作没有启动。Ubuntu 标签迁移、macOS 排队说明是另附提示，不能替代上述实际阻断原因。本地/服务器测试结果与该 CI 状态分别记录；没有修改账户计费或把未运行的 iOS 检查视为通过。
