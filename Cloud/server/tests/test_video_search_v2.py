@@ -277,6 +277,56 @@ def test_official_source_filter_applies_to_all_media_routes(tmp_path,monkeypatch
         assert client.post('/api/recordings/video-one/index').status_code==404
 
 
+def test_latest_ios_guard_contract_preserves_private_history_retrieval(tmp_path,monkeypatch):
+    from test_harness import ScriptedProvider, tool, settle
+    monkeypatch.setenv('EG_CAMERA_SOURCE','fixture_lab')
+    monkeypatch.setenv('EG_VIDEO_ROOT',str(tmp_path/'videos'))
+    monkeypatch.setenv('EG_AGENT_EXECUTOR','bounded-chat-v1')
+    monkeypatch.delenv('EG_VIDEO_INDEX_V2',raising=False)
+    provider=ScriptedProvider([tool('search_recordings',{'query':'模型缩短后的描述'}),
+        {'role':'assistant','content':'请查看这段录像。'}, {'role':'assistant','content':'你好。'}])
+    app=create_app(tmp_path/'integration.sqlite',start_worker=False,provider=provider)
+    owner={'X-EG-Installation-ID':'11111111-1111-4111-8111-111111111111','X-EG-Private-Key':'a'*48}
+    other={'X-EG-Installation-ID':'22222222-2222-4222-8222-222222222222','X-EG-Private-Key':'b'*48}
+    with TestClient(app) as client:
+        videos=app.state.videos
+        videos.embedding=EmbeddingV2(); videos.vision=VisionV2()
+        indexed(videos)
+        image=client.post('/api/video-search-images',content=jpeg(),headers=owner).json()
+        body=dict(message='有人将参考图中的物体放到门边',conversationId='history-integration',
+            requestId='history-image-001',executionMode='history',historyFilter={'period':'all'},
+            clientPlatform='ios',guardFlowVersion=1,referenceImageId=image['id'])
+        response=client.post('/api/agent/runs',json=body,headers=owner)
+        assert response.status_code==202
+        value=client.portal.call(settle,app.state.agent,response.json())
+        assert value['status']=='completed' and value['referenceImageId']==image['id']
+        assert value['guardFlowVersion'] is None
+        names=set(value['executionContract']['allowed_tools'])
+        assert 'search_recordings' in names
+        assert not names & {'create_camera_guard','revise_camera_guard','draft_visual_skill',
+            'request_camera_snapshot','request_recheck','save_personal_task'}
+        assert value['videos'][0]['verdict']=='matched' and value['videos'][0]['referenceImageUsed']
+        assert videos.embedding.calls[0]['text']==body['message']
+        assert videos.vision.calls[0][1]==body['message']
+        assert videos.vision.calls[0][3]['reference_image']==videos.embedding.calls[0]['image']
+        assert app.state.visual_scenes.list_all()==[] and app.state.store.skills()==[]
+        # Retrying keeps the same query; the new guard flag cannot discard image identity.
+        assert client.post('/api/agent/runs',json=body,headers=owner).json()['id']==value['id']
+        assert len(videos.embedding.calls)==1
+        assert client.post('/api/agent/runs',json=body|{'referenceImageId':None},headers=owner).status_code==409
+        assert client.post('/api/agent/runs',json=body|{'conversationId':'foreign-history','requestId':'foreign-001'},headers=other).status_code==404
+        assert client.post('/api/agent/runs',json=body|{'executionMode':'live'},headers=owner).status_code==409
+        # The same new iOS client still gains the intended guard tools in a live turn.
+        response=client.post('/api/agent/runs',headers=owner,json=dict(message='你好',
+            conversationId='live-integration',requestId='live-guard-001',clientPlatform='ios',guardFlowVersion=1))
+        assert response.status_code==202
+        live=client.portal.call(settle,app.state.agent,response.json())
+        assert live['status']=='completed' and live['guardFlowVersion']==1
+        assert live['referenceImageId'] is None
+        assert 'create_camera_guard' in live['executionContract']['allowed_tools']
+        assert 'draft_visual_skill' not in live['executionContract']['allowed_tools']
+
+
 def test_provider_joint_request_and_reference_video_verification(monkeypatch,tmp_path):
     requests=[]
     def handle(request):

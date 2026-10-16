@@ -39,6 +39,9 @@ def test_chat_and_proactive_receive_current_product_guidance(tmp_path, mode):
             assert 'account_uuid 登录会重新生成 Token' in system
             assert '前向广角主摄' in system and '下视摄像头' in system
             assert '设备已有录像不会自动上传本项目云端' in system
+            assert '助手 / 摄像头守护 / 设备 / 记忆 / 我的' in system
+            assert '设备 → 录像库 → 用文字或图片检索录像' in system
+            assert '离散截图不会自动成为向量录像库' in system
             assert 'Web 设备工作台当前只提供' not in system
             # A human voice must reach both paths without promising perception
             # or actions that their read-only contracts cannot perform.

@@ -56,6 +56,46 @@ final class APIClientTests: XCTestCase {
         APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)))
     }
 
+    func testLatestGuardVersionAndHistoryReferenceTravelTogether() async throws {
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            var bytes = item.request.httpBody ?? Data()
+            if bytes.isEmpty, let stream = item.request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while true {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }
+                    bytes.append(contentsOf: buffer.prefix(count))
+                }
+            }
+            guard let body = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] else {
+                XCTFail("Expected a JSON Agent request"); item.reply("{}", status: 400); return
+            }
+            XCTAssertEqual(item.request.url!.path, "/api/agent/runs")
+            XCTAssertEqual(body["clientPlatform"] as? String, "ios")
+            XCTAssertEqual(body["guardFlowVersion"] as? Int, 1)
+            if body["executionMode"] as? String == "history" {
+                XCTAssertEqual(body["referenceImageId"] as? String, "query-image-11111111111111111111111111111111")
+                XCTAssertEqual((body["historyFilter"] as? [String: Any])?["period"] as? String, "all")
+                item.reply(#"{"id":"history-run","conversationId":"history","message":"找这个物体","status":"completed","createdAt":1,"toolReceipts":[],"executionMode":"history","referenceImageId":"query-image-11111111111111111111111111111111"}"#)
+            } else {
+                XCTAssertNil(body["referenceImageId"])
+                item.reply(#"{"id":"live-run","conversationId":"live","message":"帮我看着包裹","status":"completed","createdAt":1,"toolReceipts":[],"guardDraftId":"scene-test"}"#)
+            }
+        }
+        let api = client()
+        let history = try await api.start(message: "找这个物体", conversation: "history", skill: nil,
+            camera: nil, requestID: "history-run", executionMode: "history", historyFilter: HistoryFilter(period: "all"),
+            referenceImageID: "query-image-11111111111111111111111111111111")
+        XCTAssertNotNil(history.referenceImageId)
+        XCTAssertNil(history.guardDraftId)
+        let live = try await api.start(message: "帮我看着包裹", conversation: "live", skill: nil,
+            camera: "sdk-test", requestID: "live-run")
+        XCTAssertEqual(live.guardDraftId, "scene-test")
+        XCTAssertNil(live.referenceImageId)
+    }
+
     func testHardwareEnvelopeUsesBoundExecutorAndKeepsJSONTypes() async throws {
         let requests = Requests()
         StubProtocol.install { item in
