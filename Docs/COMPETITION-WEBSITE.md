@@ -34,6 +34,7 @@
 
 - 图片：`sdk_events`、关联的 `sdk_episodes`、`evidence` 从实际 `imageUrl` 所引用的 `media` 行取原图；不按时间邻近猜测关联。支持放大及单独下载。历史事件来源图不标为当次模型输入。
 - 豆包输入：`EG_DASHBOARD_CAPTURE_MEDIA=1` 与正文采集一起由部署脚本开启。真实模型 HTTP 请求发出前，在后台线程复制其中的 JPEG/PNG/MP4 data URL，按 SHA-256 记录 `inputMedia`；请求本身不修改、不重试。输入引用与提示词 ID、模型返回保持同一 Trace。旧输入不能追溯恢复，页面明确显示缺失。URL 类型输入不自动下载。
+- Codex 执行器：当前 demo 主后端使用 `codex-app-server-v1`。在 `complete` 的实际 messages 入口保存图片副本，并标记 `executor_input` / `host_to_codex`；展示的是传给执行器的字节，不能声称看到了底层发给豆包的 HTTP 报文。执行器之后可能进一步转换图片。普通 HTTP 模型调用仍标记 `exact_model_input`，两种来源分开说明。包含图片的执行器 Trace 也进入视觉保留范围。
 - 录像：仅复制已入库录像目录的 `playback.mp4`，支持浏览器播放、Range/206 拖动和下载。超过 32 MB 的副本不公开，界面显示不可用；不开放任意文件或原 App 的受保护媒体接口。
 - 检索：观察实际 `VideoService.search`，采集 `vector.search` 的查询文字、参数、范围、候选相似度、视觉复核结果、定位秒数与耗时。不增加检索、不改业务返回或异常。兼容既有 `search_recordings` 工具回执。当前后端查询入口只实现文字搜视频，图片向量输入展示区在没有真实调用时明确为空，不伪造以图搜视频。
 - 技术信息：列表优先显示设备类型/名称、任务含义和时间。原始 ID、签名、向量摘要保留在详情，供开发核对。
@@ -55,7 +56,7 @@ npm --prefix Web run build -- --base /dashboard/
 python -m unittest discover -s Cloud/dashboard/tests -v
 npm --prefix Web test
 cd Web
-npx playwright test tests/browser/dashboard.spec.ts tests/browser/showcase.spec.ts --project=chromium --project=mobile-webkit
+npx playwright test tests/browser/dashboard.spec.ts tests/browser/showcase.spec.ts tests/browser/media-preview.spec.ts
 cd ..
 python Cloud/dashboard/build_release.py
 python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no-system-proxy

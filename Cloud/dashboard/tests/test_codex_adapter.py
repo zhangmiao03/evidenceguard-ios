@@ -1,10 +1,12 @@
 import asyncio
+import base64
 import contextvars
 import hashlib
 import json
 import os
 from pathlib import Path
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -77,6 +79,21 @@ class CodexTests(unittest.IsolatedAsyncioTestCase):
         await self.turn.complete([{'role':'system','content':'test'}], [])
         self.assertEqual(sum(r['name']=='codex.usage' for r in self.rows),2)
         self.assertIsNone(next(r['data']['usage'] for r in self.rows if r.get('kind')=='model'))
+
+    async def test_image_input_keeps_executor_boundary_without_claiming_wire_http(self):
+        with tempfile.TemporaryDirectory() as folder,patch.dict(os.environ,{'EG_DASHBOARD_CAPTURE_MEDIA':'1'}):
+            self.ops.RECORDER.get().path=str(Path(folder)/'ops.db')
+            raw=b'\xff\xd8\xfftest-image'
+            messages=[{'role':'system','content':'system'}, {'role':'user','content':[{'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(raw).decode()}}]}]
+            result=await self.turn.complete(messages,[])
+            self.assertIs(result,self.turn.result)
+            prompt=next(r['data'] for r in self.rows if r.get('kind')=='prompt')
+            item=prompt['inputMedia'][0]
+            self.assertEqual(item['assetId'],hashlib.sha256(raw).hexdigest())
+            self.assertEqual(item['provenance'],'executor_input')
+            self.assertEqual(prompt['inputBoundary'],'host_to_codex')
+            self.assertNotIn('data:image',json.dumps(self.rows))
+            self.assertEqual(self.turn.calls,1)
 
     async def test_errors_cancellation_and_observer_failures_do_not_change_execution(self):
         for error,status in ((RuntimeError('original failure'),'failed'),(asyncio.CancelledError(),'cancelled')):

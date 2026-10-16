@@ -47,12 +47,14 @@ def install(ops, cls=None):
                     inputBoundary='host_to_codex', usage=None)
         started = time.monotonic()
         status = 'failed'
+        media_inputs=[]
         def inputs(recorder):
             request = dict(model=self.provider.model, messages=messages, tools=tools,
                            continuation=bool(self.thread_id))
             if content.enabled():
                 snapshot, capture = content.clean(request)
                 body = dict(request=snapshot, capture=capture, sha256=ops.digest(snapshot),
+                            inputMedia=media_inputs,
                             contentCapture=True, hashMeaning='secret-filtered host input; not provider wire bytes')
             else:
                 body = ops.prompt_snapshot(request, False)
@@ -61,6 +63,13 @@ def install(ops, cls=None):
             recorder.emit('context.prepared', data=dict(transport='codex_app_server',
                           **content.details(messages=messages, tools=tools)))
         try:
+            if content.enabled():
+                try:
+                    from .media_assets import capture_inputs
+                    media_inputs=await asyncio.to_thread(capture_inputs,dict(messages=messages),ops.RECORDER.get())
+                    for item in media_inputs:
+                        if item.get('provenance')=='exact_model_input':item['provenance']='executor_input'
+                except Exception:pass
             observe(inputs)
             result = await original_complete(self, messages, tools)
             status = 'executor_ok'

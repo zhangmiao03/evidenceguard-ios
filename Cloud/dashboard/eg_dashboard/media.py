@@ -117,6 +117,7 @@ def visual_traces(db):
         WHERE (json_extract(payload,'$.kind')='model'
         AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding'))
         OR json_extract(payload,'$.name')='vector.search'
+        OR (json_extract(payload,'$.kind')='prompt' AND json_array_length(payload,'$.data.inputMedia')>0)
         GROUP BY json_extract(payload,'$.traceId') ORDER BY MAX(at) DESC LIMIT 20""")]
     if not traces:return [],{'traces':0,'returned':0,'truncated':False,'traceLimit':20,'recordLimit':120,'byteLimit':1000000}
     placeholders=','.join('?' for _ in traces)

@@ -8,16 +8,16 @@ export const time=(n:any)=>typeof n==='number'&&n>0?new Date(n*1000).toLocaleStr
 export const sec=(n:any)=>typeof n==='number'?`${n.toFixed(1)} s`:'—';
 const origin=(s:any)=>s==='official_sdk'?'官方 SDK 导入':s==='synthetic_review'?'合成测试素材 · 真实入库':s==='uploaded'?'用户上传':s==='fixture'?'测试场景素材':'数据库记录';
 const compatible=(v:any)=>v===true?'当前模型可检索':v===false?'需重新建立索引':'模型兼容性未采集';
-function output(row:MediaRow){let v=row.data.content?.response?.choices?.[0]?.message?.content;try{v=JSON.parse(v);}catch{}return typeof v==='string'?v:v?.visible||v?.summary||row.data.content?.error||'展开查看模型返回正文';}
+function output(row:MediaRow){let v=row.data.content?.response?.choices?.[0]?.message?.content||row.data.content?.response?.content;try{v=JSON.parse(v);}catch{}return typeof v==='string'?v:v?.visible||v?.summary||row.data.content?.error||'展开查看模型返回正文';}
 type Props={rows:MediaRow[];coverage?:Record<string,any>;onSelect:(r:any)=>void};
 export function ImageAnalysis({rows,coverage,onSelect}:Props){
   const [group,setGroup]=useState('episodes');
   const names:Record<string,string>={episodes:'media_sdk_episodes',events:'media_sdk_events',evidence:'media_evidence',cache:'media_visual_cache'};
   const items=rows.filter(r=>r.name===names[group]);
-  const calls=rows.filter(r=>r.kind==='model'&&['image_review','frame_presence','video_verify'].includes(r.name));
+  const calls=rows.filter(r=>r.kind==='model'&&(['image_review','frame_presence','video_verify'].includes(r.name)||rows.find(p=>p.id===r.data.promptId)?.data.inputMedia?.some((m:any)=>m.kind==='image'||m.kind==='video')));
   return <div className="eg-media">
     <section className="eg-ops-panel eg-media-intro"><span className="eg-media-eyebrow">VISUAL OBSERVATIONS</span><h2>画面、理解，以及判断的依据</h2><p>事件原图与识别结论放在一起看。豆包调用记录单独展示当次上传的图片、提示词与返回结果。</p><small>真实业务库 / 模型追踪库 · 更新于 {time(coverage?.sampledAt)}</small></section>
-    <section className="eg-ops-panel"><div className="eg-media-cardhead"><div><h2>豆包视觉调用</h2><p className="eg-ops-note">新调用的输入按原始字节校验。历史调用没有保存输入时，会明确说明；不拿相邻图片代替。</p></div><span className="eg-ops-badge">{calls.length} 次</span></div>
+    <section className="eg-ops-panel"><div className="eg-media-cardhead"><div><h2>豆包视觉调用</h2><p className="eg-ops-note">输入副本按原始字节校验。Codex 记录的是传入执行器的图片，底层 HTTP 报文不可见；历史缺失不会拿相邻图片代替。</p></div><span className="eg-ops-badge">{calls.length} 次</span></div>
       <div className="eg-vision-calls">{calls.slice(-20).reverse().map(r=>{const prompt=rows.find(p=>p.id===r.data.promptId);return <article key={r.id}><header><strong>{eventLabel(r.name)}</strong><span>{statusLabel(r.status)}</span></header><small>{time(r.at)} · {r.data.model||'模型未记录'}{r.durationMs!=null?` · ${sec(r.durationMs/1000)}`:''}</small><MediaPreview items={prompt?.data.inputMedia} title="豆包识图实际输入"/><p>{output(r)}</p><button onClick={()=>onSelect(r)}>查看上传图片、提示词与完整输出 →</button></article>;})}</div>{!calls.length&&<p className="eg-ops-note">当前筛选内没有已采集的视觉模型调用。</p>}
     </section>
     <div className="eg-media-tabs" aria-label="视觉数据类别">{[['episodes','设备事件核验'],['events','原始事件图片'],['evidence','图片证据结果'],['cache','视觉结果缓存']].map(([id,label])=><button key={id} aria-pressed={id===group} onClick={()=>setGroup(id)}>{label} · {rows.filter(r=>r.name===names[id]).length}</button>)}</div>

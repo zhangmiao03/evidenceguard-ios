@@ -40,7 +40,7 @@ export function RecordContent({ record, records }: { record: RecordItem; records
       {full ? capture.truncated ? "正文已达采集上限 · 截断位置有标记" : "已采集正文 · 密钥已隐藏 · 可用媒体在下方单独展示" : capture?.mode === "unavailable" ? "本条正文采集失败 · 原业务调用不受影响" : "数据库快照 / 历史记录：未采集的输入不能还原"}
     </p>
     {codex && <p className="eg-ops-note">真实 Codex 执行器记录：输入为主程序提供的上下文，输出为执行器返回值。底层 HTTP 次数、原始模型报文和执行器内置提示词不可见；此步骤不计作 HTTP 请求。实际下发的 baseInstructions 与工具回执请查看同一 Trace 的 Codex 协议记录。</p>}
-    {(data.media || data.inputMedia || prompt?.data.inputMedia) && <><h3>{data.media?'记录的来源媒体':'本次提交给模型的媒体'}</h3><MediaPreview items={data.media||data.inputMedia||prompt?.data.inputMedia} title="记录媒体预览"/></>}
+    {(data.media || data.inputMedia || prompt?.data.inputMedia) && <><h3>{data.media?'记录的来源媒体':codex?'本次传给 AI 执行器的媒体':'本次提交给模型的媒体'}</h3><MediaPreview items={data.media||data.inputMedia||prompt?.data.inputMedia} title="记录媒体预览"/></>}
     {record.name==='vector.search'&&<><Body title="查询内容" value={data.query}/><Body title="检索范围与参数" value={body.arguments}/><Body title="候选片段与复核结果" value={body.result}/></>}
     {record.kind==='resource'&&record.name.startsWith('media_')&&<Body title="记录结论" value={data.review||data.visualReview||data.reason||data.title}/>}
     {record.kind === "prompt" && data.request && <Request request={data.request} />}
