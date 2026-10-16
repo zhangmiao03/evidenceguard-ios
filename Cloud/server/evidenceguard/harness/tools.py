@@ -192,7 +192,10 @@ def build_tools(store,cameras,camera_service=None,skill_id=None,camera_id=None,e
         if reference: query=(run or {}).get('message') or query
         if not query and not reference: raise ValueError('录像查询需要文字或参考图片')
         options=dict(history_scope=history_scope,progress=progress)
-        if reference: options.update(image_ref=reference,owner=(run or {}).get('clientId'))
+        # Chat and the deterministic search page share the same proved owner,
+        # including text-only turns. Legacy unbound callers keep the team scope.
+        if (run or {}).get('clientId'): options['owner']=run['clientId']
+        if reference: options['image_ref']=reference
         return await video_service.search(query,camera_id,skill_id,period,**options)
     personal=getattr(cameras,'personal',None)
     if execution_mode=='live' and personal and run and run.get('clientId'):
