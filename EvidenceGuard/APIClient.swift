@@ -52,11 +52,13 @@ struct APIClient {
     var baseURL: URL
     private let transport: URLSession
     private let observations: OpsDelivery
+    private let installationProof: (URL) throws -> String
     private var pinnedAccessToken: String?
     var accessToken: String { pinnedAccessToken ?? ServiceAccess.token(for: baseURL) }
     func scoped() -> APIClient { var copy = self; copy.pinnedAccessToken = accessToken; return copy }
-    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared) {
+    init(baseURL: URL = APIClient.defaultBaseURL, transport: URLSession = .shared, observations: OpsDelivery = .shared, installationProof: @escaping (URL) throws -> String = PushBinding.secret(for:)) {
         self.baseURL = baseURL; self.transport = transport; self.observations = observations
+        self.installationProof = installationProof
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
     func analyzeScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
@@ -339,7 +341,7 @@ struct APIClient {
         }
         request.setValue(MobileServiceConfiguration.installationID, forHTTPHeaderField: "X-EG-Installation-ID")
         if baseURL.scheme == "https" || ["127.0.0.1", "localhost", "::1"].contains(baseURL.host ?? "") {
-            request.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Private-Key")
+            request.setValue(try installationProof(baseURL), forHTTPHeaderField: "X-EG-Private-Key")
         }
         let token = accessToken
         guard !token.isEmpty else { return }

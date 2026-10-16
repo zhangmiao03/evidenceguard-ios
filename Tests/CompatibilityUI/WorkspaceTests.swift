@@ -11,7 +11,7 @@ final class WorkspaceTests: XCTestCase {
     }
 
     func testAllProductTabsRemainReachable() {
-        for title in ["助手", "摄像头Skill", "任务", "记忆", "我的"] {
+        for title in ["助手", "摄像头守护", "设备", "记忆", "我的"] {
             let tab = app.tabBars.buttons[title]
             XCTAssertTrue(tab.exists, "Missing native tab: \(title)")
             tab.tap()

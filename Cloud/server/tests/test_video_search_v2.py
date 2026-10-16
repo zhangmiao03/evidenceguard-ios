@@ -284,7 +284,9 @@ def test_latest_ios_guard_contract_preserves_private_history_retrieval(tmp_path,
     monkeypatch.setenv('EG_AGENT_EXECUTOR','bounded-chat-v1')
     monkeypatch.delenv('EG_VIDEO_INDEX_V2',raising=False)
     provider=ScriptedProvider([tool('search_recordings',{'query':'模型缩短后的描述'}),
-        {'role':'assistant','content':'请查看这段录像。'}, {'role':'assistant','content':'你好。'}])
+        {'role':'assistant','content':'请查看这段录像。'},
+        tool('search_recordings',{'query':'蓝色物体'}), {'role':'assistant','content':'找到一段录像。'},
+        {'role':'assistant','content':'你好。'}])
     app=create_app(tmp_path/'integration.sqlite',start_worker=False,provider=provider)
     owner={'X-EG-Installation-ID':'11111111-1111-4111-8111-111111111111','X-EG-Private-Key':'a'*48}
     other={'X-EG-Installation-ID':'22222222-2222-4222-8222-222222222222','X-EG-Private-Key':'b'*48}
@@ -316,6 +318,16 @@ def test_latest_ios_guard_contract_preserves_private_history_retrieval(tmp_path,
         assert client.post('/api/agent/runs',json=body|{'referenceImageId':None},headers=owner).status_code==409
         assert client.post('/api/agent/runs',json=body|{'conversationId':'foreign-history','requestId':'foreign-001'},headers=other).status_code==404
         assert client.post('/api/agent/runs',json=body|{'executionMode':'live'},headers=owner).status_code==409
+        # Text-only Agent searches must also belong to this installation, so the
+        # same HTTP status API can resume them without a shared team-tool owner.
+        response=client.post('/api/agent/runs',headers=owner,json=body|{
+            'message':'蓝色物体','requestId':'history-text-002','referenceImageId':None})
+        assert response.status_code==202
+        plain=client.portal.call(settle,app.state.agent,response.json())
+        assert plain['status']=='completed'
+        path='/api/video-search/'+plain['videoSearch']['id']
+        assert client.get(path,headers=owner).status_code==200
+        assert client.get(path,headers=other).status_code==404
         # The same new iOS client still gains the intended guard tools in a live turn.
         response=client.post('/api/agent/runs',headers=owner,json=dict(message='你好',
             conversationId='live-integration',requestId='live-guard-001',clientPlatform='ios',guardFlowVersion=1))

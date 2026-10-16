@@ -1,5 +1,4 @@
 import hashlib
-import io
 import json
 from pathlib import Path
 import sqlite3
@@ -7,8 +6,9 @@ import sys
 import tempfile
 import time
 import unittest
+import struct
+import zlib
 from fastapi.testclient import TestClient
-from PIL import Image
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from eg_dashboard.archive import project, read_page, display_check
@@ -24,9 +24,11 @@ class ArchiveTests(unittest.TestCase):
         with sqlite3.connect(self.business) as db:
             db.executescript('CREATE TABLE media(id TEXT,payload TEXT,bytes BLOB,mime TEXT); CREATE TABLE runs(id TEXT,payload TEXT); CREATE TABLE video_query_images(id TEXT,payload TEXT);')
             for i in range(171):
-                image=Image.new('RGB',(2,2),(i,0,0));buf=io.BytesIO();image.save(buf,format='PNG')
+                def chunk(tag,data):return struct.pack('!I',len(data))+tag+data+struct.pack('!I',zlib.crc32(tag+data))
+                image=(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('!2I5B',2,2,8,2,0,0,0))+
+                       chunk(b'IDAT',zlib.compress((b'\0'+bytes((i,0,0))*2)*2))+chunk(b'IEND',b''))
                 frame={'device_id':'camera-1','received_at':1000+i//2,'source_type':'official_live_ios'}
-                db.execute('INSERT INTO media VALUES (?,?,?,?)',(f'image-{i:03}',json.dumps({'frame':frame}),buf.getvalue(),'image/png'))
+                db.execute('INSERT INTO media VALUES (?,?,?,?)',(f'image-{i:03}',json.dumps({'frame':frame}),image,'image/png'))
             for i in range(97):
                 run={'id':f'run-{i:03}','text':'真实回复 private-secret-abcdefgh','createdAt':1000+i//2,'status':'completed','clientPlatform':'ios'}
                 if i==0: run['referenceImageId']='private-reference'

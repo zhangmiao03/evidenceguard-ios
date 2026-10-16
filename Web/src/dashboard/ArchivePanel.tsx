@@ -5,13 +5,13 @@ import {deviceLabel,eventLabel,statusLabel} from './labels';
 import {time} from './MediaPanels';
 import './archive.css';
 type Item=Record<string,any>;
-type Props={section:'images'|'replies';environment:string;online:boolean;filters:Record<string,string>;rows:any[];onSelect:(r:any)=>void};
+type Props={section:'images'|'replies';environment:string;online:boolean;filters:Record<string,string>;rows:any[];onSelect:(r:any,context?:any[])=>void};
 const provenance=(s:string)=>( {official_live_ios:'iOS 实时取样',official_live_web:'Web 实时取样',official_sdk:'官方 SDK 事件',synthetic_demo:'合成测试图',fixture:'测试素材'} as Record<string,string>)[s]||s||'来源未记录';
 const displayStatus=(s:string)=>( {backend_match:'App 正文摘要与后端一致',backend_mismatch:'App 正文摘要不一致，需核查',legacy_receipt:'旧版 App 已上报展示，缺少文字校验',not_reported:'尚无客户端展示回执'} as Record<string,string>)[s]||'尚未核验';
 function History({run,environment,onSelect}:{run:Item;environment:string;onSelect:Props['onSelect']}){
   const [records,setRecords]=useState<any[]>([]),[next,setNext]=useState<Item|null>(null),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   async function load(){setBusy(true);setError('');try{const params=new URLSearchParams({environment,...next});const result=await cloudJSON(`/dashboard/api/archive-trace/${encodeURIComponent(run.id)}?${params}`);setRecords(old=>[...old,...result.records.filter((r:any)=>!old.some(v=>v.id===r.id))]);setNext(result.next);setLoaded(true);}catch(e){setError(e instanceof Error?e.message:'步骤读取失败');}finally{setBusy(false);}}
-  return <div className="eg-archive-history"><p>{run.retainedSteps?`目前保留 ${run.retainedSteps} 条关联步骤；可能不包含早期已淘汰的记录。`:'历史步骤未保留或当时未采集，最终回复仍在业务库。'}</p>{(!loaded||next)&&run.retainedSteps>0&&<button onClick={()=>void load()} disabled={busy}>{busy?'正在读取…':loaded?'加载更多步骤':'查看已保留的执行步骤'}</button>}{error&&<p role="alert">{error}</p>}<ol>{records.map(r=><li key={r.id}><button onClick={()=>onSelect(r)}>{time(r.at)} · {eventLabel(r.name)} · {statusLabel(r.status)} →</button></li>)}</ol></div>;
+  return <div className="eg-archive-history"><p>{run.retainedSteps?`目前保留 ${run.retainedSteps} 条关联步骤；可能不包含早期已淘汰的记录。`:'历史步骤未保留或当时未采集，最终回复仍在业务库。'}</p>{(!loaded||next)&&run.retainedSteps>0&&<button onClick={()=>void load()} disabled={busy}>{busy?'正在读取…':loaded?'加载更多步骤':'查看已保留的执行步骤'}</button>}{error&&<p role="alert">{error}</p>}<ol>{records.map(r=><li key={r.id}><button onClick={()=>onSelect(r,records)}>{time(r.at)} · {eventLabel(r.name)} · {statusLabel(r.status)} →</button></li>)}</ol></div>;
 }
 export function ArchivePanel({section,environment,online,filters,rows,onSelect}:Props){
   const [value,setValue]=useState<Item|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(true),[refresh,setRefresh]=useState(0),[cursors,setCursors]=useState<string[]>(['']);

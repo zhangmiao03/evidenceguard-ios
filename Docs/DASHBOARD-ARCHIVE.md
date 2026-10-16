@@ -2,6 +2,8 @@
 
 2026-10-17。对应问题和原始计数见 [修复前核查](IMAGE-STORAGE-AND-APP-REPLY-AUDIT.md)。核查快照不是当前实时统计。
 
+部署、真实后端任务与校验结果见 [2026-10-17 发布验收](verification/dashboard-archive-2026-10-17.md)。
+
 ## 数据路径
 
 手机 SDK 取样 → 业务 `media` BLOB 事务保存 → 独立只读采集器 → 脱敏分页台账与预览缓存 → 匿名 Dashboard。
