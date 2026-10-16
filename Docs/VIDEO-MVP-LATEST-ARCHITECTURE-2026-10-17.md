@@ -136,6 +136,8 @@ flowchart TD
 
 部署前按当前流程保存一致性数据库、媒体目录、配置与实际 service release；demo、team、review 的资料不能混用。旧索引表与 `legacyIndex` 继续保留，`EG_VIDEO_INDEX_V2=0` 可退回已有旧文字索引路径；只有 v2 索引的新录像不会凭空产生旧索引。录像重建期间保持单套业务 worker 写库，失败不得覆盖已有原片。
 
+后续执行状态已更新：真实 Android 原片的三种检索及云端 Agent 已验收，demo 已发布合并后的运行时；iOS 已补充事件录像下载/上传和证据图片检索入口，仍待 Mac 与 iPhone 验证。最新实测、源码及回滚见 [真机录像接入与验收](VIDEO-HARDWARE-ACCEPTANCE-2026-10-17.md)。下文数字保留为最初架构整合快照。
+
 本轮在隔离的 Git 工作区与不同的临时数据库运行，避免并行开发文件影响测试：Linux 后端 418 项通过；Windows 408 项通过、10 项依赖 POSIX 可执行脚本的检查跳过，由 Linux 全部覆盖；Dashboard 37 项、发布检查 24 项、Web 单元 20 项、TypeScript 与生产构建通过。Windows Playwright 的 Chromium / Firefox / WebKit / mobile WebKit 共 12 项归档和媒体预览检查通过。两个 iOS target 均只引用一份新增页面，Xcode 工程解析与 SDK 宿主 plist 检查通过。
 
 原生网络测试、SwiftUI 编译、真实 arm64 SDK 链接与 iPhone 交互仍需要 Mac。仓库中此前 build 17 的发布记录不等于本次合并后的 iOS 已通过编译或已分发；上述自动化也不替代真实录像与模型质量验收。本次未把共享开发目录里另外进行中的硬件 v0.3 / 视觉模块修改加入验证快照或提交。

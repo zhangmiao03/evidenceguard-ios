@@ -11,7 +11,10 @@ from pathlib import Path
 import sqlite3
 import subprocess
 
-import activate as legacy
+if __package__:
+    from . import activate as legacy
+else:
+    import activate as legacy
 
 DROPIN = Path('/etc/systemd/system/evidenceguard-demo.service.d/99-zzzzzzzz-vector-runtime.conf')
 
@@ -19,6 +22,12 @@ DROPIN = Path('/etc/systemd/system/evidenceguard-demo.service.d/99-zzzzzzzz-vect
 def current_args():
     pid = legacy.state(legacy.SERVICE, 'MainPID')
     return Path('/proc', pid, 'cmdline').read_bytes().decode().strip('\0').split('\0')
+
+
+def configuration():
+    paths = legacy.state(legacy.SERVICE, 'DropInPaths').split()
+    paths += [legacy.state(legacy.SERVICE, 'FragmentPath'), '/etc/evidenceguard-demo/cloud.env']
+    return {p:legacy.digest(Path(p)) for p in paths if p}
 
 
 def audit_runtime(audit):
@@ -29,8 +38,10 @@ def audit_runtime(audit):
         item = audit['services'][name]
         legacy.audit_source(Path(item['source']), item['files'])
     dropins = legacy.state(legacy.SERVICE, 'DropInPaths').split()
-    if dropins != active['dropins'] or any(Path(p).name >= DROPIN.name for p in dropins):
+    if dropins != active['dropins'] or any(Path(p).name > DROPIN.name for p in dropins):
         raise RuntimeError('Systemd overrides changed or a later runtime exists')
+    if configuration() != audit['configuration']:
+        raise RuntimeError('Service configuration changed after audit')
     config = json.loads(legacy.CONFIG.read_text())
     if config['environments']['demo']['source'] != active['source'] + '/evidenceguard':
         raise RuntimeError('Collector source changed after audit')
@@ -40,8 +51,9 @@ def idle():
     with sqlite3.connect((legacy.DATA/'evidenceguard.sqlite3').as_uri()+'?mode=ro', uri=True) as db:
         active = db.execute("SELECT COUNT(*) FROM runs WHERE json_extract(payload,'$.status') IN ('queued','running','waiting')").fetchone()[0]
         indexing = db.execute("SELECT COUNT(*) FROM recordings WHERE json_extract(payload,'$.status') IN ('queued','indexing')").fetchone()[0]
-    if active or indexing:
-        raise RuntimeError('Demo has active Agent or indexing jobs; retry after they finish')
+        searching = db.execute("SELECT COUNT(*) FROM video_search_jobs WHERE json_extract(payload,'$.status') IN ('searching','verifying')").fetchone()[0] if db.execute("SELECT 1 FROM sqlite_master WHERE name='video_search_jobs'").fetchone() else 0
+    if active or indexing or searching:
+        raise RuntimeError('Demo has active Agent, indexing or retrieval jobs; retry after they finish')
 
 
 def restore(backup):
@@ -73,7 +85,8 @@ def activate(release):
     import hashlib
     saved = dict(release=str(release), contentHash=manifest['contentHash'],
         oldSource=config['environments']['demo']['source'], newSource=str(release/'Cloud/server/evidenceguard'),
-        dropin=None, dropinMode=0o644, configMode=legacy.CONFIG.stat().st_mode&0o777,
+        dropin=base64.b64encode(DROPIN.read_bytes()).decode() if DROPIN.exists() else None,
+        dropinMode=DROPIN.stat().st_mode&0o777 if DROPIN.exists() else 0o644, configMode=legacy.CONFIG.stat().st_mode&0o777,
         newDropinHash=hashlib.sha256(new.encode()).hexdigest(), otherPids=other,
         originalExecStart=legacy.state(legacy.SERVICE, 'ExecStart'))
     (backup/'manifest.json').write_text(json.dumps(saved, indent=2))

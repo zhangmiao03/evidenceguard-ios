@@ -134,11 +134,11 @@ struct HardwareExecutorWorker: View {
     let active: Bool
     private var scopeKey: String {
         let credentialHash = SHA256.hash(data: Data(client.accessToken.utf8)).map { String(format: "%02x", $0) }.joined()
-        return "\(active):\(client.baseURL):\(credentialHash):\(connection.devices.map(\.sn).joined(separator: ","))"
+        return "\(active):\(connection.downloadingRecording):\(client.baseURL):\(credentialHash):\(connection.devices.map(\.sn).joined(separator: ","))"
     }
     var body: some View {
         Color.clear.frame(width:0,height:0).task(id: scopeKey) {
-            if active && connection.canDiscover { await connection.toolExecutor.run(connection:connection,client:client.scoped()) }
+            if active && connection.canDiscover && !connection.downloadingRecording { await connection.toolExecutor.run(connection:connection,client:client.scoped()) }
             else { await connection.toolExecutor.shutdown() }
         }
     }

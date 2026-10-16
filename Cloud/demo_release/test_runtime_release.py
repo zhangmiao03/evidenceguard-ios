@@ -1,11 +1,8 @@
-import importlib.util
 import json
 from pathlib import Path
-import sys
 import pytest
 
-sys.path.insert(0,str(Path(__file__).parent))
-import runtime_release as runtime
+from Cloud.demo_release import runtime_release as runtime
 
 
 def test_current_source_and_all_overrides_are_required(tmp_path,monkeypatch):
@@ -16,6 +13,8 @@ def test_current_source_and_all_overrides_are_required(tmp_path,monkeypatch):
     checked=[]
     monkeypatch.setattr(runtime.legacy,'audit_source',lambda p,h:checked.append(str(p)))
     audit={'services':{n:dict(source='/current',files={},args=['current'],dropins=['/etc/90-current.conf']) for n in ('evidenceguard-demo','evidenceguard','evidenceguard-review')}}
+    audit['configuration']={'env-file':'hash'}
+    monkeypatch.setattr(runtime,'configuration',lambda:dict(audit['configuration']))
     runtime.audit_runtime(audit)
     assert len(checked)==3
     monkeypatch.setattr(runtime,'current_args',lambda:['new-operator-release'])
@@ -27,6 +26,24 @@ def test_current_source_and_all_overrides_are_required(tmp_path,monkeypatch):
 
 def test_runtime_rollback_uses_its_own_dropin_and_existing_code_only_restore(monkeypatch):
     calls=[]
+    monkeypatch.setattr(runtime.legacy,'DROPIN',runtime.legacy.DROPIN)
     monkeypatch.setattr(runtime.legacy,'restore',lambda p:calls.append((p,runtime.legacy.DROPIN)))
     runtime.restore('backup')
     assert calls==[('backup',runtime.DROPIN)]
+
+
+def test_idle_rejects_inflight_retrieval(tmp_path,monkeypatch):
+    import sqlite3
+    monkeypatch.setattr(runtime.legacy,'DATA',tmp_path)
+    with sqlite3.connect(tmp_path/'evidenceguard.sqlite3') as db:
+        for table in ('runs','recordings','video_search_jobs'):
+            db.execute('CREATE TABLE '+table+' (payload TEXT)')
+        db.execute('INSERT INTO video_search_jobs VALUES (?)',(json.dumps({'status':'verifying'}),))
+    with pytest.raises(RuntimeError,match='retrieval'):runtime.idle()
+
+
+def test_capture_includes_fixed_runtime_prompts_but_not_private_files(tmp_path):
+    from Cloud.demo_release.capture_runtime import inventory
+    prompt=tmp_path/'evidenceguard/vision/prompts/common.md';prompt.parent.mkdir(parents=True);prompt.write_text('rules')
+    (tmp_path/'evidenceguard/private.env').write_text('secret')
+    assert list(inventory(tmp_path))==['evidenceguard/vision/prompts/common.md']

@@ -586,6 +586,7 @@ enum SDKCredentialVault {
         var returned = false
         defer { if !returned { try? FileManager.default.removeItem(at: expected) } }
         // The native decoder is single-player: suspend live playback before download.
+        await toolExecutor.shutdown()
         for value in liveControllers.values { await value.stopForCameraSwitch() }
         try Task.checkCancellation()
         guard generation == requestGeneration else { throw CancellationError() }
