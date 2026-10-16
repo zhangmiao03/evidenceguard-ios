@@ -13,7 +13,7 @@ const checks = [
   [
     "auth",
     "账号鉴权与设备唤醒",
-    "原版配置表单 → 连接；记录同一账号、SN 和当前网络。",
+    "新版原版表单选择 Token 登录，复用现有 Token；account_uuid 登录会刷新 Token，可能影响 App。记录账号、SN 和当前网络。",
   ],
   [
     "live",
@@ -27,8 +27,8 @@ const checks = [
   ],
   [
     "ptz",
-    "云台与其他设备控制",
-    "T8171 检查工具栏实际露出的控制；未露出的项目在原生官方 Demo 继续核验。T8214 不按云台验收。",
+    "原生 SDK 控制边界",
+    "这两款设备的 Web SDK 路线仅支持直播取流。T8171 左右/上下云台须用原生 App SDK；Web 按钮只能委派在线 iOS 执行端。T8214 门铃没有云台。",
   ],
   [
     "network",
@@ -53,7 +53,7 @@ export function OfficialWorkspace({
   onReturn,
 }: {
   token: string;
-  defaults: Auth & { stationSn?: string };
+  defaults: Auth & { stationSn?: string; token?: string };
   onReturn: () => void;
 }) {
   const [manifest, setManifest] = useState<Manifest | null>(null);

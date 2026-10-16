@@ -7,6 +7,9 @@ import { loadWebIoTSdk } from "@official/utils/load-sdk";
 import { seedAuthConfig } from "@official/config";
 import "@official/styles/index.css";
 import { proxyTarget } from "../src/official-protocol.mjs";
+import { guardSDKLogs, relaySDKRequest } from "../src/sdk-transport";
+
+guardSDKLogs();
 
 let token = "",
   channel = "",
@@ -64,11 +67,7 @@ window.fetch = async (input, init) => {
   const timer = setTimeout(abort, 90000);
   try {
     if (request.signal.aborted) abort();
-    return await originalFetch(new Request(location.origin + target, request), {
-      headers,
-      signal: controller.signal,
-      credentials: "same-origin",
-    });
+    return await relaySDKRequest(originalFetch, request, location.origin + target, headers, controller.signal);
   } finally {
     clearTimeout(timer);
     pending.delete(controller);

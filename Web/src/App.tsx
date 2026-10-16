@@ -3,6 +3,7 @@ import { api, type Capture, type Device } from "./api";
 import { observe } from "./telemetry";
 import { newID } from "./browser-support";
 import { authenticate, clearSDKCredentials, emptyAuth, type Auth } from "./sdk";
+import { safeSDKError } from "./sdk-transport";
 import { LiveView } from "./LiveView";
 import { HardwarePanel } from "./HardwareTools";
 import { CameraEvents } from "./CameraEvents";
@@ -60,6 +61,8 @@ export default function App() {
   const [auth, setAuth] = useState<Auth>(emptyAuth),
     [integration, setIntegration] = useState<unknown>(null),
     [settings, setSettings] = useState(false);
+  const [authMode, setAuthMode] = useState<"token" | "exchange">("token"),
+    [officialToken, setOfficialToken] = useState("");
   const [live, setLive] = useState<Device | null>(null),
     [ready, setReady] = useState(false),
     [capture, setCapture] = useState<Capture | null>(null);
@@ -140,7 +143,7 @@ export default function App() {
     const controls = () =>
       Array.from(
         root?.querySelectorAll<HTMLElement>(
-          "button:not(:disabled),input:not(:disabled)",
+          "button:not(:disabled),input:not(:disabled),select:not(:disabled)",
         ) || [],
       );
     controls()[0]?.focus();
@@ -174,7 +177,7 @@ export default function App() {
     try {
       await fn();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "操作未完成");
+      setError(safeSDKError(e instanceof Error ? e.message : "操作未完成"));
     } finally {
       setBusy(false);
     }
@@ -229,11 +232,12 @@ export default function App() {
   };
   const login = () =>
     action(async () => {
-      if (Object.values(auth).some((v) => !v.trim()))
-        throw new Error("请填写完整的官方 Web 账号参数");
       await endLive();
       const epoch = connectionEpoch.current;
-      const result = await authenticate(auth);
+      const result = await authenticate(authMode === "token" ? {
+        appName: auth.appName, clientId: auth.clientId, presetKey: auth.presetKey,
+        eufyUserId: auth.eufyUserId, authorization: officialToken,
+      } : auth);
       if (epoch === connectionEpoch.current) setIntegration(result);
     });
   const add = () =>
@@ -243,7 +247,7 @@ export default function App() {
       if (!/^T(8171|8214)[A-Z0-9]{3,27}$/.test(serial))
         throw new Error("请输入 T8171 或 T8214 的完整设备序列号");
       const all = await api.request<Device[]>("/api/devices/import", {
-        accountId: auth.eufyUserId,
+        accountId: auth.eufyUserId.trim(),
         environment: "PR",
         platform: "web",
         devices: [
@@ -288,6 +292,7 @@ export default function App() {
     clearChatDrafts();
     setIntegration(null);
     setAuth(emptyAuth);
+    setOfficialToken("");
     clearSDKCredentials();
     setConnected(false);
     setCloudOnline(false);
@@ -329,8 +334,9 @@ export default function App() {
     return (
       <OfficialWorkspace
         token={api.token || token}
-        defaults={{ ...auth, stationSn: device?.sn }}
+        defaults={{ ...auth, token: officialToken, stationSn: device?.sn }}
         onReturn={() => {
+          setOfficialToken("");
           setOfficialMode(false);
           observe({ name: "sdk.mode_changed", traceId: newID(), status: "product" }, api.token);
           setLive(null);
@@ -551,6 +557,10 @@ export default function App() {
                       {live ? "前台直播" : "尚未开流"}
                     </span>
                   </div>
+                  {device?.model === "T8214" && <p className="subtle-note">
+                    双摄门铃：前向广角主摄观察来访者，下视摄像头观察门槛和包裹。
+                    Web 接收设备合成的一路画面；可在官方 App 调整拼接方式，不代表 Web 可独立选择两个通道。
+                  </p>}
                   {live && integration ? (
                     <LiveView
                       key={live.id}
@@ -757,11 +767,24 @@ export default function App() {
             ) : (
               <>
                 <p className="subtle-note">
-                  使用主办方提供的 Web
-                  鉴权参数。参数只保留在页面内存；这是受信任团队的接入工作台。
+                  已有赛事 User ID 和 Token 可直接鉴权。应用参数使用官方 App 示例中的 PR/US 配置。
+                  参数仅保留在页面内存；赛事 Token 与工作台的团队访问令牌用途不同。
                 </p>
+                <label>
+                  官方账号接入方式
+                  <select value={authMode} disabled={busy || !!integration}
+                    onChange={event => {
+                      setAuthMode(event.target.value as "token" | "exchange");
+                      setOfficialToken("");
+                      setAuth(old => ({...old, clientSecret: "", accountUuid: ""}));
+                      setError("");
+                    }}>
+                    <option value="token">赛事 Token 直连（PR / US）</option>
+                    <option value="exchange">原版参数换取 Token</option>
+                  </select>
+                </label>
                 <div className="form-grid">
-                  {Object.keys(emptyAuth).map((k) => (
+                  {Object.keys(emptyAuth).filter(k => authMode === "exchange" || !["clientSecret", "accountUuid"].includes(k)).map((k) => (
                     <label key={k}>
                       {
                         {
@@ -780,7 +803,7 @@ export default function App() {
                             : "text"
                         }
                         autoComplete="off"
-                        disabled={!!integration}
+                        disabled={busy || !!integration}
                         value={auth[k as keyof Auth]}
                         onChange={(e) =>
                           setAuth((old) => ({ ...old, [k]: e.target.value }))
@@ -788,14 +811,28 @@ export default function App() {
                       />
                     </label>
                   ))}
+                  {authMode === "token" && <label>
+                    赛事 Token
+                    <input type="password" autoComplete="off" spellCheck={false}
+                      disabled={busy || !!integration} value={officialToken}
+                      onChange={event => setOfficialToken(event.target.value)} />
+                  </label>}
                 </div>
+                {authMode === "token" && <p className="subtle-note">
+                  App Name / Client ID 来自 BusinessLoginConfig.EnvPR；Preset Key 来自 DomainProfileDefaults.US。
+                  此操作验证 Web 信令权限；设备在线、绑定关系和视频首帧需分别检查。
+                </p>}
+                {authMode === "exchange" && <p className="notice">
+                  此方式会重新生成 Token，可能使 App 和其他 Web 页面正在使用的 Token 失效。
+                  已有赛事 Token 时请使用“赛事 Token 直连”。
+                </p>}
                 <button
                   className="primary"
                   disabled={busy || !!integration}
                   onClick={login}
                 >
                   {integration
-                    ? "✓ 官方鉴权完成"
+                    ? authMode === "token" ? "✓ 官方信令鉴权通过" : "✓ 官方鉴权完成"
                     : busy
                       ? "正在连接…"
                       : "连接官方服务"}
@@ -840,6 +877,7 @@ export default function App() {
                       await endLive();
                       setIntegration(null);
                       setAuth(emptyAuth);
+                      setOfficialToken("");
                       clearSDKCredentials();
                     }}
                   >

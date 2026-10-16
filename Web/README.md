@@ -2,6 +2,14 @@
 
 Web 0.2（React 18 + TypeScript + Vite），与新版 iOS 共用 Cloud，提供 **助手 / 摄像头 Skill / 任务 / 记忆 / 设置** 五个功能区。桌面使用侧栏，手机使用底部导航；保留官方直播、按请求获取新画面与官方 SDK 工作区切换。
 
+2026-10-16 已接入官方 `web-sdk-hackathon-demo-1016-1411.zip` 的直接 Token 登录流程。产品“接入设备”默认选择“赛事 Token 直连（PR / US）”，填写 User ID、Token 和官方示例的 App Name / Client ID / Preset Key，不调用 `request_token`。旧的 account_uuid 换取流程仍保留并明确提示会刷新 Token。官方工作区也恢复为这份新版 Demo，保留两种登录方式；Token 不进入浏览器持久存储、页面日志或 Git。
+
+**硬件边界：用户于 2026-10-16 手动确认 Web 取流正常；Web 自制左右按钮不能直接控制 T8171 云台。** 当前两款设备的 Web SDK 只提供 Live 媒体路线。控制须由 iOS/Android 原生 App SDK 执行；本项目 Web 通过 `/api/hardware/*` 委派前台 iOS，仍需实际 SDK 回执与真机验证。T8214 门铃没有云台。不能把网页布局、SDK 的同名导出方法或 Token 共用等同于控制能力或多端同时取流通过。
+
+T8214 的前向广角主摄关注门口与来访者，下视摄像头关注门槛与包裹。官方文档明确 Web 接收设备端合成的一路视频，App 调整拼接方式后 Web 随之切换；产品 `channelId=main` 表示逻辑输入，不代表只采前向主摄。Agent 按实际画面区分视角，不预设布局或将重叠目标重复计数。
+
+新版包的 UMD 与原交付逐字节一致，改变的是 Demo 的鉴权逻辑；完整比较、验收范围和当前待测项见 [10 月 16 日接入记录](../Docs/SDK-TOKEN-AND-HARDWARE-BOUNDARIES-2026-10-16.md)。本节是本地源码状态，线上部署以发布记录为准。
+
 2026-10-15 工具链更新：摄像头页合并 `/api/devices` 与 bootstrap 的事件设备，不为仅事件设备虚构直播 SN；新增 `/api/sdk/events` 时间线、缺图/核验/录像标记。硬件工具面板与助手操作卡接 `/api/hardware/*`，可向前台 iOS 委派有限 SDK 控制；Web 自身只登记观察执行器，复用当前播放器。确认、结果未知时人工核对及显式执行端交接均在页面可操作。
 
 Web 工具观察的隐私状态默认 unknown，仅当前直播宿主可以在核对官方设置后授权 5 分钟人工诊断，不自动开放 Agent 权限。原有 `request_camera_snapshot` 实时画面能力不变。官方模式切换会先结束工具领取、媒体会话与订阅。完整接口和验收边界见 [硬件工具接入说明](../Docs/HARDWARE-TOOLS-INTEGRATION.md)，无需启动包内独立 v2 测试服务。

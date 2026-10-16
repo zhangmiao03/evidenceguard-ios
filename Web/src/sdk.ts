@@ -6,6 +6,7 @@ import { requireSecureConnection } from "./browser-support";
 import { getDomain, exchangeKey, requestToken } from "./vendor";
 import { HeaderBuilder } from "./vendor/header";
 import { Request as VendorRequest } from "./vendor/request";
+import { guardSDKLogs, relaySDKRequest } from "./sdk-transport";
 
 export type SDKFrame = {
   blob: Blob;
@@ -22,6 +23,14 @@ export type Auth = {
   eufyUserId: string;
   accountUuid: string;
 };
+export type TokenAuth = Pick<Auth, "appName" | "clientId" | "presetKey" | "eufyUserId"> & {
+  authorization: string;
+};
+export interface SDKIntegration {
+  onBeforeInit(): Promise<void>;
+  getAuthService(): { getWSSign(): Promise<unknown> };
+  onBeforeDestroy(): Promise<void>;
+}
 export const emptyAuth: Auth = {
   appName: "",
   clientId: "",
@@ -40,7 +49,7 @@ export interface SDK {
     deviceSn: string;
     onError: (error: string) => void;
   }>;
-  OpenAPIIntegration: new (config: Record<string, string>) => unknown;
+  OpenAPIIntegration: new (config: Record<string, string>) => SDKIntegration;
   subscribeMediaChannelFrames: (
     sn: string,
     callback: (frame: SDKFrame) => void,
@@ -61,7 +70,10 @@ declare global {
 }
 let loading: Promise<SDK> | undefined;
 let patched = false;
+let credentialGeneration = 0;
+const pending = new Set<AbortController>();
 export function loadSDK(): Promise<SDK> {
+  guardSDKLogs();
   if (
     typeof window.WebSDK?.Provider !== "undefined" &&
     typeof window.WebSDK?.subscribeMediaChannelFrames === "function"
@@ -103,7 +115,7 @@ function installProxy() {
   if (patched) return;
   patched = true;
   const original = window.fetch.bind(window);
-  window.fetch = (input, init) => {
+  window.fetch = async (input, init) => {
     const url = new URL(
       input instanceof globalThis.Request ? input.url : String(input),
       location.href,
@@ -114,18 +126,60 @@ function installProxy() {
     const headers = new Headers(request.headers);
     headers.set("X-EG-Access-Token", api.token);
     const target = `${location.origin}/api/sdk/openapi${url.pathname}${url.search}`;
-    return original(new globalThis.Request(target, request), {
-      headers,
-      credentials: "same-origin",
-    });
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    pending.add(controller);
+    request.signal.addEventListener("abort", abort, { once: true });
+    if (request.signal.aborted) abort();
+    const timer = setTimeout(abort, 30000);
+    try {
+      return await relaySDKRequest(original, request, target, headers, controller.signal);
+    } finally {
+      clearTimeout(timer);
+      pending.delete(controller);
+      request.signal.removeEventListener("abort", abort);
+    }
   };
 }
 
-export async function authenticate(auth: Auth): Promise<unknown> {
+export async function authenticate(auth: Auth | TokenAuth): Promise<unknown> {
   requireSecureConnection();
   if (!crypto.subtle) throw new Error("当前浏览器不支持安全的设备鉴权，请使用 HTTPS 和较新的浏览器。");
+  if (Object.values(auth).some(value => !value.trim()))
+    throw new Error("请填写完整的官方账号参数");
+  clearSDKCredentials();
+  const generation = credentialGeneration;
+  const current = () => {
+    if (generation !== credentialGeneration) throw new Error("官方账号连接已取消");
+  };
   await loadSDK();
+  current();
   installProxy();
+  if ("authorization" in auth) {
+    const config = {
+      apiDomain: "https://openapi-us.eufylife.com",
+      appName: auth.appName.trim(), clientId: auth.clientId.trim(),
+      presetKey: auth.presetKey.trim(), userId: auth.eufyUserId.trim(),
+      authorization: auth.authorization.trim(),
+    };
+    const probe = new window.WebSDK.OpenAPIIntegration(config);
+    try {
+      // Verify the issued token, not merely that ECDH succeeded. The live
+      // Provider receives a fresh integration with its own lifecycle below.
+      await probe.onBeforeInit();
+      current();
+      const sign = await probe.getAuthService().getWSSign();
+      current();
+      if (typeof sign !== "string" || !sign.trim())
+        throw new Error("missing Web signature");
+      return new window.WebSDK.OpenAPIIntegration(config);
+    } catch {
+      if (generation === credentialGeneration) clearSDKCredentials();
+      throw new Error("赛事 Token 的 Web 信令鉴权未通过，请核对 PR/US 应用参数、Token 有效期和网络。");
+    } finally {
+      await probe.onBeforeDestroy?.();
+    }
+  }
   VendorRequest.AccessToken = "";
   VendorRequest.headerBuilder = new HeaderBuilder({
     appName: auth.appName,
@@ -133,15 +187,19 @@ export async function authenticate(auth: Auth): Promise<unknown> {
     CLIENT_SECRET: auth.clientSecret,
   });
   const domain = await getDomain("us", "US");
+  current();
   if (new URL(domain).origin !== "https://openapi-us.eufylife.com")
     throw new Error("当前接入只配置了官方 US 环境，请核对赛事账号区域");
   const proxy = "/api/sdk/openapi";
-  VendorRequest.ecdhKey = await exchangeKey(proxy, auth.presetKey);
+  const ecdhKey = await exchangeKey(proxy, auth.presetKey);
+  current();
+  VendorRequest.ecdhKey = ecdhKey;
   VendorRequest.baseURL = proxy;
   const token = await requestToken({
     eufy_user_id: auth.eufyUserId,
     account_uuid: auth.accountUuid,
   });
+  current();
   if (!token?.access_token) throw new Error("官方鉴权没有返回有效访问令牌");
   VendorRequest.AccessToken = token.access_token;
   return new window.WebSDK.OpenAPIIntegration({
@@ -155,6 +213,9 @@ export async function authenticate(auth: Auth): Promise<unknown> {
 }
 
 export function clearSDKCredentials() {
+  credentialGeneration++;
+  pending.forEach(controller => controller.abort());
+  pending.clear();
   VendorRequest.AccessToken = "";
   // Static signing state must not remain after a user disconnects the account.
   VendorRequest.headerBuilder = undefined as unknown as HeaderBuilder;

@@ -166,6 +166,7 @@ async function live(page: Page) {
   await page.getByRole("button", { name: /测试客厅.*T8171/ }).click();
   await page.getByRole("button", { name: "＋ 接入设备", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("官方账号接入方式").selectOption("exchange");
   for (const input of await dialog.locator("input").all()) {
     const type = await input.getAttribute("type");
     if (type !== "checkbox") await input.fill("synthetic");

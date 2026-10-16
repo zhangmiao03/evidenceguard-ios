@@ -71,6 +71,7 @@ export function HardwarePanel({ deviceID }: { deviceID: string }) {
   async function action(run: () => Promise<unknown>) { setBusy(true); setError(""); try { await run(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : "操作未完成"); } finally { setBusy(false); } }
   return <section className="card hardware-panel">
     <h2>硬件工具与执行回执</h2>
+    <p className="hint">Web 直接接入提供直播与新帧。云台等控制需由前台在线的 iOS 原生 SDK 执行；网页按钮本身不具备设备控制通道。</p>
     {!device ? <p>尚未登记前台执行器。iOS 连接官方设备后登记；Web 打开当前设备直播后登记。</p> : <>
       <p>执行端 {device.executorPlatform} · {device.executorOnline ? "前台在线" : "已离线"} · 隐私 {device.privacy === "off" ? "关闭" : device.privacy === "on" ? "开启" : "待核对"}</p>
       <p className="hint">只登记已有执行路线。真机通过记录与 SDK 构件、设备型号和适配版本绑定；控制仍需逐次确认。</p>
