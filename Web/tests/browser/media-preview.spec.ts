@@ -13,7 +13,12 @@ for (const executor of ['http','codex'] as const) test(`${executor}: actual medi
   row('recording','media_recordings',{id:'recording',title:'检索测试录像',sourceType:'synthetic_review',media:[{kind:'video',previewUrl:video}]}),
   row('search','vector.search',{capture,query:'包裹何时离开区域',content:{arguments:{query:'包裹何时离开区域'},result:{status:'completed',candidateCount:1,videos:[{recordingId:'recording',title:'检索测试录像',similarity:.73456,verdict:'uncertain',summary:'遮挡期间无法确认拿取动作',segmentStart:0,segmentEnd:10,seekSeconds:4}]}}},'event')];
  const outside:string[]=[];page.on('request',r=>{if(r.url().includes('untrusted.invalid'))outside.push(r.url());});
- await page.route('**/dashboard/api/media/demo/*',r=>r.fulfill({contentType:'image/jpeg',body:readFileSync(new URL('../../src/dashboard/assets/PetThumb.jpg',import.meta.url))}));
+ await page.route('**/dashboard/api/media/demo/*',r=>{
+  // Model an expired video copy with an actual HTTP failure. Some WebKit
+  // media backends accept a JPEG as a still-video stream instead of failing.
+  if(new URL(r.request().url()).pathname===video)return r.fulfill({status:410,contentType:'application/json',body:'{"detail":"Media copy expired"}'});
+  return r.fulfill({contentType:'image/jpeg',body:readFileSync(new URL('../../src/dashboard/assets/PetThumb.jpg',import.meta.url))});
+ });
  await page.goto('/dashboard?view=images');
  await page.getByLabel('导入追踪 JSON').setInputFiles({name:'media.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
  await page.getByText('视觉分析、事件核验与模型实际输入',{exact:true}).click();
