@@ -4,22 +4,30 @@ import json
 import math
 
 
-def read_media(path, now, signature=None):
+def read_media(path, now, signature=None, assets=None, video_root=None):
     from .collector import readonly, resource
     from .content import safe_record
     rows = []
     summary = {'status': 'connected', 'sampledAt': now, 'limitPerTable': 120,
                'currentSignature': signature, 'tables': {},
-               'definition': 'Database snapshot; vector values are a preview, not model confidence. No media bytes or URLs.'}
+               'definition': 'Database snapshot; referenced source media is copied to a bounded public cache. Similarity is not confidence.'}
     fields = {
         'recordings': {'id','cameraId','title','recordedAt','sourceType','createdAt','status','duration','segmentCount','indexedSegments','embeddingModel','embeddingSignature','error'},
         'sdk_episodes': {'id','cameraId','kind','status','revision','reason','review','reviewedEvidenceIds','attempts','updatedAt'},
         'visual_cache': {'status','review','cached','limitation'},
         'evidence': {'id','cameraId','skillId','capturedAt','sampledAt','receivedAt','observedAt','sourceType','reviewStatus','reason','visualReview','limitation','timestampMeaning'},
+        'sdk_events': {'id','cameraId','episodeId','kind','hasVideo','createdAt','receivedAt','sourceType'},
     }
     with readonly(path) as db:
         db.execute('BEGIN')
         tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        def preview(item):
+            from urllib.parse import urlsplit
+            url=item.get('imageUrl')
+            if not assets or 'media' not in tables or not isinstance(url,str) or not url.startswith('/api/media/'):return None
+            key=urlsplit(url).path.removeprefix('/api/media/')
+            row=db.execute('SELECT bytes,mime FROM media WHERE id=? AND length(bytes)<=8000000',(key,)).fetchone()
+            return assets.add(row[0],row[1],provenance='stored_source') if row else None
         for table, allowed in fields.items():
             if table not in tables:
                 summary['tables'][table] = {'available': False, 'total': None}
@@ -32,12 +40,28 @@ def read_media(path, now, signature=None):
                     item = json.loads(row[1])
                     if not isinstance(item,dict): continue
                 except (ValueError,TypeError): continue
-                if table == 'evidence' and not (item.get('reviewStatus') or item.get('visualReview')): continue
                 value = {k:v for k,v in item.items() if k in allowed}
                 value['id'] = row[0]
                 if table == 'sdk_episodes': value['status'] = row[2]
                 if table == 'recordings':
                     value['signatureCompatible'] = item.get('embeddingSignature') == signature if signature else None
+                    if assets and video_root:
+                        from pathlib import Path
+                        import re
+                        rid=str(row[0]);root=Path(video_root).resolve()
+                        if re.fullmatch(r'video-[a-f0-9]{16}',rid):
+                            file=root/rid/'playback.mp4'
+                            if file.is_file() and not file.is_symlink() and file.resolve().is_relative_to(root) and file.stat().st_size<=32000000:
+                                value['media']=[assets.add(file.read_bytes(),'video/mp4',provenance='stored_recording')]
+                if table in {'evidence','sdk_events'}:
+                    p=preview(item)
+                    if p:value['media']=[p]
+                if table == 'sdk_episodes' and 'sdk_events' in tables:
+                    value['media']=[]
+                    for (payload,) in db.execute("SELECT payload FROM sdk_events WHERE json_extract(payload,'$.episodeId')=? ORDER BY rowid LIMIT 6",(row[0],)):
+                        try:p=preview(json.loads(payload))
+                        except (ValueError,TypeError):p=None
+                        if p:value['media'].append(p)
                 value['snapshotOnly'] = True
                 # Review providers return only these structured text fields.
                 if 'review' in value:
@@ -90,8 +114,9 @@ def visual_traces(db):
     Read a bounded supplement of real rows, never recreate missing content.
     """
     traces=[r[0] for r in db.execute("""SELECT json_extract(payload,'$.traceId') FROM records
-        WHERE json_extract(payload,'$.kind')='model'
-        AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding')
+        WHERE (json_extract(payload,'$.kind')='model'
+        AND json_extract(payload,'$.name') IN ('image_review','frame_presence','video_verify','embedding'))
+        OR json_extract(payload,'$.name')='vector.search'
         GROUP BY json_extract(payload,'$.traceId') ORDER BY MAX(at) DESC LIMIT 20""")]
     if not traces:return [],{'traces':0,'returned':0,'truncated':False,'traceLimit':20,'recordLimit':120,'byteLimit':1000000}
     placeholders=','.join('?' for _ in traces)

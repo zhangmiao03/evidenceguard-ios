@@ -24,7 +24,7 @@ test('iOS tour completes Skill, unknown evidence and memory flow without busines
   await page.locator('.eg-phone-context').getByRole('button',{name:'官方 SDK'}).click();
   await expect(page.locator('.eg-phone-sdk')).toContainText('不加载 SDK');
   await page.getByRole('button',{name:/室内宠物/}).click();
-  await expect(page.locator('.eg-phone-result')).toContainText('宠物正在沙发区域休息');
+  await expect(page.locator('.eg-phone-result')).toContainText('宠物正在客厅休息');
   await page.getByLabel('演示对话输入').fill('刚才发生了什么？');
   await page.getByRole('button',{name:'发送演示消息'}).click();
   await expect(page.locator('.eg-phone-answer')).toContainText('演示脚本回应');

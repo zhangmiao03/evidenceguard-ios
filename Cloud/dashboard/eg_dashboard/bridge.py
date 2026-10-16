@@ -195,6 +195,9 @@ def attach(app, ops, native):
     runtime = importlib.import_module('evidenceguard.harness.runtime')
     source = Path(runtime.__file__).resolve().parents[1]
     video_service = getattr(app.state, 'videos', None)
+    if video_service and content.enabled():
+        from .retrieval import observe_search
+        observe_search(video_service, ops, recorder)
     configured_models = {
         'chat': getattr(app.state.agent.model_provider, 'model', None) or os.getenv('EG_MODEL_ID') or None,
         'image': getattr(getattr(video_service, 'vision', None), 'model', None) or os.getenv('EG_VIDEO_MODEL_ID') or os.getenv('EG_MODEL_ID') or None,
@@ -208,6 +211,7 @@ def attach(app, ops, native):
              'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
              'embeddingSignature': getattr(getattr(video_service, 'embedding', None), 'signature', None),
+             'videoRoot': str(getattr(video_service, 'root', '')),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
              'tools': ops.safe(app.state.tools.schemas)}
     target = Path(recorder.path).with_name('observer-state.json')

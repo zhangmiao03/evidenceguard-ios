@@ -49,6 +49,19 @@ def create_app(data=None,web=None):
     @app.api_route('/dashboard/api/server', methods=['GET', 'HEAD'])
     def server():return snapshot_file('server.json')
 
+    @app.api_route('/dashboard/api/media/{environment}/{asset_id}', methods=['GET', 'HEAD'])
+    def media(environment:str, asset_id:str):
+        from .media_assets import ID, MIMES
+        if environment not in labels or not ID.fullmatch(asset_id):raise HTTPException(404,'Media unavailable')
+        root=data/'media'/environment
+        try:
+            item=json.loads((root/'manifest.json').read_text())['items'][asset_id]
+            mime=item['mime'];extension=MIMES[mime]
+            path=root/(asset_id+'.'+extension)
+            if path.is_symlink() or not path.is_file() or path.stat().st_size!=item['bytes']:raise ValueError()
+        except (OSError,ValueError,KeyError):raise HTTPException(404,'Media no longer in current snapshot')
+        return FileResponse(path,media_type=mime,filename='evidence.'+extension,content_disposition_type='inline')
+
     @app.api_route('/dashboard', methods=['GET', 'HEAD'])
     @app.api_route('/dashboard/', methods=['GET', 'HEAD'])
     @app.api_route('/dashboard/index.html', methods=['GET', 'HEAD'])

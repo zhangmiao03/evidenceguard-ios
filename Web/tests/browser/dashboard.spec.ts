@@ -35,7 +35,7 @@ test("offline dashboard: import, trace, model prompt, filter and export", async 
   );
   await page.getByRole("button", { name: "查看完整 Trace" }).click();
   await expect(
-    page.getByRole("heading", { name: "Trace 时间线" }),
+    page.getByRole("heading", { name: "任务运行时间线" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "关闭详情" }).click();
   await page.getByPlaceholder("Trace / 模型 / 事件 / 状态").fill("http_error");
@@ -68,13 +68,13 @@ test("full content inspector shows prompt, model output, tool result and final r
   await page.locator(".eg-ops-row-link").filter({ hasText: "demo-vision-model" }).first().click();
   const detail = page.getByRole("dialog");
   await expect(detail.locator(".eg-ops-messages")).toContainText("INPUT-END");
-  await expect(detail.getByText("工具回执 call-full", { exact: false })).toBeVisible();
+  await expect(detail.getByText("工具回执", { exact: false })).toBeVisible();
   await expect(detail.getByRole("heading", { name: "模型原始输出（脱敏）" })).toBeVisible();
   await expect(detail.getByTestId("record-content")).toContainText("MODEL-OUTPUT-TEXT");
   await page.getByRole("button", { name: "查看完整 Trace" }).click();
   await page.getByRole("button", { name: /TOOL.*list_tasks/ }).click();
   await expect(detail.getByRole("heading", { name: "工具参数", exact: true })).toBeVisible();
-  await expect(detail.getByRole("heading", { name: "工具返回结果", exact: true })).toBeVisible();
+  await expect(detail.getByRole("heading", { name: "工具返回结果", exact: true, level: 3 })).toBeVisible();
   await expect(detail).not.toContainText("never-show-this-key");
   await expect(detail).toContainText("[redacted]");
   await page.getByRole("button", { name: "查看完整 Trace" }).click();
