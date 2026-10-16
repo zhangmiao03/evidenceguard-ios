@@ -129,6 +129,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     watch=CameraWatch(store,captures,visual_review,proactive)
     scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
     agent.visual_scenes=scenes
+    hardware.scenes=scenes
+    from .vision.endpoints import EndpointVisionService
+    endpoint_vision=EndpointVisionService(store,visual_review)
+    scenes.endpoint_vision=endpoint_vision
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -190,6 +194,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.connectors=connectors
     app.state.watch=watch
     app.state.visual_scenes=scenes
+    app.state.endpoint_vision=endpoint_vision
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -239,7 +244,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     from .video.search import install_search_routes
     install_search_routes(app,videos,search_owner)
     def push_key(request): return request.headers.get('X-EG-Push-Key')
-    install_scene_routes(app,scenes,personal_client)
+    install_scene_routes(app,scenes,personal_client,analysis_client=search_owner)
     @app.get('/api/push/status')
     async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
     @app.put('/api/push/device')

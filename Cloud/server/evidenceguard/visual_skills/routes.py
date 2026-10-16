@@ -1,8 +1,8 @@
 from fastapi import Request
-from .schema import Create, Interpret, Revision, Selection
+from .schema import Create, Interpret, Revision, Selection, Analyze
 
 
-def install_scene_routes(app, scenes, client):
+def install_scene_routes(app, scenes, client, analysis_client=None):
     @app.get('/api/visual-scenes')
     async def listing(request: Request):
         return [scenes.public(s) for s in scenes.list_all(client(request))]
@@ -34,3 +34,7 @@ def install_scene_routes(app, scenes, client):
     @app.post('/api/visual-scenes/{key}/pause')
     async def pause(key: str, body: Revision, request: Request):
         return scenes.public(scenes.pause(key, client(request), body.revision))
+
+    @app.post('/api/visual-scenes/{key}/analyze')
+    async def analyze(key: str, body: Analyze, request: Request):
+        return await scenes.analyze_endpoints(key, (analysis_client or client)(request), body.revision, include_depth=body.includeDepth)

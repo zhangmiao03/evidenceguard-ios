@@ -43,6 +43,7 @@ class HardwareGateway:
         self.runtime = Runtime(path, [], policy='competition')
         self.hosts = {h['id']: h for h in self.runtime.store.all('host', TEAM)}
         self.observations = {}
+        self.scenes = None
         # A process restart never certifies a foreground client is still present.
         with self.runtime.store.transaction():
             for host in self.hosts.values():
@@ -69,6 +70,10 @@ class HardwareGateway:
 
     def human(self, client): return self.principal('human', 'human:' + client)
 
+    def guarded(self, device):
+        return bool(self.store.owner(device) or (self.scenes and any(
+            s['cameraId'] == device and s['status'] == 'active' for s in self.scenes.list_all())))
+
     def busy(self, device):
         self.runtime._expire(TEAM)
         return any(o['deviceId'] == device and o['control'] and o['executionState'] in {'executing', 'verifying', 'unknown'}
@@ -93,6 +98,7 @@ class HardwareGateway:
         if old_host:
             self.disconnect(p, old_host)
         self.runtime.register(p, dict(platform=platform, simulated=False, adapterVersion=body['adapterVersion'],
+            sdkVersion=body.get('sdkVersion','unknown'),
             sdkArtifactHash=body['sdkArtifactHash'], devices=[dict(deviceId=device['id'], model=device['model'],
                 label=device['name'], firmwareVersion=body['firmwareVersion'], routes=routes,
                 fields=body.get('fields', {}), privacy=body['privacy'], officialIdentityReady=body['officialIdentityReady'])]))
@@ -149,7 +155,7 @@ class HardwareGateway:
                 require(diagnostic and p['role'] == 'human' and d.get('privacyCheckedUntil',0) > time.time(),
                         'PRIVACY_UNCONFIRMED', 'Web 工具取样需本会话人工核对隐私；Agent 可使用现有直播取帧工具')
         if name in TOOLS and TOOLS[name]['control']:
-            require(not self.store.owner(arguments.get('deviceId')), 'ACTIVE_SKILL', '先暂停这台设备的守护任务，再调整设备')
+            require(not self.guarded(arguments.get('deviceId')), 'ACTIVE_SKILL', '先暂停这台设备的守护任务，再调整设备')
         op = self.runtime.invoke(p, name, arguments, dict(taskId=task, idempotencyKey=key,
             requestedPlatform=platform, diagnostic=diagnostic))
         return public(op)
@@ -176,7 +182,7 @@ class HardwareGateway:
         live = self.cameras.live.current(device)
         blocked = self.captures.gate(device).locked() or bool(live and live['client'] != host['client'])
         # Revoking a task owner after approval must still block dispatch.
-        if self.store.owner(device):
+        if self.guarded(device):
             with self.runtime.store.transaction():
                 for op in self.runtime.store.all('operation', TEAM):
                     if op['deviceId'] == device and op['control'] and op['executionState'] == 'queued':
@@ -200,11 +206,12 @@ class HardwareGateway:
     async def _observe(self, p, host, body, op):
         try:
             return await self._capture_observation(p, host, body, op)
-        except Exception:
+        except Exception as error:
             latest = self.runtime.record(p, 'operation', op['id'])
             if latest['executionState'] in TERMINAL: return public(latest)
             return self.sync_run(self.runtime.finish(p, op['id'], dict(leaseToken=body['leaseToken'], simulated=False,
-                sdkUsed=False, status='failed', error={'code':'CAPTURE_UNAVAILABLE','message':'未取得可核验的新帧，请检查执行端直播'})))
+                sdkUsed=False, status='failed', error={'code':error.code if isinstance(error, ToolError) else 'CAPTURE_UNAVAILABLE',
+                'message':'缺少可核验的解码新帧，不能用于控制参考' if isinstance(error, ToolError) else '未取得可核验的新帧，请检查执行端直播'})))
 
     async def _capture_observation(self, p, host, body, op):
         live = self.cameras.live.current(host['deviceId'])
@@ -215,10 +222,19 @@ class HardwareGateway:
         if capture['status'] != 'completed':
             return self.sync_run(self.runtime.finish(p, op['id'], dict(leaseToken=body['leaseToken'], simulated=False,
                 sdkUsed=False, status='failed', error={'code':'CAPTURE_UNAVAILABLE','message':capture['reason']})))
-        raw, mime, _ = self.store.media(capture['mediaId'])
+        raw, mime, stored = self.store.media(capture['mediaId'])
+        # Do not manufacture decoder progress from HTTP sequence or SDK bitrate.
+        # Existing clients still supply readable samples, but cannot turn them
+        # into v0.3 control references without a genuine decoded-frame receipt.
+        frame = stored['frame'].get('decoder_frame')
+        from .vendor.camera_tools.verification import check_frame
+        check_frame(frame, host['deviceId'], time.time()*1000)
+        with Image.open(BytesIO(raw)) as image:
+            dimensions = list(image.size)
+        require(dimensions == frame['dimensions'], 'STALE_FRAME', '解码帧与图片尺寸不一致')
         if len(raw) > 2 * 1024 * 1024:
             with Image.open(BytesIO(raw)) as image:
-                image = image.convert('RGB'); image.thumbnail((1600,1600))
+                image = image.convert('RGB')
                 output = BytesIO(); image.save(output,format='JPEG',quality=80)
                 raw, mime = output.getvalue(), 'image/jpeg'
         latest = self.runtime.record(p, 'operation', op['id'])
@@ -227,9 +243,10 @@ class HardwareGateway:
         media = self.runtime.register_media(p, dict(operationId=op['id'], leaseToken=body['leaseToken'],
             mimeType=mime, sha256=hashlib.sha256(raw).hexdigest(), base64=base64.b64encode(raw).decode()))
         result = self.runtime.finish(p, op['id'], dict(leaseToken=body['leaseToken'], simulated=False,
-            status='acknowledged', sdkUsed=True, sdkResult={'source':'product_live_challenge'}, data={'capture':capture},
+            status='acknowledged', sdkUsed=True, sdkAccepted=None, sdkResult={'source':'product_live_challenge'}, data={'capture':capture},
             references=[dict(kind='observation', label='本次请求后的直播取样', mediaRef=media['id'],
-                source=capture['sourceType'], sourceTimestamp=None, sourceTimeKind='local_capture')]))
+                source='decoded_live_frame', dimensions=dimensions, frame=frame,
+                sourceTimestamp=None, sourceTimeKind='client_decode')]))
         return self.sync_run(result)
 
     def finish(self, p, body):
@@ -246,7 +263,9 @@ class HardwareGateway:
         if op['tool'] in MOVEMENT and not op.get('productViewInvalidated'):
             self.cameras.live.invalidate_view(op['deviceId'])
             with self.runtime.store.transaction():
-                d = self.runtime.device(p,op['deviceId']); d['viewRevision'] += 1
+                d = self.runtime.device(p,op['deviceId'])
+                if not op.get('viewInvalidated'): d['viewRevision'] += 1
+                d['viewConfirmationRequired'] = True
                 self.runtime.store.put('device',d)
                 op['productViewInvalidated'] = True; self.runtime.store.put('operation',op)
         return self.sync_run(op)

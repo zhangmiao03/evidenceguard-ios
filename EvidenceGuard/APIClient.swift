@@ -59,6 +59,9 @@ struct APIClient {
         self.baseURL = baseURL; self.transport = transport; self.observations = observations
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
+    func analyzeScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
+        try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision":scene.revision])
+    }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
     func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
     func disconnectConnector(_ provider: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)", method: "DELETE", body: Optional<String>.none) }

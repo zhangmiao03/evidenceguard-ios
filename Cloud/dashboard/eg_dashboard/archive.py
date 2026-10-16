@@ -143,7 +143,7 @@ def project(database, observations, output, environment, now, assets, *, secrets
                 if 'runs' in tables:
                     for rid, raw in db.execute('SELECT id,payload FROM runs ORDER BY rowid DESC'):
                         run = json.loads(raw); run['id'] = rid
-                        text = run.get('text') or ''; private = bool(run.get('referenceImageId'))
+                        text = run.get('text') or ''; private = bool(run.get('referenceImageId') or run.get('privateContent') or run.get('endpointAnalyses'))
                         allow = capture and secrets is not None and not private
                         answer, clean = content.clean(text, known_secrets=secrets or []) if allow else (None, {})
                         verification = display_check(run, receipts)

@@ -98,7 +98,12 @@ enum ChatPresentation {
     static func operationDetails(_ operation: HardwareValue, deviceName: String?, references: [HardwareValue] = []) -> String {
         let args = operation["arguments"], tool = operation["tool"].string
         var parts = ["设备：" + text(deviceName ?? "所选摄像头", fallback: "所选摄像头")]
-        if let direction = ["LEFT":"向左", "RIGHT":"向右", "UP":"向上", "DOWN":"向下"][args["direction"].string] { parts.append("方向：" + direction + "移动一步") }
+        if let direction = ["LEFT":"向左", "RIGHT":"向右", "UP":"向上", "DOWN":"向下"][args["direction"].string] {
+            if args["motionMode"].string == "continuous" {
+                parts.append("方向：" + direction + "有界连续转动")
+                if case .number(let ms) = args["durationMs"] { parts.append("请求窗口 \(Int(ms)) 毫秒（含 SDK 等待），结束后配对停止") }
+            } else { parts.append("方向：" + direction + "移动一步") }
+        }
         if case .number(let seconds) = args["duration"], seconds.isFinite, (1...300).contains(seconds) { parts.append("持续 \(Int(seconds)) 秒") }
         if ["camera_light_set", "doorbell_light_set"].contains(tool), case .bool(let enabled) = args["enabled"] { parts.append(enabled ? "开启灯光" : "关闭灯光") }
         if tool == "device_settings_set" {

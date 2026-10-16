@@ -246,7 +246,7 @@ class AgentRuntime:
         await asyncio.gather(*list(self.tasks.values()),return_exceptions=True)
     @traced('agent')
     async def _execute(self,run,camera_id):
-        privacy_token=PRIVATE_CONTENT.set(True) if run.get('referenceImageId') else None
+        privacy_token=PRIVATE_CONTENT.set(True) if run.get('referenceImageId') or run.get('privateContent') else None
         try:
             async with asyncio.timeout(420 if run.get('executionMode')=='history' else 180):
                 if not self.ready: raise ProviderError('助手暂时无法使用，请稍后重试或联系团队。')
@@ -278,6 +278,11 @@ class AgentRuntime:
                                    if p['id'] != run['id'] and p.get('clientId') in {None, run.get('clientId')}
                                    and (run.get('executionMode') != 'history' or p.get('cameraId') == camera_id)),
                                   key=lambda p: (p['createdAt'], p['id']))
+                # A later turn can quote an earlier private analysis. Preserve
+                # the privacy boundary across conversation context as well.
+                if any(p.get('privateContent') or p.get('endpointAnalyses') for p in previous):
+                    run['privateContent']=True
+                    if privacy_token is None: privacy_token=PRIVATE_CONTENT.set(True)
                 messages.extend(recent_context(previous, budget=contract.history_char_budget))
                 # Conversation prose is stale; derive current task facts from the store.
                 referenced={p['draft']['id'] for p in self.store.runs(run['conversationId']) if p.get('draft')}
@@ -319,6 +324,9 @@ class AgentRuntime:
                             try:
                                 contract.check_tool(name)
                                 args=json.loads(call['function']['arguments'])
+                                if name=='analyze_visual_endpoints':
+                                    run['privateContent']=True
+                                    if privacy_token is None: privacy_token=PRIVATE_CONTENT.set(True)
                                 if name=='draft_visual_skill' and run['draft']: raise ValueError('本轮已有草案，请使用现有草案')
                                 result=await active_tools.call(name,**args)
                                 if isinstance(result,dict) and result.get('executionState'):
@@ -345,6 +353,8 @@ class AgentRuntime:
                                         camera_availability_checked=True
                                 if name=='draft_visual_skill': run['draft']=result
                                 if name in {'create_camera_guard','revise_camera_guard'}: run['guardDraftId']=result['guardId']
+                                if name=='analyze_visual_endpoints':
+                                    run.setdefault('endpointAnalyses',[]).append(result)
                                 if name=='search_recordings':
                                     # Only the most recent executed search backs this answer and its cards.
                                     run['videos']=result.get('videos',[])

@@ -32,6 +32,10 @@ class Revision(Input):
     revision: int = Field(ge=1)
 
 
+class Analyze(Revision):
+    includeDepth: bool = False
+
+
 class Interpret(Revision):
     requestId: str = Field(min_length=8, max_length=100, pattern=r'^[A-Za-z0-9_-]+$')
     message: str = Field(min_length=1, max_length=2000)

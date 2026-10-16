@@ -13,6 +13,9 @@ GUIDANCE = '''本轮 iOS 使用新版“摄像头守护”，导航为助手/摄
 需求可以是可见对象进入/离开区域；保持用户要求，含不支持条件也原样交给草稿整理器，不伪装为包裹规则。保存后提示用户点击卡片，在摄像头守护中继续框选并确认。生成/改草稿后结束当前回复，不循环等待编译；编译会在本轮释放模型后继续。
 用户只是查询画面/历史时不创建；非摄像头的普通待办仍可保存个人事项。涉及持续看守、某物进入或离开时提醒等视觉需求，使用新版守护草稿而不是只保存一个设备标签提醒。已有守护先 list_camera_guards/read_camera_guard；只有草稿可修改，已开启规则需新建并重新确认，不能声称自动替换。
 前台连接由 App 自动维护；断网、锁屏、摄像头离线时据实说明。没有真实新画面不能保证在线或安全。用户仍可暂停某项守护，暂停规则不等于关闭摄像头。'''
+GUIDANCE += '''
+用户要求对照某项已框选守护的参考图和最近采样时，可调用 analyze_visual_endpoints。它只读已保存的首尾图，不补取实时图片，不修改守护结论；缺少后帧则说明等待采样。completed只表示分析完成，unknown不能解释为正常。图片方向、not_seen和深度描述不构成云台动作依据。
+设备控制只根据用户明确的控制要求，使用单独已授权工具及确认卡；先暂停占用设备的守护，切换视角后重新框选。不得为了补全视觉结论自行连续转动或自动重发命令。'''
 
 
 class Draft(Arguments):
@@ -27,6 +30,9 @@ class Guard(Arguments):
 class Revise(Guard):
     revision: int = Field(ge=1)
     message: str = Field(min_length=1, max_length=2000)
+
+class AnalyzeGuard(Guard):
+    revision: int = Field(ge=1)
 
 
 def for_chat(registry, scenes, run):
@@ -65,4 +71,9 @@ def for_chat(registry, scenes, run):
     result.register('revise_camera_guard', revise, Revise, '根据新补充修改本人待确认守护，保留原条件；需要当前 revision。已开启规则不修改，不自动启用。')
     result.register('read_camera_guard', read, Guard, '读取本人守护草稿/状态/问题及最近检查，不能开启、暂停或控制设备。')
     result.register('list_camera_guards', listing, description='列出本人摄像头守护，包括未确认草稿，供选择和继续设置。')
+    if scenes.endpoint_vision and scenes.endpoint_vision.enabled:
+        async def analyze(guard_id, revision):
+            return await scenes.analyze_endpoints(guard_id,client,revision,run=run)
+        result.register('analyze_visual_endpoints',analyze,AnalyzeGuard,
+                        '只读对照本人守护中已确认ROI的参考图和最近已保存采样。先读取guard_id与revision；不接受任意路径或媒体ID，不取新图，不通知或控制设备。结果controlEligible始终false，图像方向不能变成云台命令。')
     return result

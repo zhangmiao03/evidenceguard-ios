@@ -15,12 +15,23 @@ struct VisualSceneObservation: Codable, Equatable {
 struct VisualSceneResult: Codable, Equatable {
     var state: String; var label: String; var reason: String
 }
+struct EndpointVisionConfiguration: Codable, Equatable { var ready: Bool }
+struct EndpointAnalysis: Codable, Equatable {
+    struct Analysis: Codable, Equatable { var summary: String }
+    struct Frame: Codable, Equatable { var captured_at: Double?; var sampled_at: Double? }
+    struct Sources: Codable, Equatable { var a: Frame; var b: Frame }
+    var status: String; var reason: String?; var limitation: String
+    var analysis: Analysis?; var cached: Bool?; var model: String?
+    var sources: Sources?
+}
 struct VisualScene: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var prompt: String; var revision: Int
     var status: String; var stage: String; var plan: VisualScenePlan?
     var question: String; var unsupportedReason: String; var reason: String
     var frame: VisualSceneFrame?; var box: ROI?; var summary: String; var limitation: String
     var result: VisualSceneResult?
+    var endpointVision: EndpointVisionConfiguration?
+    var endpointAnalysis: EndpointAnalysis?
     var resultState: String { result?.state ?? (status == "draft" ? "pending" : "unknown") }
     var resultLabel: String { result?.label ?? (status == "draft" ? "待确认" : "无法确认") }
     var canActivate: Bool; var observation: VisualSceneObservation; var evidenceIds: [String]
@@ -178,9 +189,10 @@ struct VisualSceneEditor: View {
         while !Task.isCancelled {
             do {
                 try await Task.sleep(for: .seconds(2))
-                let updated = try await source.visualScene(current.id)
+                var updated = try await source.visualScene(current.id)
                 guard source.baseURL == store.client.baseURL else { return }
                 guard updated.revision >= (scene?.revision ?? 0) else { continue }
+                if updated.revision == scene?.revision { updated.endpointAnalysis = scene?.endpointAnalysis }
                 scene = updated
                 if updated.stage != "generating" && updated.status != "active" { return }
                 attempts += 1
@@ -260,6 +272,27 @@ struct VisualSceneEditor: View {
                 modification
             } else {
                 Text(scene.observation.reason).accessibilityIdentifier("scene.observation")
+                if scene.endpointVision?.ready == true {
+                    Button("对照参考图与最近采样") { Task { await operation {
+                        let source = store.client
+                        let result = try await source.analyzeScene(scene)
+                        guard source.baseURL == store.client.baseURL,
+                              self.scene?.revision == scene.revision else { return }
+                        self.scene?.endpointAnalysis = result
+                    } } }.disabled(busy).accessibilityIdentifier("scene.analyzeEndpoints")
+                    Text("只分析已保存图片；不会补拍、告警或转动摄像头。").font(.caption).foregroundStyle(Brand.muted)
+                }
+                if let report = scene.endpointAnalysis {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("首尾图分析 · 仅供核对").font(.headline)
+                        Text(report.analysis?.summary ?? report.reason ?? "本次无法确认")
+                        if let at = report.sources?.b.sampled_at ?? report.sources?.b.captured_at {
+                            Text("对照图取样时间：" + Date(timeIntervalSince1970: at).formatted(date: .abbreviated, time: .standard)).font(.caption)
+                        }
+                        if report.cached == true { Text("复用相同证据的分析，未获取新画面").font(.caption) }
+                        Text(report.limitation).font(.caption).foregroundStyle(Brand.muted)
+                    }.padding().background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 16))
+                }
                 if scene.status == "active" {
                     Button("暂停守护") { Task { await operation { self.scene = try await store.client.sceneAction(scene, action: "pause"); frozenImage = nil; box = nil } } }
                         .disabled(busy).accessibilityIdentifier("scene.pause")
