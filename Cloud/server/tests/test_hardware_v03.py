@@ -37,12 +37,12 @@ def test_single_step_proof_never_unlocks_continuous_and_field_proof_is_explicit(
     assert c.post('/api/hardware/validations',json=proof).json()['code']=='UNSUPPORTED_PARAMETER'
 
 
-@pytest.mark.parametrize('stop',['acknowledged','unknown'])
+@pytest.mark.parametrize('stop',['acknowledged','unknown',None])
 def test_paired_stop_and_result_review_do_not_confuse_acceptance_with_effect(env,stop):
     app,c=env;d,h,headers,device,args=ptz_host(c,app)
     op=call(c,d,'camera_ptz_step',args | dict(motionMode='continuous',durationMs=500)).json()
     approve(c,op); leased=claim(c,h,headers)['operation']
-    r=finish(c,h,headers,leased,sdkAccepted=True,stopResult={'state':stop})
+    r=finish(c,h,headers,leased,sdkAccepted=True,stopResult={'state':stop} if stop else None)
     assert r.status_code==200,r.text
     result=r.json()
     assert result['sdkAccepted'] is True and result['observedEffect']=='unconfirmed'

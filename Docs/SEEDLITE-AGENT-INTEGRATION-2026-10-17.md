@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `SeedLite_Vision_Kit_20261016_v3_handoff.zip` | ZIP SHA-256 `5a71fc5ef9c6e5ac1bb07885eb7b22fc5f44fcb0e54e18eac9f73a1b2aa113a4`；219 个清单文件校验通过 | 阅读交接说明、实验方案、提示词、验证器、运行器及两份人工复核报告 |
 | `EvidenceGuard_AgentTools_Source_v0.3.0.zip` | ZIP SHA-256 `b8ead6aaae62082b32a6b5d46458b6c76b0666ab0bcb328fb59e09a97f02d3e4` | 更新 29 个工具定义、45 项能力矩阵、验证范围和原生桥接 |
-| 当前仓库 | 新版 `VisualScenes` / `SceneHarness`、私有录像检索、Dashboard 归档和 iOS API 传输 | 接入现有服务与执行器，不启动实验包的独立 HTTP 服务 |
+| 当前仓库 | 已合并 `main@b321730`、远端 `dongrunze@b0ac6b2`；新版 `VisualScenes` / `SceneHarness`、私有录像检索、Dashboard 归档和 iOS API 传输 | 接入现有服务与执行器，不启动实验包的独立 HTTP 服务 |
 
 交接包的 28 项离线测试已在独立环境复现通过。Windows 需启用 Python UTF-8 模式，否则部分脚本按 GBK 解码报告失败。`--sample --validate-only` 显示 1 个样例就绪、28 个业务案例待补素材；`--sample --prepare-only` 完成 DepthART 预处理，没有请求云端模型。结果来源说明见 [vision/UPSTREAM.md](../Cloud/server/evidenceguard/vision/UPSTREAM.md)。
 
@@ -103,6 +103,8 @@ EG_ENDPOINT_API_KEY=<服务端私有配置>
 
 `SDK/prepare.py` 会复制 `Bridge/Tools/*.kt`，包含新 `BoundedPTZ.kt`。Windows 的真实 AAR 类型检查只能证明 Kotlin App SDK 方法/类型兼容，不能替代 iOS Framework 链接、签名、TestFlight 或电机/双摄真机验收。
 
+发布打包会明确收集 `vision/prompts/*.md` 并计算哈希；仅复制 Python/JSON 会因缺少 `common.md` 导致启动失败。部署审计和 Web 独立发布检查同样纳入这些提示词，避免在后端提示词已经变更时误判版本一致。其他 Markdown 实验报告及私有环境文件不因此进入发布包。
+
 回退首尾分析可将 `EG_ENDPOINT_ENABLED=0` 并重启，iOS 隐藏入口、Agent 不再获得新工具，原守护与录像检索继续使用原链路。不要为回退删除业务数据库。回退工具桥接需同步服务端与 iOS 版本；先处理仍在执行或未知的操作，恢复旧版本后重新登记和验证，不能复用新版本的能力证明。
 
 ## 7. 自动检查
@@ -117,3 +119,5 @@ EG_ENDPOINT_API_KEY=<服务端私有配置>
 ```
 
 在合并后的代码上运行这些检查，并由 GitHub/macOS 继续执行 iOS 编译与兼容性测试。当前文档不将本次离线验证说成已调用真实 SeedLite 服务、已部署云端、已重新上传 TestFlight，或已完成硬件控制验收。
+
+本机验证记录：合并后 Windows 全量 **500 项通过、10 项 POSIX 检查跳过**（后端 437、Dashboard 37、发布 26）；Linux 隔离环境后端 **447 项通过**，覆盖上述跳过项。随后追加“连续转动未返回停止回执”的兼容用例，硬件 v0.3 与发布专项 **33 项通过**。Web **23 项通过**，其中 3 项属于已有本机未提交诊断工具，其余 20 项为仓库测试；TypeScript/Vite 构建通过。官方 AAR 桥接类型检查与宿主 plist 检查通过。新增 iOS API 契约测试覆盖旧守护响应兼容、私有请求头、unknown 解码及 90 秒有界请求超时，尚待原生测试执行。

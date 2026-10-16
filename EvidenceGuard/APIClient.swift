@@ -62,7 +62,8 @@ struct APIClient {
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
     func analyzeScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
-        try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision":scene.revision])
+        // Covers the server's bounded queue + model deadline, without retrying.
+        try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision":scene.revision], timeout: 90)
     }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
     func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
@@ -286,7 +287,7 @@ struct APIClient {
     func hardware(_ path: String, body: HardwareValue? = nil, executor: HardwareExecutorSession? = nil) async throws -> HardwareValue {
         try await send("/api/hardware/" + path, method: body == nil ? "GET" : "POST", body: body, executor: executor)
     }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil) async throws -> T {
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil, timeout: TimeInterval = 30) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
         let trace = traceID ?? mediaSession?.traceId ?? UUID().uuidString
@@ -307,7 +308,7 @@ struct APIClient {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
         }
-        req.httpMethod = method; req.timeoutInterval = 30
+        req.httpMethod = method; req.timeoutInterval = timeout
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body { req.httpBody = try JSONEncoder().encode(body) }

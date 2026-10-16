@@ -473,7 +473,7 @@ class Runtime:
             # Executor ACKs and an official Demo report never create a human observation.
             op.update(observedEffect="unconfirmed", artifactValidated="unvalidated", humanVerified=False)
             if op["tool"] == "camera_ptz_step" and op["arguments"].get("motionMode") == "continuous" and body["status"] != "stopped" and (self.demo or op["sdkUsed"]):
-                stop = body.get("stopResult", {})
+                stop = body.get("stopResult") or {}
                 stop_ack = stop.get("state") == "acknowledged"
                 op["stopResult"] = {"state": "acknowledged" if stop_ack else "unknown", "sdkCode": stop.get("sdkCode"), "physicalEffect": "unverified", "source": "paired_stop"}
                 if not stop_ack:

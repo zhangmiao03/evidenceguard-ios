@@ -19,7 +19,11 @@ def package(output, baseline):
     server = ROOT/'Cloud/server'
     for path in sorted(server.rglob('*')):
         relative = path.relative_to(server)
-        if path.is_file() and path.suffix in {'.py', '.json'} and relative.parts[0] in {'evidenceguard', 'tests'} and '__pycache__' not in relative.parts:
+        runtime_source = path.suffix in {'.py', '.json'} and relative.parts[0] in {'evidenceguard', 'tests'}
+        # These fixed prompts are imported by the service even while disabled.
+        # Do not broadly include Markdown: local reports can contain private data.
+        runtime_prompt = path.suffix == '.md' and relative.parts[:3] == ('evidenceguard','vision','prompts')
+        if path.is_file() and (runtime_source or runtime_prompt) and '__pycache__' not in relative.parts:
             add(path, 'Cloud/server/' + relative.as_posix())
     add(server/'requirements.txt', 'Cloud/server/requirements.txt')
     # Source-controlled synthetic fixtures are required by regression tests.
