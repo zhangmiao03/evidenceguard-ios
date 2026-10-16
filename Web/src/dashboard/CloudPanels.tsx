@@ -76,13 +76,15 @@ export function AgentCycle({ records, onSelect }: { records:Item[]; onSelect:(re
   const models=sorted.filter(r=>r.kind==="model");
   const tools=sorted.filter(r=>r.name==="tool.finished");
   const finished=[...sorted].reverse().find(r=>["agent.finished","proactive_finished"].includes(r.name));
+  const finalResult=[...sorted].reverse().find(r=>r.name==="agent.result");
   return <div className="eg-ops-cycle">
     <div className="eg-ops-panel-head"><h3>Agent 执行循环</h3><small>{models.length} 次真实模型 HTTP 调用 · {tools.length} 次工具执行 · {finished?.status || "等待结束回执"}</small></div>
     <div className="eg-ops-cycle-phases">{phases.map(p=>{
       const matches=sorted.filter(r=>p.names.includes(r.name));
-      return <button key={p.label} disabled={!matches.length} onClick={()=>onSelect(matches[matches.length-1])}><span>{matches.length ? "●" : "○"}</span><strong>{p.label}</strong><small>{matches.length ? `${matches.length} 条回执` : "未观测到 / 不适用"}</small></button>;
+      return <button key={p.label} disabled={!matches.length} onClick={()=>onSelect(p.label==="返回最终结果" && finalResult ? finalResult : matches[matches.length-1])}><span>{matches.length ? "●" : "○"}</span><strong>{p.label}</strong><small>{matches.length ? `${matches.length} 条回执` : "未观测到 / 不适用"}</small></button>;
     })}</div>
     <p className="eg-ops-note">工具结果可再次进入模型，循环次数以实际回执为准。工具无调用时可以直接回答；“未观测到”不代表通过。本视图展示可核对的执行轨迹，不包含模型内部推理。</p>
+    {finalResult && <button className="eg-ops-final-result" onClick={()=>onSelect(finalResult)}><strong>查看最终回复</strong><span>{typeof finalResult.data.content?.answer==="string" ? finalResult.data.content.answer.slice(0,180) : "旧记录仅有摘要，无法恢复正文"}</span></button>}
     <div className="eg-ops-span-list">{sorted.filter(r=>r.kind==="model" || r.name==="tool.finished" || ["agent.finished","proactive_finished"].includes(r.name)).map(r=><button key={r.id} onClick={()=>onSelect(r)}><span className={`eg-ops-badge ${["failed","http_error","cancelled"].includes(r.status)?"bad":""}`}>{r.kind==="model"?"MODEL":r.name==="tool.finished"?"TOOL":"AGENT"}</span><strong>{r.data.tool || r.data.model || r.name}</strong><span>{r.durationMs == null ? "耗时未采集" : `${(r.durationMs/1000).toFixed(2)} s`}</span></button>)}</div>
   </div>;
 }

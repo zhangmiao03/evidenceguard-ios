@@ -12,6 +12,7 @@ import {
 } from "./data.mjs";
 import "./dashboard.css";
 import { AgentCycle, CloudStatus, DeploymentPanel, ServerResources } from "./CloudPanels";
+import { RecordContent } from "./RecordContent";
 
 type Row = {
   id: string;
@@ -171,8 +172,8 @@ export default function Dashboard() {
         setTrace(null);
       }
       if (e.key !== "Tab") return;
-      const buttons = document.querySelectorAll<HTMLButtonElement>(
-        ".eg-ops-detail button:not(:disabled)",
+      const buttons = document.querySelectorAll<HTMLElement>(
+        ".eg-ops-detail button:not(:disabled), .eg-ops-detail summary, .eg-ops-detail a[href]",
       );
       const first = buttons[0],
         last = buttons[buttons.length - 1];
@@ -467,6 +468,7 @@ export default function Dashboard() {
                 : "离线快照 · 不代表当前运行",
             ],
             ["设备拍摄时间", "未核验；客户端取样时间单独记录"],
+            ["正文采集", bundle.coverage?.contentCapture ? `已启用 · 当前 ${bundle.coverage?.contentRecords ?? "—"} 条脱敏正文` : "按记录标记查看 · 历史摘要无法恢复"],
             ["费用 / 首字延迟", "未采集价格版本 / 非流式调用"],
             [
               "队列丢弃 / 写入失败",
@@ -602,7 +604,7 @@ export default function Dashboard() {
           {table(
             rows.filter((r) => r.kind === "prompt"),
             "请求提示词快照",
-            "默认显示首条 system；动态上下文仅摘要",
+            "新记录可查看脱敏正文；旧记录保留原有摘要标记",
           )}
           <p className="eg-ops-note">
             每条模型调用关联独立快照，可核对工具定义、角色、参数与快照哈希。多模态二进制始终省略。未启用全文采集的历史内容无法恢复。
@@ -1072,8 +1074,7 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
-                <h3>记录详情</h3>
-                <pre>{json(selected)}</pre>
+                <RecordContent record={selected} records={bundle.records} />
               </>
             )}
           </section>

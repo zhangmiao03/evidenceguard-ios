@@ -4,6 +4,8 @@
 
 云端只读入口：**http://47.131.21.137/dashboard**，按比赛要求免登录。可切换 demo / team / review，查看真实模型调用、系统提示词、工具执行循环、Trace、部署 Python 文件与仓库基准的差异，以及每 5 秒采样的 CPU / 内存 / 磁盘 / 网络和后端进程。原有 App API、摄像头取流与媒体鉴权保持原配置；公开页面只读取脱敏快照。
 
+Dashboard 已增加正文模式：部署 `--capture-content` 后的新记录可以直接查看每轮提示词、模型输入输出、工具参数与返回值、最终 App 回复，并导出 JSON。密钥在写库前过滤，媒体二进制和模型内部推理不显示；旧摘要不会补造正文，达到上限会明确标注。部署脚本保留服务器当前业务 release 和参数，先在实际代码上验证兼容，再逐套重启观察器。详见 [正文采集与部署边界](Docs/CLOUD-DASHBOARD.md)。
+
 本机 PowerShell 在仓库根目录执行 `.\scripts\cloud_session.ps1` 可直接进入服务器 SSM 终端，不必每次经过 AWS 控制台；临时登录过期时执行 `.\scripts\cloud_session.ps1 -Action login`。`-Action status` 查询当前公网 IP 与 SSM 状态；Windows 脚本自动继承已启用的系统 HTTP/HTTPS 代理，显式代理环境变量优先，不修改系统设置。维护命令可用 `python scripts/cloud_command.py --file YOUR_SCRIPT`。2026-10-16 已重新验证新加坡实例仍为 `47.131.21.137`。安装、接口、数据边界、两套部署兼容策略、真实模型验证和回滚见 [云端 Dashboard 与快捷连接](Docs/CLOUD-DASHBOARD.md)。
 
 ## 工具链接入（2026-10-15 · dongrunze）

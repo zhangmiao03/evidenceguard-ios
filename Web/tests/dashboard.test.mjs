@@ -86,3 +86,33 @@ test("imported snapshots remove credential fields and embedded image payloads", 
   assert.ok(!JSON.stringify(clean).includes("private-session-value"));
   assert.equal(clean.records[0].data.usage.total_tokens, 16);
 });
+
+test("full content survives export and import with nested credentials removed", () => {
+  const bundle = sampleBundle();
+  const answer = "完整正文".repeat(8000) + "END-OF-ANSWER";
+  bundle.records[0].data = {
+    capture: { version: 1, mode: "full_redacted", truncated: false },
+    content: { answer, arguments: '{"Cookie":"nested-private","query":"ordinary"}', result: [],
+      reasoning_content: "private-model-reasoning" },
+    usage: { total_tokens: 9, completion_tokens_details: { reasoning_tokens: 2 } },
+  };
+  const clean = sanitizeBundle(validateBundle(bundle));
+  assert.equal(clean.records[0].data.content.answer, answer);
+  assert.deepEqual(clean.records[0].data.content.result, []);
+  assert.equal(clean.records[0].data.usage.completion_tokens_details.reasoning_tokens, 2);
+  assert.ok(!JSON.stringify(clean).includes("nested-private"));
+  assert.ok(!JSON.stringify(clean).includes("private-model-reasoning"));
+  const exported = exportBundle(clean, clean.records, {});
+  const again = sanitizeBundle(validateBundle(JSON.parse(JSON.stringify(exported))));
+  assert.equal(again.records[0].data.content.answer, answer);
+  assert.equal(again.records[0].data.capture.truncated, false);
+});
+
+test("over-limit full content is explicitly marked as truncated", () => {
+  const bundle = sampleBundle();
+  bundle.records[0].data = { capture: { version: 1, mode: "full_redacted" }, content: { answer: "x".repeat(260000) } };
+  const clean = sanitizeBundle(validateBundle(bundle));
+  assert.equal(clean.records[0].data.capture.mode, "truncated");
+  assert.equal(clean.records[0].data.capture.truncated, true);
+  assert.ok(clean.records[0].data.content.answer.endsWith("[truncated: capture limit]"));
+});
