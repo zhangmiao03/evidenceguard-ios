@@ -11,11 +11,12 @@ import {
   sampleBundle,
 } from "./data.mjs";
 import "./dashboard.css";
-import { AgentCycle, CloudStatus, DeploymentPanel, ServerResources } from "./CloudPanels";
+import { AgentCycle, DeploymentPanel, ServerResources } from "./CloudPanels";
 import { RecordContent } from "./RecordContent";
 import { cloudJSON } from "./cloud.mjs";
 import { ImageAnalysis, VideoIndex } from "./MediaPanels";
 import { Showcase } from "./Showcase";
+import {JudgeOverview,TaskReplay,DeviceStory,PromptStory,TaskBoard,EvidenceStory,QualityStory,UsageStory,DataStory,FlowStrip} from "./JudgePanels";
 import {deviceLabel,eventLabel,recordLabel,traceLabel} from './labels';
 
 type Row = {
@@ -85,7 +86,10 @@ export default function Dashboard() {
   const [page, setPage] = useState(() => Math.max(0, pageKeys.indexOf(new URLSearchParams(location.search).get("view") || "overview")));
   const [mode, setMode] = useState("offline");
   const [cloud, setCloud] = useState(false);
-  const [environment, setEnvironment] = useState("demo");
+  const [environment, setEnvironment] = useState(() => {
+    const requested=new URLSearchParams(location.search).get("environment")||"demo";
+    return ["demo","team","review"].includes(requested)?requested:"demo";
+  });
   const [environments, setEnvironments] = useState<Array<{id:string;title:string}>>([]);
   const [refreshNumber, setRefreshNumber] = useState(0);
   const [liveAt, setLiveAt] = useState(0);
@@ -135,7 +139,10 @@ export default function Dashboard() {
   const filtered = Object.values(filters).some(Boolean);
   function openPage(index: number) {
     setPage(index);
-    history.replaceState(null, "", `${location.pathname}?view=${pageKeys[index]}`);
+    const url=new URL(location.href);
+    url.searchParams.set("view",pageKeys[index]);
+    if(cloud)url.searchParams.set("environment",environment);
+    history.replaceState(null,"",url);
   }
   useEffect(() => {
     setSelected(null);
@@ -517,184 +524,23 @@ export default function Dashboard() {
   }
   function content() {
     if (page === 12) return <Showcase onMonitor={() => openPage(2)} />;
-    if (page === 13) return <ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} />;
-    if (page === 14) return <VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} />;
+    if (page === 13) return <><FlowStrip steps={["来源画面","本次上传副本","视觉模型理解","事实与未知"]}/><ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
+    if (page === 14) return <><FlowStrip steps={["入库录像 / 分段","向量索引","文字检索候选","模型复核 / 原片核验"]}/><VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
     if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
     if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
-    if (page === 0)
-      return (
-        <>
-          <div className="eg-ops-kpis">
-            {[
-              ["关联追踪", stats.traces, "按 traceId 去重，含非 Agent 操作"],
-              ["模型 HTTP 请求", stats.calls, "仅统计实际观测的 HTTP 尝试"],
-              [
-                "HTTP 成功率",
-                stats.httpSuccess == null
-                  ? "—"
-                  : `${(stats.httpSuccess * 100).toFixed(1)}%`,
-                "成功请求 / 筛选内模型请求",
-              ],
-              ["模型 P95", fmtDuration(stats.p95), "单次 HTTP 请求完整耗时"],
-              [
-                "已知 Token",
-                stats.tokens == null ? "—" : stats.tokens.toLocaleString(),
-                `${stats.usageCalls}/${stats.calls} 次有总 Token 回执`,
-              ],
-              ["失败记录", problems.length, "非失败率；同一请求可能多条"],
-            ].map(([label, value, hint], i) => (
-              <section className="eg-ops-kpi" key={label}>
-                <span>{label}</span>
-                <strong className={i === 5 && problems.length ? "warn" : ""}>
-                  {value}
-                </strong>
-                <small>{hint}</small>
-              </section>
-            ))}
-          </div>
-          <p className="eg-ops-note">Codex 执行步骤：{stats.codexSteps}。步骤指主程序与执行器的一次输入输出往返，不代表底层 HTTP 请求次数；其 Token 快照不重复计入 HTTP 用量。</p>
-          <div className="eg-ops-grid">
-            <section className="eg-ops-panel">
-              <div className="eg-ops-panel-head">
-                <h2>模型与执行器步骤耗时</h2>
-                <small>最近 24 条 · ms · 点击查看调用边界</small>
-              </div>
-              {calls.length ? (
-                <div
-                  className="eg-ops-chart"
-                  role="img"
-                  aria-label="最近模型请求完整耗时柱状图"
-                >
-                  {calls.slice(-24).map((r) => (
-                    <button
-                      key={r.id}
-                      title={`${r.name} ${fmtDuration(r.durationMs)}`}
-                      aria-label={`${r.name} ${fmtDuration(r.durationMs)}`}
-                      onClick={() => setSelected(r)}
-                      style={{
-                        height: `${Math.max(3, ((r.durationMs || 0) / Math.max(...calls.map((x) => x.durationMs || 1))) * 100)}%`,
-                      }}
-                      className={failure(r.status) ? "bad" : ""}
-                    >
-                      <span>{Math.round(r.durationMs || 0)}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <Empty />
-              )}
-            </section>
-            {coverage()}
-          </div>
-          {traceList()}
-        </>
-      );
-    if (page === 1)
-      return (
-        <>
-          {table(
-            resources(["live_devices"]),
-            "设备登记快照",
-            "登记不等于官方绑定或在线",
-          )}
-          {table(
-            rows.filter((r) =>
-              /^(session\.|live\.|capture\.|camera_)/.test(r.name),
-            ),
-            "媒体与新帧链路",
-          )}
-        </>
-      );
-    if (page === 2) return traceList();
-    if (page === 3)
-      return (
-        <>
-          {table(calls, "模型与执行器调用", "HTTP 请求与 Codex 步骤分别标明；点击查看实际输入输出")}
-          {table(rows.filter(r => r.name.startsWith("codex.")), "Codex 协议记录", "实际发送的指令、工具回执、返回文本和用量快照；不含内部推理")}
-          {table(
-            rows.filter(
-              (r) =>
-                r.kind === "event" && /agent\.|tool_|\.finished$/.test(r.name),
-            ),
-            "Agent / 工具 / 输出校验",
-          )}
-          {table(
-            resources(["model_configuration"]),
-            "服务模型配置",
-            "配置值不代表实际调用",
-          )}
-        </>
-      );
-    if (page === 4)
-      return (
-        <>
-          {table(resources(["deployed_prompt"]), "已部署的系统提示词与工具定义", "由实际后端进程启动时读取")}
-          {table(
-            rows.filter((r) => r.kind === "prompt"),
-            "请求提示词快照",
-            "新记录可查看脱敏正文；旧记录保留原有摘要标记",
-          )}
-          <p className="eg-ops-note">
-            每条模型调用关联独立快照，可核对工具定义、角色、参数与快照哈希。多模态二进制始终省略。未启用全文采集的历史内容无法恢复。
-          </p>
-        </>
-      );
-    if (page === 5)
-      return (
-        <>
-          {table(resources(["skills", "runs"]), "Skill 与任务快照")}
-          {table(
-            rows.filter(
-              (r) =>
-                /skill|trial|run_|proactive/.test(r.name) && r.kind === "event",
-            ),
-            "执行事件",
-          )}
-        </>
-      );
-    if (page === 6)
-      return (
-        <>
-          {table(
-            resources(["evidence", "recordings"]),
-            "证据与录像元数据",
-            "离线包不包含原始视频或图片",
-          )}
-          {table(
-            rows.filter(
-              (r) =>
-                /capture|camera|video|image_review/.test(r.name) &&
-                r.kind !== "resource",
-            ),
-            "采集与核验回执",
-          )}
-        </>
-      );
-    if (page === 7)
-      return (
-        <>
-          {table(
-            resources(["skill_trials"]),
-            "试跑结果",
-            "真机验收与回放试跑需要分别核验",
-          )}
-          {table(problems, "失败 / 不支持 / 取消记录")}
-          {coverage()}
-        </>
-      );
-    if (page === 8)
-      return (
-        <>
-          {coverage()}
-          {table(
-            calls.filter((r) => r.data.usage),
-            "模型 Usage 回执",
-            "缺失 Usage 不按零计；费用未估算",
-          )}
-        </>
-      );
+    const props={rows,allRows:bundle.records,coverage:bundle.coverage,onSelect:setSelected,onPage:openPage};
+    if(page===0)return <JudgeOverview {...props}/>;
+    if(page===1)return <DeviceStory {...props}/>;
+    if(page===2)return <><TaskReplay {...props}/><details className="judge-advanced"><summary>开发者记录：所有关联追踪（含接口轮询）</summary>{traceList()}</details></>;
+    if(page===3)return <><TaskReplay {...props} architecture/><details className="judge-advanced"><summary>模型配置与全部调用记录</summary>{table(calls,"模型与执行器调用","HTTP 请求与 Codex 步骤分别标明；点击查看实际输入输出")}{table(rows.filter(r=>r.name.startsWith("codex.")),"Codex 协议记录","实际下发指令与工具回执；不含内部推理")}{table(resources(["model_configuration"]),"服务模型配置","配置值不代表实际调用")}</details></>;
+    if(page===4)return <PromptStory {...props}/>;
+    if(page===5)return <TaskBoard {...props}/>;
+    if(page===6)return <EvidenceStory {...props}/>;
+    if(page===7)return <><QualityStory {...props}/><details className="judge-advanced"><summary>采集覆盖与原始失败记录</summary>{coverage()}{table(problems,"失败 / 不支持 / 取消记录")}</details></>;
+    if(page===8)return <UsageStory {...props}/>;
     return (
       <>
+        <DataStory rows={rows} coverage={bundle.coverage} onSelect={setSelected}/>
         {!cloud && <section className="eg-ops-panel">
           <div className="eg-ops-panel-head">
             <h2>本地离线归档</h2>
@@ -724,7 +570,7 @@ export default function Dashboard() {
           </div>
           <div className="eg-ops-source-info">
             <h3>{bundle.dataset.title}</h3>
-            <p>数据集：{bundle.dataset.id}</p>
+            <details><summary>数据集编号与格式</summary><p>{bundle.dataset.id} · {SCHEMA}</p></details>
             <p>快照时间：{fmtTime(bundle.dataset.exportedAt)}</p>
             <p>
               {bundle.records.length} 条记录 · 当前筛选 {rows.length} 条
@@ -770,16 +616,12 @@ export default function Dashboard() {
             </div>
           </div>
         </section>
-        {coverage()}
-        <section className="eg-ops-panel">
-          <h2>原始覆盖声明</h2>
-          <pre>{json(bundle.coverage || {})}</pre>
-        </section>
+        <details className="judge-advanced"><summary>详细采集覆盖声明</summary>{coverage()}<pre>{json(bundle.coverage || {})}</pre></details>
       </>
     );
   }
   return (
-    <div className="eg-ops">
+    <div className={`eg-ops ${page!==12?"eg-judge":""}`}>
       <aside className="eg-ops-sidebar">
         <a className="eg-ops-brand" href="/dashboard">
           <b>EG</b>
@@ -792,9 +634,10 @@ export default function Dashboard() {
           <strong>{cloud ? "比赛云端工作区" : "本地开发工作区"}</strong>
           <small>{cloud ? "Singapore / Live telemetry" : "研发追踪 / Offline ready"}</small>
         </div>
-        <p className="eg-ops-nav-label">工作台</p>
+        {page===12&&<p className="eg-ops-nav-label">工作台</p>}
         <nav aria-label="Dashboard 页面">
-          {[12,0,13,14,1,2,3,4,5,6,7,8,9,10,11].map(i => (
+          {(page===12?[12,0,13,14,1,2,3,4,5,6,7,8,9,10,11]:[12,0,3,2,13,14,5,6,7,1,4,8,9,10,11]).map(i => (
+            <div key={i}>{page!==12&&[12,13,1].includes(i)&&<p className="eg-ops-nav-label">{i===12?"01 · 先看作品与链路":i===13?"02 · 看证据与效果":"03 · 看实现与运行"}</p>}
             <button
               key={pages[i]}
               aria-current={page === i ? "page" : undefined}
@@ -803,7 +646,7 @@ export default function Dashboard() {
             >
               <span>{glyphs[i]}</span>
               {pages[i]}
-            </button>
+            </button></div>
           ))}
         </nav>
         <div className="eg-ops-sidebar-bottom">
@@ -819,7 +662,7 @@ export default function Dashboard() {
       <main className="eg-ops-main">
         <header className="eg-ops-topbar">
           <span>
-            EvidenceGuard <i>/</i> 研发工作台 <i>/</i> {pages[page]}
+            EvidenceGuard <i>/</i> 作品与运行 <i>/</i> {pages[page]}
           </span>
           <span className="eg-ops-badge">
             {page === 12 ? "浏览器演示 · 示例数据" : synthetic
@@ -833,9 +676,24 @@ export default function Dashboard() {
         </header>
         {page !== 12 && <div className="eg-ops-heading">
           <div>
-            <p>OBSERVE · INSPECT · VERIFY</p>
+            <p>READ THE RESULT · FOLLOW THE EVIDENCE</p>
             <h1>{pages[page]}</h1>
-            <span>从客户端到模型、工具与现场画面，查看可核对的执行记录。</span>
+            <span>{[
+              "从一条真实任务开始，快速读懂 Agent 如何工作、结果如何产生。",
+              "手机通过官方 SDK 连接硬件；这里核对画面如何进入云端。",
+              "逐步回放需求、模型调用、工具执行与最终交付。",
+              "Agent Loop：上下文 → 模型 ⇄ 工具 → 证据核验 → 最终回复。",
+              "系统指令、对话上下文与工具定义，都关联到具体一次调用。",
+              "从草案到执行，查看已保存的 Skill 和任务当前状态。",
+              "回到图片与录像本身，核对结论依据和来源边界。",
+              "分开阅读已观测结果、无法确认和仍待真机验收的能力。",
+              "哪些模型实际被调用、花了多久、记录了多少用量。",
+              "数据来源、采集范围与离线导入导出。",
+              "主机是否健康，三个后端环境是否仍在运行。",
+              "实际运行进程、磁盘源码与仓库基准是否一致。",
+              "", "把图片、模型理解与可见事实放在同一处查看。",
+              "从查询文字到候选片段，再到视频复核与播放证据。"
+            ][page]}</span>
           </div>
           <div className="eg-ops-actions">
             <button onClick={() => input.current?.click()}>
@@ -860,11 +718,10 @@ export default function Dashboard() {
           </div>
         </div>}
         {cloud && page !== 12 && <div className="eg-ops-cloud-controls">
-          <label>后端环境<select value={environment} onChange={e=>{setEnvironment(e.target.value);setMode("cloud");setLiveAt(0);setBundle(emptyBundle());setFilters(initialFilters);}}>{environments.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
-          <span>当前访问为只读；原 App API 继续使用原有鉴权。</span>
+          <label>后端环境<select value={environment} onChange={e=>{setEnvironment(e.target.value);const url=new URL(location.href);url.searchParams.set("environment",e.target.value);history.replaceState({},"",url);setMode("cloud");setLiveAt(0);setBundle(emptyBundle());setFilters(initialFilters);}}>{environments.map(e=><option key={e.id} value={e.id}>{e.title}</option>)}</select></label>
+          <span className={`eg-ops-dot ${cloudFailed||bundle.coverage?.stale?"bad":""}`}/><strong>{cloudFailed||bundle.coverage?.stale?"采集连接过期 · 以下为上次快照":mode!=="cloud"?"当前浏览离线数据":bundle.coverage?.observability==="connected"?"真实服务已连接":"采集状态待确认"}</strong>
           <span>{liveAt ? `最近读取 ${new Date(liveAt).toLocaleTimeString("zh-CN",{hour12:false})}` : "连接采集服务…"}</span>
         </div>}
-        {mode === "cloud" && page !== 12 && <CloudStatus coverage={{...bundle.coverage, stale:cloudFailed || bundle.coverage?.stale}} />}
         {!cloud && page !== 12 && <div className="eg-ops-notice" role="status"><span><strong>云端连接：</strong>{discovery} 当前网址：{location.host}。离线演示可以独立使用。</span><button onClick={() => setDiscoveryNumber(n => n + 1)}>重新连接云端</button></div>}
         <input
           ref={input}
@@ -933,7 +790,7 @@ export default function Dashboard() {
           </span>
           {mode !== "local" && mode !== "cloud" && <span>离线内容不会自动更新</span>}
         </div>}
-        {(page < 10 || page > 12) && <section className="eg-ops-filters" aria-label="全局筛选">
+        {(page < 10 || page > 12) && <details className="judge-filter-fold"><summary>筛选记录 · {filtered?"有生效条件":"全部时间 / 全部来源"}</summary><section className="eg-ops-filters" aria-label="全局筛选">
           <label>
             时间窗口
             <select
@@ -1001,7 +858,7 @@ export default function Dashboard() {
             />
           </label>
           <button onClick={() => setFilters(initialFilters)}>重置</button>
-        </section>}
+        </section></details>}
         {filtered && page !== 12 && <div className="eg-ops-notice" role="status"><span>全局筛选正在生效：当前 {rows.length} / {bundle.records.length} 条记录。搜索“{filters.query || "全部文字"}”与设备、时间条件会影响各数据页面。</span><button onClick={() => setFilters(initialFilters)}>清除全部筛选</button></div>}
         <div className="eg-ops-content">{content()}</div>
         <footer>

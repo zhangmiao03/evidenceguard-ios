@@ -40,6 +40,7 @@ test('auth routing failure is visible, automatically recovers, and stale filters
   await page.goto('/dashboard');
   await expect(page.getByText(/数据接口返回 401/)).toBeVisible();
   await expect(page.getByRole('button',{name:'刷新云端数据'})).toBeVisible({timeout:8000});
+  await page.locator('.judge-filter-fold > summary').click();
   await page.getByPlaceholder('Trace / 模型 / 事件 / 状态').fill('no-such-record');
   await expect(page.getByRole('button',{name:'清除全部筛选'})).toBeVisible();
   await page.getByRole('button',{name:'清除全部筛选'}).click();

@@ -5,7 +5,7 @@ async function boot() {
   if (/^\/dashboard(?:\/index\.html|\/)?$/.test(location.pathname)) {
     const { default: Dashboard } = await import("./dashboard/Dashboard");
     document.body.style.margin = "0";
-    document.title = "EvidenceGuard · 研发追踪工作台";
+    document.title = "EvidenceGuard · 作品与 Agent 运行";
     root.render(<Dashboard />);
   } else {
     await Promise.all([import("./style.css"), import("./product.css")]);

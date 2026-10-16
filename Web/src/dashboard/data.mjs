@@ -73,7 +73,7 @@ export function sanitizeData(value, depth = 0, options = {}) {
             k,
           )
             ? "[redacted]"
-            : /^(reasoning_content|reasoning|thinking|chain_of_thought)$/i.test(k) ? "[private reasoning omitted]" : sanitizeData(v, depth + 1, options),
+            : /^(reasoning_content|reasoning|thinking|chain_of_thought|encrypted_content|encrypted_reasoning)$/i.test(k) ? "[private reasoning omitted]" : sanitizeData(v, depth + 1, options),
         ]).concat(Object.keys(value).length > maxItems ? [["_captureLimit", cut()]] : []),
     );
   if (typeof value === "string") {

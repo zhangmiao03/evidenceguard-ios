@@ -10,6 +10,19 @@ from eg_dashboard.media import read_media, visual_traces
 
 
 class MediaProjectionTests(unittest.TestCase):
+    def test_agent_and_codex_traces_survive_polling_and_oversized_prompt(self):
+        with sqlite3.connect(':memory:') as db:
+            db.execute('CREATE TABLE records(id TEXT PRIMARY KEY,at REAL,payload TEXT)')
+            source=[{'id':'model','at':1,'traceId':'codex-task','kind':'model','name':'codex_step'},
+                    {'id':'final','at':2,'traceId':'codex-task','kind':'event','name':'agent.result'},
+                    {'id':'large','at':3,'traceId':'codex-task','kind':'prompt','name':'request.snapshot','data':{'text':'x'*2500001}},
+                    {'id':'poll','at':10000,'traceId':'client-poll','kind':'event','name':'http.request'}]
+            db.executemany('INSERT INTO records VALUES (?,?,?)',[(r['id'],r['at'],json.dumps(r)) for r in source])
+            rows,coverage=visual_traces(db)
+            self.assertEqual({r['id'] for r in rows},{'model','final'})
+            self.assertTrue(coverage['truncated'])
+            self.assertEqual(coverage['traces'],1)
+
     def test_old_visual_trace_survives_client_polling_without_fabricating_rows(self):
         with sqlite3.connect(':memory:') as db:
             db.execute('CREATE TABLE records(id TEXT PRIMARY KEY,at REAL,payload TEXT)')

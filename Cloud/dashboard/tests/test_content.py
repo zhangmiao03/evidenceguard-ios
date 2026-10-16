@@ -21,13 +21,14 @@ class ContentTests(unittest.TestCase):
             'jwt': 'eyJhbGciOiJIUzI1NiJ9.payload.signature',
             'signed': 'https://media.invalid/a?token=secretvalue',
             'reasoning_content': 'private model deliberation',
+            'encrypted_content': 'opaque-private-reasoning',
             'usage': {'total_tokens': 18, 'completion_tokens_details': {'reasoning_tokens': 2}},
         }
         with patch.dict(os.environ, {'EG_MODEL_API_KEY': canary}):
             cleaned, stats = content.clean(value)
         encoded = json.dumps(cleaned)
         for secret in (canary, 'not-patterned', 'session-content', 'another-key', 'sensitive-lines',
-                       'eyJhbGciOiJIUzI1NiJ9', 'secretvalue', 'private model deliberation'):
+                       'eyJhbGciOiJIUzI1NiJ9', 'secretvalue', 'private model deliberation', 'opaque-private-reasoning'):
             self.assertNotIn(secret, encoded)
         self.assertIn('a normal question', encoded)
         self.assertIn('normal result', encoded)

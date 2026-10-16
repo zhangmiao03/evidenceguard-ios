@@ -22,6 +22,10 @@
 
 ## 比赛网站：iOS 交互展示、图片分析与视频向量库（2026-10-16）
 
+Dashboard 监控页面按评委阅读顺序更新为“先看作品与链路 / 看证据与效果 / 看实现与运行”。从[运行总览](https://demo.47.131.21.137.sslip.io/dashboard?view=overview)读取任务需求与最终结果，再进入[Agent Loop](https://demo.47.131.21.137.sslip.io/dashboard?view=agent&environment=review)点击结构节点、逐步回放模型与工具记录。所有提示词、模型输入输出、工具参数与回执、最终回复仍可展开；长编号与源码指纹收进技术详情。任务列表排除接口轮询，HTTP 调用成功不等于任务成功或识别正确。
+
+设备页展示手机 SDK → 上传 → Agent 的边界；Skill 使用状态看板，证据使用媒体卡片，服务器使用资源仪表与环境卡片，部署使用三项源码核对。原作品演示与原生 App 保持原功能。新增分享参数 `environment=demo|team|review`，页面切换保留环境；没有跨环境拼接数据。详见[评委阅读与验收说明](Docs/DASHBOARD-JUDGE-READING.md)。
+
 作品入口：**https://demo.47.131.21.137.sslip.io/dashboard?view=showcase**。这是完整网站中的浏览器交互展示，可切换门口包裹、室内宠物、工作室场景，体验助手、摄像头 Skill、任务证据、记忆和设置；明确标注示例数据，不冒充原生 iOS 模拟器或真实硬件。监控入口为同域 `/dashboard`，继续免登录只读。使用带域名的 HTTPS 入口，不将 IP 直接改成 HTTPS。
 
 新增 `/dashboard?view=images` 读取实际 SDK 事件视觉核验、证据结果、视觉缓存和模型调用；`?view=vectors` 读取实际录像、片段、向量维度/范数/前 16 维、模型及签名兼容状态。合成测试录像保留 `synthetic_review` 来源；数据库快照不是历史调用回放，缺少记录不算成功。按比赛展示要求，记录关联的媒体副本通过独立只读缓存预览与下载；密钥、外部签名地址和源文件路径不公开。

@@ -23,6 +23,7 @@ test("offline dashboard: import, trace, model prompt, filter and export", async 
     .getByRole("navigation")
     .getByRole("button", { name: "Agent 与模型" })
     .click();
+  await page.getByText("模型配置与全部调用记录", {exact:true}).click();
   await page
     .locator(".eg-ops-row-link")
     .filter({ hasText: "demo-vision-model" })
@@ -38,6 +39,7 @@ test("offline dashboard: import, trace, model prompt, filter and export", async 
     page.getByRole("heading", { name: "任务运行时间线" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "关闭详情" }).click();
+  await page.locator(".judge-filter-fold > summary").click();
   await page.getByPlaceholder("Trace / 模型 / 事件 / 状态").fill("http_error");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "↓ 导出", exact: true }).click();
@@ -65,6 +67,7 @@ test("full content inspector shows prompt, model output, tool result and final r
   await page.goto("/dashboard");
   await page.getByLabel("导入追踪 JSON").setInputFiles({ name: "full.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
   await page.getByRole("navigation").getByRole("button", { name: "Agent 与模型" }).click();
+  await page.getByText("模型配置与全部调用记录", {exact:true}).click();
   await page.locator(".eg-ops-row-link").filter({ hasText: "demo-vision-model" }).first().click();
   const detail = page.getByRole("dialog");
   await expect(detail.locator(".eg-ops-messages")).toContainText("INPUT-END");
@@ -78,7 +81,7 @@ test("full content inspector shows prompt, model output, tool result and final r
   await expect(detail).not.toContainText("never-show-this-key");
   await expect(detail).toContainText("[redacted]");
   await page.getByRole("button", { name: "查看完整 Trace" }).click();
-  await page.getByRole("button", { name: /查看最终回复/ }).click();
+  await detail.getByRole("button", { name: /查看最终回复/ }).click();
   await expect(detail.getByRole("heading", { name: "最终回复（实际返回 App）" })).toBeVisible();
   await expect(detail.getByTestId("record-content")).toContainText("FINAL-APP-ANSWER");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
@@ -124,6 +127,7 @@ test("Codex inspector states the observed boundary and shows actual protocol ins
   await page.getByLabel("导入追踪 JSON").setInputFiles({ name: "codex.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
   await expect(page.getByText(/Codex 执行步骤：1/)).toBeVisible();
   await page.getByRole("navigation").getByRole("button", { name: "Agent 与模型" }).click();
+  await page.getByText("模型配置与全部调用记录", {exact:true}).click();
   await page.locator(".eg-ops-row-link").filter({ hasText: "demo-vision-model" }).first().click();
   await expect(page.getByRole("dialog").getByRole("heading", { name: "Codex 返回主程序的输出（脱敏）" })).toBeVisible();
   await expect(page.getByRole("dialog")).toContainText("CODEX-ACTUAL-OUTPUT");
@@ -146,6 +150,12 @@ test("all dashboard pages render without horizontal page overflow", async ({
       buffer: Buffer.from(JSON.stringify(sampleBundle())),
     });
   for (const name of [
+    "运行总览",
+    "Agent 与模型",
+    "服务器资源",
+    "部署代码核对",
+    "图片分析",
+    "视频向量库",
     "设备与取流",
     "对话与 Trace",
     "提示词与上下文",

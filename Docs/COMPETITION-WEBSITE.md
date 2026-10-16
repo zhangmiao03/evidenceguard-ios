@@ -22,7 +22,7 @@
 
 前端同源匿名读取，不转发 App 密钥。401/403、HTML fallback、超时均明确显示；自动重试从 3 秒递增至 30 秒，连上后每 5 秒取快照。环境切换清空筛选；筛选后无记录可一键恢复。失败保留旧数据并标记过期，不显示成新的正常结果。
 
-另发现客户端轮询高峰会将旧视觉调用挤出最近 3,000 条快照。现在额外读取最近 20 组图片/视频/嵌入 Trace（最多 120 条、1 MB），按原 ID 去重并保留真实时间；总导出仍受 6 MB 上限约束。`coverage.visualTraceSupplement` 明示采集范围与截断，不补造未记录的调用。
+另发现客户端轮询高峰会将旧视觉调用挤出最近 3,000 条快照。现在额外读取最近 20 组 Agent / 模型 / 图片 / 视频 / 嵌入 Trace（最多 240 条、2.5 MB），按原 ID 去重并保留真实时间；总导出仍受 6 MB 上限约束。`coverage.visualTraceSupplement` 明示采集范围与截断，不补造未记录的调用。
 
 ## 数据来源与边界
 
@@ -60,7 +60,7 @@ npm --prefix Web run build -- --base /dashboard/
 python -m unittest discover -s Cloud/dashboard/tests -v
 npm --prefix Web test
 cd Web
-npx playwright test tests/browser/dashboard.spec.ts tests/browser/showcase.spec.ts tests/browser/media-preview.spec.ts
+npx playwright test tests/browser/dashboard.spec.ts tests/browser/showcase.spec.ts tests/browser/media-preview.spec.ts tests/browser/judge.spec.ts
 cd ..
 python Cloud/dashboard/build_release.py
 python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz --no-system-proxy

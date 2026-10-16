@@ -19,7 +19,7 @@ REDACTED = '[redacted]'
 TRUNCATED = '[truncated: capture limit]'
 SECRET = re.compile(r'authorization|cookie|api.?key|secret|password|passwd|credential|(?:access|refresh|session|security|id)[_-]?token|^token$|private.?key|tokenhash|^sn$|devicesn|serialnumber|accountid|clientid|importedby', re.I)
 ENV_SECRET = re.compile(r'api.?key|(?:^|_)key$|secret|password|credential|(?:access|refresh|session|security|id)[_-]?token|private.?key', re.I)
-PRIVATE_REASONING = {'reasoning_content', 'reasoning', 'thinking', 'chain_of_thought'}
+PRIVATE_REASONING = {'reasoning_content', 'reasoning', 'thinking', 'chain_of_thought', 'encrypted_content', 'encrypted_reasoning'}
 MEDIA = {'imagebase64', 'image_base64', 'image_url', 'imageurl', 'input_audio', 'audio_base64'}
 
 
