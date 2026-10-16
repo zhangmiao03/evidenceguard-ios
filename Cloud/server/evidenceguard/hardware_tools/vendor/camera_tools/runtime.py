@@ -420,7 +420,7 @@ class Runtime:
             if command == "execute" and op.get("stopRequested"):
                 op["executionReceiptHash"] = fingerprint(body)
                 op["executionReceipt"] = {"status": body.get("status"), "sdkUsed": body.get("sdkUsed") is True}
-                if op["executionState"] not in ("completed", "failed", "cancelled"):
+                if op["executionState"] not in ("completed", "failed", "cancelled", "unknown"):
                     op["executionState"] = "verifying" if self.clock() <= op["deadline"] else "unknown"
                 self.store.put("operation", op)
                 return op

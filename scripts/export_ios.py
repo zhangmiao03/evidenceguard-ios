@@ -11,6 +11,7 @@ import re
 import shlex
 import subprocess
 from urllib.parse import urlsplit
+from check_sdk_host import validate_sdk_app
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -44,6 +45,10 @@ if len(apps) != 1:
 app = apps[0]
 with (app / 'Info.plist').open('rb') as file:
     info = plistlib.load(file)
+try:
+    validate_sdk_app(app)
+except ValueError as error:
+    parser.error(str(error))
 if info.get('CFBundleIdentifier') != args.bundle_id:
     parser.error('Bundle ID differs from the archived app; refuse to upload the wrong app.')
 url = urlsplit(info.get('EGServiceBaseURL', ''))

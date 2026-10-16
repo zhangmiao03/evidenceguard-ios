@@ -258,8 +258,8 @@ struct TasksView: View {
     @ViewBuilder private var scheduledTasks: some View {
         if let preferences = store.data.personal?.preferences {
             VStack(alignment: .leading, spacing: 14) {
-                Label("每日守护概况", systemImage: "sun.max").font(.headline)
-                Text(preferences.dailySummary ? "每天 \(preferences.summaryHour):00" : "尚未开启")
+                Label("早晚报告", systemImage: "sun.max").font(.headline)
+                Text(preferences.reportScheduleLabel)
                     .font(.title3.weight(.medium))
                 if preferences.dailySummary && !preferences.enabled {
                     Text("已暂停：主动提醒总开关已关闭").font(.caption).foregroundStyle(.orange)
@@ -270,7 +270,7 @@ struct TasksView: View {
                 NavigationLink("设置时间与免打扰", value: AppRoute.personalAgent).font(.subheadline.bold())
                     .accessibilityIdentifier("skills.scheduleSettings")
             }.padding(20).frame(maxWidth: .infinity, alignment: .leading).background(.white.opacity(0.83)).clipShape(RoundedRectangle(cornerRadius: 22))
-            Text("当前支持每日概况；摄像头任务按各自规则持续或单次执行，暂不支持预约启停。")
+            Text("早晚报告汇总已保存的记录，不会自动启动摄像头；摄像头任务按各自规则执行。")
                 .font(.caption).foregroundStyle(Brand.muted)
         } else { Text("正在读取定时设置…").font(.subheadline).foregroundStyle(Brand.muted) }
     }

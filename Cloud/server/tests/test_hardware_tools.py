@@ -121,6 +121,35 @@ def test_stop_dispatch_bypasses_capture_gate_and_late_execution_cannot_undo_stop
         assert finish(c,h,headers,dispatched,'stopped',command='stop').json()['executionState']=='cancelled'
 
 
+@pytest.mark.parametrize('stop_status', ['failed', 'unknown'])
+@pytest.mark.parametrize('stop_first', [True, False])
+def test_unverified_control_stop_retains_unknown_lock_until_manual_reconciliation(env, stop_status, stop_first):
+    app, c = env
+    d, _, h, headers = host(c)
+    args = dict(deviceId=d['id'], field='statusLED', value=True, expectedSettingsRevision=0)
+    op = call(c, d, 'device_settings_set', args).json()
+    assert c.post('/api/hardware/confirmations', json=dict(
+        operationId=op['id'], requestHash=op['requestHash'], decision='approve')).status_code == 200
+    dispatched = claim(c, h, headers)['operation']
+    assert call(c, d, 'camera_stop', {'operationId': op['id']}).status_code == 200
+    assert claim(c, h, headers)['command'] == 'stop'
+    if not stop_first:
+        assert finish(c, h, headers, dispatched, command='execute').json()['executionState'] == 'verifying'
+    failed_stop = finish(c, h, headers, dispatched, stop_status, command='stop',
+        error=dict(code='STOP_UNVERIFIED', message='No verified interrupt route')).json()
+    assert failed_stop['executionState'] == 'unknown'
+    assert failed_stop['stopResult'] == dict(state='failed', physicalEffect='unverified')
+    # A delayed execute acknowledgement cannot turn an unverified stop into success.
+    late = finish(c, h, headers, dispatched, command='execute').json()
+    assert late['executionState'] == 'unknown' and late['physicalResult'] == 'unverified'
+    assert app.state.hardware.busy(d['id'])
+    assert c.post('/api/hardware/devices/'+d['id']+'/release', json={}).json()['code'] == 'RESOURCE_BUSY'
+    result = c.post('/api/hardware/reconcile', json=dict(operationId=op['id'],
+        requestHash=op['requestHash'], decision='release_after_manual_check',
+        evidence='测试人员已核对硬件停止；此用例使用执行器替身')).json()
+    assert result['executionState'] == 'unknown' and not app.state.hardware.busy(d['id'])
+
+
 def test_live_challenge_becomes_product_evidence_and_scoped_observation(env):
     app,c=env; d,_,h,headers=host(c); media,mh=start_live(c,d)
     op=call(c,d,'camera_observe').json(); dispatched=claim(c,h,headers)['operation']

@@ -1,0 +1,35 @@
+官方 SDK 启动检查与内置联调账号
+2026-10-16
+
+用户再次反馈切换官方 SDK 闪退，并提供联调账号，要求内置使用、产品界面不显示凭证输入。用户手机实际安装版本尚未确认。
+
+已确认的历史故障
+build 10 实际归档缺少 CADisableMinimumFrameDurationOnPhone=true。SDK 的 Compose 1.7.1 在打开界面时有异步严格检查，缺少该项会终止进程；Swift 同步 catch 无法捕获此类后台终止。当前源码和 build 11 归档已包含修正。此前没有这台手机的崩溃堆栈，不能把所有新的闪退都归因于这一项。
+
+本轮实际归档复核
+- 原 build 10 被宿主校验器拒绝；原 build 11 通过。
+- build 11 包含 SampleCore、AnkerWebRTC 及 CocoaPods 依赖。
+- 27 个 Compose 资源文件与当前 SDK 构建资源逐一比较，未发现缺失或内容差异。
+- build 11 深度严格签名检查通过。发布包移除 framework Headers 是正常发布处理，不等于丢失 API。
+- SDK Mach-O 平台为 iOS，厂商工程仅配置 iosArm64；普通 iOS Simulator 不能加载此设备二进制。
+
+本轮改动
+1. SDKConfiguration 读取私有构建配置提供的固定联调账号；未配置、占位符未展开、环境异常均拒绝作为有效账号。真实凭证不写入版本库和公开文档。
+2. 产品“连接摄像头”页自动使用此账号，隐藏 User ID、Token、环境选择和清除凭证入口，保留检查设备、设备状态和连接功能。模拟器只显示配置状态，不能假装连接了硬件。
+3. 打开官方工作区时，通过官方 BusinessLoginViewModel 配置同一账号及固定 PR/QA 客户端参数，进入 SampleApp 自身的自动登录流程。没有另外编造设备列表；账号与设备是否可用仍由真实 SDK 响应决定。
+4. 进入工作区前检查 Compose 配置、SampleCore、AnkerWebRTC 和界面资源，失败时显示提示并保留当前工作区，不先断开会话。
+5. 桥接的同步启动错误通过 Kotlin @Throws 映射为 Swift 错误，显示友好提示；不声称能捕获所有 Compose 异步异常。取消切换时停止继续打开页面，切换状态由 defer 复位。
+6. 归档/导出增加真实 App 资源和内置账号配置校验；测试覆盖旧包缺键、非法配置、资源及框架缺失。
+
+构建配置
+- 本轮默认使用此前的 PR 环境。没有用真实摄像头或真机 SDK 验证这组账号的有效性。
+- 私有组合配置：Release/internal-demo.xcconfig（Git 忽略），以及当前聊天 work/private/sdk-crash-investigation-20261016/internal-sdk.xcconfig。
+- 继续使用 archive_ios.py --demo-config 指向该组合配置；它保留手机云端配置并增加 EG_SDK_MANAGED_ACCOUNT、EG_SDK_USER_ID、EG_SDK_AUTH_TOKEN、EG_SDK_ENVIRONMENT。
+- 普通未带私有配置的源码构建保留手动配置模式。向另一台 Mac 迁移需同时保留私有配置，不能只复制公开源码。
+- 内置账号属于用户指定的内部联调用途；App 包内的配置可被提取，不将其宣称为服务端保密存储。
+
+验收边界
+本轮模拟器用于验证真实 SwiftUI 产品入口、凭证输入隐藏、导航和返回；该目标明确禁用了官方设备工作区按钮。它不证明 Compose 原版页在 iPhone 上成功运行。
+真实 arm64 SDK 构建用于验证 Kotlin/Swift 桥接、链接与包资源；编译通过不等于真实账号登录、摄像头连接或 SDK 界面启动验收。
+最终本机检查回执在当前聊天 work/private/sdk-crash-investigation-20261016/verification.json。
+本轮没有上传或分发新 TestFlight，也没有更改云端服务。原 build 10、build 11 和完整迁移包保留。

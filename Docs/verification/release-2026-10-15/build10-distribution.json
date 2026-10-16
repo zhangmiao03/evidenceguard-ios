@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "build": 10,
+  "sourceCommit": "904c5c8a6f20c635a8b39375fb7a0ad732fc9983",
+  "uploadedAt": "2026-10-15T09:18:00+08:00",
+  "uploadMethod": "Xcode Organizer — TestFlight Internal Only",
+  "appleProcessing": "complete",
+  "exportCompliance": "saved using checked standard crypto and existing no-France distribution scope",
+  "testNotes": "saved",
+  "group": "EvidenceGuard Internal",
+  "testers": 3,
+  "status": "正在测试",
+  "expiresInDays": 90,
+  "verifiedAt": "2026-10-15T09:29:50.362327+08:00",
+  "productionAPNsEntitlement": true,
+  "strictSignatureVerified": true,
+  "build9Distributed": false,
+  "externalDistributionChanged": false,
+  "warning": "Vendor AnkerWebRTC dSYM missing; non-blocking",
+  "realDeviceAcceptanceComplete": false,
+  "physicalCameraValidated": false,
+  "gmailFeishuOAuthConfigured": false
+}

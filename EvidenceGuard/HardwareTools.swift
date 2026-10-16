@@ -1,37 +1,6 @@
 import SwiftUI
 import CryptoKit
 
-enum HardwareValue: Codable, Equatable, Sendable {
-    case object([String: HardwareValue]), array([HardwareValue]), string(String), number(Double), bool(Bool), null
-    init(from decoder: Decoder) throws {
-        let c = try decoder.singleValueContainer()
-        if c.decodeNil() { self = .null }
-        else if let v = try? c.decode(Bool.self) { self = .bool(v) }
-        else if let v = try? c.decode(Double.self) { self = .number(v) }
-        else if let v = try? c.decode(String.self) { self = .string(v) }
-        else if let v = try? c.decode([String: HardwareValue].self) { self = .object(v) }
-        else { self = .array(try c.decode([HardwareValue].self)) }
-    }
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch self {
-        case .object(let v): try c.encode(v)
-        case .array(let v): try c.encode(v)
-        case .string(let v): try c.encode(v)
-        case .number(let v): try c.encode(v)
-        case .bool(let v): try c.encode(v)
-        case .null: try c.encodeNil()
-        }
-    }
-    subscript(_ key: String) -> HardwareValue { object[key] ?? .null }
-    var object: [String: HardwareValue] { if case .object(let v) = self { return v }; return [:] }
-    var array: [HardwareValue] { if case .array(let v) = self { return v }; return [] }
-    var string: String { if case .string(let v) = self { return v }; return "" }
-    var boolean: Bool { if case .bool(let v) = self { return v }; return false }
-    var json: String { let e=JSONEncoder(); e.outputFormatting=[.prettyPrinted,.sortedKeys]; return (try? String(data:e.encode(self),encoding:.utf8)) ?? "{}" }
-    static func parse(_ json: String) throws -> HardwareValue { try JSONDecoder().decode(Self.self,from:Data(json.utf8)) }
-}
-
 struct HardwareExecutorSession: Sendable { var id: String; var token: String; var deviceID: String }
 
 @MainActor final class IOSToolExecutor: ObservableObject {
@@ -178,19 +147,16 @@ struct HardwareOperationCard: View {
     @EnvironmentObject private var store: AppStore
     let operation: HardwareValue
     @State private var current: HardwareValue?
+    @State private var references: [HardwareValue] = []
     @State private var error: String?
     @State private var reviewNote = ""
     private var value: HardwareValue { current ?? operation }
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
-            Text(value["tool"].string).font(.headline)
-            Text("执行端：\(value["executorPlatform"].string) · \(value["executionState"].string)").font(.caption)
-            Text("SDK 回执不等于物理效果已确认").font(.caption).foregroundStyle(Brand.muted)
-            DisclosureGroup("查看本次参数与结果") {
-                Text(value["arguments"].json + "\n" + value["result"].json).font(.caption.monospaced()).textSelection(.enabled)
-            }
+            Text(ChatPresentation.action(value["tool"].string)).font(.headline)
+            Text(ChatPresentation.operationDetails(value, deviceName: store.camera(value["deviceId"].string)?.name, references: references)).font(.subheadline)
+            Text(ChatPresentation.operationStatus(value)).font(.caption).accessibilityIdentifier("chat.operation.status")
             if value["executionState"].string == "awaitingApproval" {
-                Text(value["arguments"].json).font(.caption.monospaced()).textSelection(.enabled)
                 HStack {
                     Button("确认这次操作") { decide("approve") }.buttonStyle(.borderedProminent)
                     Button("拒绝") { decide("reject") }.buttonStyle(.bordered)
@@ -201,20 +167,21 @@ struct HardwareOperationCard: View {
                     current=try await store.client.hardware("call",body:.object(["name":.string("camera_stop"),"arguments":.object(["operationId":value["id"]]),"idempotencyKey":.string(UUID().uuidString),"platform":.string("ios"),"taskId":value["taskId"]]))
                 } catch { self.error=error.localizedDescription } } }
             }
-            if !value["error"]["message"].string.isEmpty { Text(value["error"]["message"].string).font(.caption) }
+            if !value["error"]["message"].string.isEmpty { Text(ChatPresentation.error(value["error"]["message"].string)).font(.caption) }
             if value["executionState"].string == "unknown", value["leaseReleasedByHuman"].string.isEmpty {
                 TextField("人工核对记录（至少 10 字）", text: $reviewNote)
-                Button("已核对设备，释放未知租约") { Task { do {
+                Button("已核对设备，解除操作占用") { Task { do {
                     current = try await store.client.hardware("reconcile", body: .object([
                         "operationId": value["id"], "requestHash": value["requestHash"],
                         "decision": .string("release_after_manual_check"), "evidence": .string(reviewNote)]))
                 } catch { self.error = error.localizedDescription } } }.disabled(reviewNote.count < 10)
             }
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error { Text(ChatPresentation.error(error)).font(.caption).foregroundStyle(.red) }
         }.padding(16).background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius:16))
         .task(id:operation["id"].string) {
             while !Task.isCancelled {
                 if let snapshot=try? await store.client.hardware("snapshot"), let updated=snapshot["operations"].array.first(where:{$0["id"]==operation["id"]}) {
+                    references = snapshot["operations"].array.flatMap { $0["result"]["references"].array }
                     current=updated
                     if ["completed","failed","cancelled"].contains(updated["executionState"].string) || !updated["leaseReleasedByHuman"].string.isEmpty { break }
                 }

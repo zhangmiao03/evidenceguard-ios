@@ -6,20 +6,23 @@ struct ProfileView: View {
     var body: some View {
         List {
             Section {
-                NavigationLink(value: AppRoute.profile) { HStack(spacing: 14) { Image("DogAvatar").resizable().scaledToFill().frame(width: 54,height: 54).clipShape(Circle()); VStack(alignment: .leading,spacing: 4) { Text(name).font(.title3.bold()); Text("让生活更安心").font(.subheadline).foregroundStyle(Brand.muted) }; Spacer(); Text("编辑").font(.caption) }.padding(.vertical,8) }
+                NavigationLink(value: AppRoute.profile) { HStack(spacing: 14) { Image("AnkerAvatar").resizable().scaledToFit().frame(width: 54,height: 54).clipShape(Circle()); VStack(alignment: .leading,spacing: 4) { Text(name).font(.title3.bold()); Text("让生活更安心").font(.subheadline).foregroundStyle(Brand.muted) }; Spacer(); Text("编辑").font(.caption) }.padding(.vertical,8) }
             }
             Section("助手") {
+                NavigationLink(value: AppRoute.connectedApps) { Label("连接应用", systemImage: "link") }
                 NavigationLink(value: AppRoute.notificationSettings) { Label("通知与提醒", systemImage: "bell") }
                     .accessibilityIdentifier("profile.notifications")
                 NavigationLink(value: AppRoute.voiceSettings) { Label("语音输入", systemImage: "waveform") }
             }
             Section("设置与帮助") {
-                NavigationLink(value: AppRoute.settings) { Label(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接", systemImage: "network") }
+                NavigationLink(value: AppRoute.settings) { Label("设置", systemImage: "gearshape") }
+                    .accessibilityIdentifier("profile.settings")
                 NavigationLink(value: AppRoute.privacy) { Label("隐私与数据", systemImage: "hand.raised") }
                 NavigationLink(value: AppRoute.help) { Label("使用帮助", systemImage: "questionmark.circle") }
             }
             Section("摄像头与记录") {
-                NavigationLink(value: AppRoute.officialSDK) { Label("摄像头账号", systemImage: "video") }
+                NavigationLink(value: AppRoute.cameraObservation) { Label("定时观察", systemImage: "clock.arrow.circlepath") }
+                NavigationLink(value: AppRoute.officialSDK) { Label("连接摄像头", systemImage: "video") }
                     .accessibilityIdentifier("profile.officialSDK")
                 NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }
             }
@@ -55,9 +58,16 @@ struct ServiceSettingsView: View {
             } else {
             Section("云端服务") { TextField("服务地址",text: $address).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.url"); SecureField("团队访问令牌", text: $accessToken).textInputAutocapitalization(.never).autocorrectionDisabled().accessibilityIdentifier("settings.accessToken"); Text("公网服务使用 HTTPS 和团队访问令牌。令牌保存在当前手机 Keychain；本地未启用鉴权的服务可以留空。").font(.caption).foregroundStyle(Brand.muted); Button { Task { checking = true; let ok = await store.configure(address, accessToken: accessToken); feedback = ok ? "已连接到服务" : (store.errorMessage ?? store.lastError ?? "连接失败，请检查地址及服务状态"); checking = false } } label: { HStack { if checking { ProgressView() }; Text("保存并测试连接") } }.disabled(checking); if let feedback { Text(feedback).font(.caption) } }
             Section("AI 模型") { LabeledContent("配置",value: store.data.agent.provider); LabeledContent("状态",value: store.isConnected ? (store.data.agent.ready ? "服务端配置就绪" : "等待服务端配置") : "等待连接"); Text("API Key 仅存于服务端。模型请求失败会在对话中给出原因，不会回退成假回复。").font(.caption).foregroundStyle(Brand.muted) }
-            Section("摄像头接入") { NavigationLink("配置官方 SDK 与检查设备", value: AppRoute.officialSDK); Text("已收到 ESIotKit v2.2.7，支持 T8171 / T8214。真机连接与画面能力仍需用主办方账号验收。").font(.caption).foregroundStyle(Brand.muted) }
+            Section("摄像头接入") { NavigationLink("连接摄像头", value: AppRoute.officialSDK); Text("已收到 ESIotKit v2.2.7，支持 T8171 / T8214。真机连接与画面能力仍需用主办方账号验收。").font(.caption).foregroundStyle(Brand.muted) }
             }
-        }.pageStyle(MobileServiceConfiguration.current.isInternalDemo ? "连接状态" : "服务连接").onAppear { address = store.client.baseURL.absoluteString; accessToken = store.client.accessToken }.onChange(of: address) { _, value in if let url = URL(string: value) { accessToken = ServiceAccess.token(for: url) } }
+            Section("开发调试") {
+                NavigationLink { OfficialSDKDeveloperView(connection: store.officialSDK) } label: {
+                    Label("摄像头调试", systemImage: "wrench.and.screwdriver")
+                }.accessibilityIdentifier("settings.cameraDebug")
+                Text("检查官方配网和设备能力。日常使用不需要切换工作区。")
+                    .font(.caption).foregroundStyle(Brand.muted)
+            }
+        }.pageStyle("设置").onAppear { address = store.client.baseURL.absoluteString; accessToken = store.client.accessToken }.onChange(of: address) { _, value in if let url = URL(string: value) { accessToken = ServiceAccess.token(for: url) } }
     }
 }
 struct NotificationSettingsView: View {
@@ -94,22 +104,39 @@ private struct NotificationSettingsContent: View {
                 if let error = push.error { Text(error).foregroundStyle(.orange).font(.caption) }
             }
             Section("助手主动提醒") {
-                Toggle("摄像头事件与后续变化", isOn: preference(\.enabled))
+                Toggle("允许 anker 主动提醒", isOn: preference(\.enabled))
                     .accessibilityIdentifier("notifications.proactive")
-                Toggle("每日守护概况", isOn: preference(\.dailySummary))
-                    .disabled(!settings.preferences.enabled).accessibilityIdentifier("notifications.daily")
-                if settings.preferences.dailySummary && settings.preferences.enabled {
-                    Stepper("每日 \(settings.preferences.summaryHour):00", value: preference(\.summaryHour), in: 0...23)
-                        .accessibilityIdentifier("notifications.summaryHour")
-                }
                 Text("根据已接收的事件、守护记录和待处理事项提醒你。开启提醒不会自动启动摄像头守护。").font(.caption).foregroundStyle(Brand.muted)
+            }.disabled(!settings.loaded || settings.loading)
+            Section("早晚报告") {
+                if !settings.preferences.supportsTwoReports {
+                    Toggle("每日守护概况", isOn: preference(\.dailySummary))
+                    Stepper("每日 \(settings.preferences.summaryHour):00", value: preference(\.summaryHour), in: 0...23)
+                    Text("当前服务只支持一个报告时段，升级服务后可分别设置早晚报告。").font(.caption).foregroundStyle(Brand.muted)
+                } else {
+                Toggle("早安报告", isOn: preference(\.morningReport)).accessibilityIdentifier("notifications.morning")
+                if settings.preferences.morningReport {
+                    Stepper("早安 \(settings.preferences.morningHour):00", value: preference(\.morningHour), in: 0...23)
+                        .accessibilityIdentifier("notifications.morningHour")
+                }
+                Toggle("晚间报告", isOn: preference(\.eveningReport)).accessibilityIdentifier("notifications.evening")
+                if settings.preferences.eveningReport {
+                    Stepper("晚间 \(settings.preferences.eveningHour):00", value: preference(\.eveningHour), in: 0...23)
+                        .accessibilityIdentifier("notifications.eveningHour")
+                }
+                if settings.preferences.morningReport && settings.preferences.eveningReport && settings.preferences.morningHour == settings.preferences.eveningHour {
+                    Text("早晚报告请选择不同时间。").font(.caption).foregroundStyle(.orange)
+                }
+                }
+                Text("按时整理事件、待确认事项和缺少记录的时段，发到助手对话。没有数据时会明确告诉你；不把没有事件当作家里安全。").font(.caption).foregroundStyle(Brand.muted)
+                if !settings.preferences.enabled { Text("主动提醒已暂停，开启总开关后按计划生成。").font(.caption).foregroundStyle(Brand.muted) }
             }.disabled(!settings.loaded || settings.loading)
             Section("免打扰") {
                 Stepper("开始：\(settings.preferences.quietStart):00", value: preference(\.quietStart), in: 0...23)
                     .accessibilityIdentifier("notifications.quietStart")
                 Stepper("结束：\(settings.preferences.quietEnd):00", value: preference(\.quietEnd), in: 0...23)
                     .accessibilityIdentifier("notifications.quietEnd")
-                Text("使用手机当前时区。免打扰期间暂存，之后重新核对；起止相同则全天允许提醒。普通提醒每天最多 6 条，间隔至少 5 分钟。").font(.caption).foregroundStyle(Brand.muted)
+                Text("使用手机当前时区。免打扰后重新核对，过期报告不补发；起止相同则全天允许。早晚报告单独按订阅生成，普通提醒每天最多 6 条、间隔至少 5 分钟。").font(.caption).foregroundStyle(Brand.muted)
             }.disabled(!settings.loaded || settings.loading)
             Section {
                 if settings.loading || settings.saving {

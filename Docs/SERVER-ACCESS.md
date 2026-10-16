@@ -1,6 +1,14 @@
 # EvidenceGuard 服务器与访问
 
+2026-10-16 源码整合说明：最近的部署记录使用 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`，由 `70-briefing-runtime.conf` 选择。本文下方保留各次发布历史；实际维护必须重新读取 systemd ExecStart / DropInPaths。本次合并没有发布服务，不能用仓库 HEAD 代替线上版本。最新来源比对见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。
+
+2026-10-15 Codex 发布记录：手机 `evidenceguard-demo` 启用官方 **Codex App Server 0.162.1**，使用原豆包模型。当时业务目录为 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`，由 `60-codex-runtime.conf` 指定；入口继续为 `eg_dashboard.bootstrap:app`，保留现有 Dashboard。该发布从当时实际运行的 `tools-6336a97c95c4bc5a` 复制，更新 `b4b2c16` 的 harness/runtime.py、harness/contract.py、harness/codex.py、assistant_identity.py 四个文件，保留硬件确认和操作回执。线上三轮对话的 Codex 执行回执、三环境 HTTPS/令牌隔离、库完整性和源码哈希均通过。当次未分发新 App。详见 [执行器说明](CODEX-CLOUD.md) 和 [上线验证](verification/codex-cloud-2026-10-15.txt)。
+
 2026-10-14：手机、团队联调和 Apple 审核服务已迁入新加坡。三套服务保留原来的独立账号、数据库、录像和访问令牌，每套只有一个应用进程。美国实例 `i-06744490347d73778` 已删除，AWS 已确认 `terminated`。旧地址不再提供服务，手机须在 TestFlight 更新到 `1.0 (5)`。
+
+2026-10-15：仅手机 `evidenceguard-demo` 更新至应用代码 `904c5c8`，使用独立 `venv-build10`。上线前在关闭所有 worker 的备份库上验证迁移，正式切换前保存一致性数据库、源码和配置；首次运行权限检查失败已自动回滚，修复运行目录权限后重新上线。现在线上健康、模型就绪、数据库完整性和跨服务令牌隔离通过，进程无重启。Doubao 模型、Embedding 维数、APNs 和已有数据保持；新增独立连接器加密密钥用于手机信息快照，Gmail/飞书 OAuth 尚未配置。团队与 Apple 审核代码及数据未改。
+
+同日聊天修复：手机服务在上述基线上热修复至 `8060b18` 的 `harness/runtime.py` 与 `assistant_identity.py`，移除无摄像头时覆盖整段回复的逻辑，并重启手机服务加载代码。其余文件、依赖、配置和数据库保持；团队与审核进程/源码未改。241 项测试及真实豆包连续 7 轮对话通过，部署后使用原问题的历史副本隔离复测身份回答通过。备份 `/root/evidenceguard-backups/chat-camera-fix-20261015`；见 [验证记录](verification/chat-camera-fix-2026-10-15.txt)。此修复无需新 App；SDK 闪退的客户端修复仍需单独分发。
 
 ## 当前资源
 
@@ -84,3 +92,5 @@ Apple 审核备注已改为新加坡独立审核地址，保留原审核凭证�
 迁移过程、配置、最终应用备份和 AWS 快照记录保存在当前接续工作区的私有目录，不放入 Git。美国最终备份快照 `snap-0f6a87cd886b7b645` 已完成并保留；当前运行服务均在新加坡。
 
 参考：[AWS Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)、[Elastic IP](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/working-with-eips.html)。
+
+2026-10-15 早晚报告更新：手机服务使用 `70-briefing-runtime.conf` 指向上述 briefings release，保留 `eg_dashboard.bootstrap:app` 和现有 Codex/豆包配置。仅覆盖 8 个后端文件；上线前备份主库、硬件库、观测库及 drop-ins，在线身份与只读报告工具检查通过。配置摘要、其他环境 PID/配置/源码一致；未启用任何新订阅或分发安装包。详见 [早晚报告与验收](BRIEFINGS-AND-ACCEPTANCE.txt)。

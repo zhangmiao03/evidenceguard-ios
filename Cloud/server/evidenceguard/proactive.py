@@ -80,6 +80,13 @@ class ProactiveEngine:
             rows = self.store.db.execute('SELECT payload FROM assistant_messages WHERE client=? ORDER BY created_at DESC LIMIT 50', (client,)).fetchall()
         return [json.loads(r[0]) for r in reversed(rows)]
 
+    def message(self, client, key):
+        # A push or explicit reply can refer to a message outside the bootstrap window.
+        with self.store.lock:
+            row = self.store.db.execute('SELECT payload FROM assistant_messages WHERE id=? AND client=?', (key, client)).fetchone()
+        if not row: raise KeyError(key)
+        return json.loads(row[0])
+
     def activity(self, client):
         with self.store.lock:
             rows = self.store.db.execute('SELECT id,status,payload FROM proactive_jobs WHERE client=? ORDER BY rowid DESC LIMIT 20',(client,)).fetchall()

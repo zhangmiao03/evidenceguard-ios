@@ -139,7 +139,19 @@ class OfficialSdkBridge(
                     is ThingResult.Error -> result(modes)
                     is ThingResult.Success -> if (nowEpochMs() >= command.deadlineEpochMs) reject("DEADLINE_EXCEEDED", "Expired during mode lookup")
                     else if (mode == null || mode !in modes.data) reject("STALE_REFERENCE", "Mode is no longer available")
-                    else result(live.setVideoPlayMode(mode, 1)) { BridgeResult("acknowledged", data = mapOf("requiresNewMediaSession" to "true", "mode" to "$mode")) }
+                    else result(live.changeVideoMode(mode, 0)) { change ->
+                        // Match the official T8214 sample: the device changes its
+                        // composite pipeline in place; restarting the player can
+                        // interfere with that transition. Preserve the SDK result.
+                        BridgeResult("acknowledged", data = mapOf(
+                            "previousMode" to "${change.previousMode}",
+                            "mode" to "${change.newMode}",
+                            "sdkStreamRestartRequired" to "${change.streamRestartRequired}",
+                            "requiresNewMediaSession" to "false",
+                            "restartPolicy" to "doorbell_in_place",
+                            "physicalEffect" to "unverified",
+                        ))
+                    }
                 }
             }
             "device_settings_set" -> setField(a)
@@ -205,9 +217,14 @@ class OfficialSdkBridge(
     suspend fun stop(command: BridgeCommand): BridgeResult {
         if (model != "T8171" || command.tool !in listOf("camera_ptz_step", "camera_goto_preset"))
             return reject("STOP_UNVERIFIED", "No interrupt route for this operation; do not infer physical stop")
+        // Preset travel has no direction in its command contract. The deprecated
+        // no-argument overload sends a fixed legacy command, so it cannot prove
+        // that an arbitrary preset move was stopped. Keep the operation unresolved.
+        if (command.tool != "camera_ptz_step")
+            return reject("STOP_UNVERIFIED", "Preset cancellation has no verified directional SDK stop route")
         val direction = PTZDirection.entries.firstOrNull { it.name == command.arguments["direction"] }
-        // Select exactly one supported overload. Never issue a second physical call after ambiguous failure.
-        val stopped = if (direction != null) live.stopPTZMovement(direction) else live.stopPTZMovement()
+            ?: return reject("STOP_UNVERIFIED", "The original PTZ direction is unavailable")
+        val stopped = live.stopPTZMovement(direction)
         return result(stopped) { BridgeResult("stopped", data = mapOf("physicalEffect" to "unverified")) }
     }
 }

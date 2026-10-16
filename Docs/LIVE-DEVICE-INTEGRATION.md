@@ -118,7 +118,7 @@ EG_ENV_FILE="$PWD/.env" .venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/
 2. 执行 `python3 scripts/import_sdk.py /绝对路径/工具资料包.zip`。文件恢复到被 Git 忽略的 `SDK/Vendor/`。
 3. 安装已有构建说明要求的 JDK 17、Ruby / Bundler / CocoaPods，执行 `python3 SDK/prepare.py --check` 和 `python3 SDK/prepare.py`。后一步复制最新版 Kotlin bridge 并重新配置工程；旧的 SampleCore 二进制没有新增导出接口。
 4. 打开 `EvidenceGuard.xcworkspace`，选择 **EvidenceGuardSDK + iPhone 真机**。普通 `EvidenceGuard` target 可编译 UI / API，但不能调用官方媒体库。
-5. 连接本次部署的 Cloud → 我的 → 官方 SDK → 输入 User ID / Token / PR 或 QA → 查询设备 → 同步设备 → 进入“实时画面与 Agent”。
+5. 连接 Cloud → 我的 → 连接摄像头 → 配置 User ID / Token / PR 或 QA（内部托管账号构建自动读取）→ 查询设备 → 同步设备 → 进入“实时画面与 Agent”。首次绑定和完整设置通过“我的 → 设置 → 摄像头调试 → 打开官方设备调试页”进入官方流程。
 6. 用实时页内的提问框测试，不要切到另一个标签后假设原生播放器还在后台运行。
 7. 完成真机验收后按既有 `Docs/TESTFLIGHT.md` 执行签名归档、上传和测试说明更新。本轮没有上传新构建。
 
@@ -126,9 +126,9 @@ EG_ENV_FILE="$PWD/.env" .venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/
 
 ## 6. Web 官方接入
 
-当前固定官方 **PR / US** 路线。页面需要主办方发放的 App Name、Client ID、Client Secret、Preset Key、Eufy User ID、Account UUID；这些不等同于 Cloud 团队令牌。不同参数不能互相代填。iOS 与 Web 登记同一设备时，应使用相同官方用户标识及环境；不匹配时后端拒绝自动合并。
+当前固定官方 **PR / US** 路线。2026-10-16 新版默认 Token 直连：使用 App Name、Client ID、Preset Key、Eufy User ID 和现有 Token；不再要求 Account UUID 或 Client Secret。旧版换取路线仍可选择，才需要 Account UUID / Client Secret，并会刷新 Token，可能让其他客户端失效。这些参数不等同于 Cloud 团队令牌。iOS 与 Web 登记同一设备时，应使用相同官方用户标识及环境；不匹配时后端拒绝自动合并。产品 Web 已停止扩展，此节仅用于既有接入排查。
 
-握手：查询域名 → P-256 ECDH 交换 → `request_token` → 创建官方 `OpenAPIIntegration` → 使用设备 SN 开流。本项目握手采用浏览器 Web Crypto，仍按官方协议保留 32 字节共享密钥的前导零并取前 16 字节。
+Token 直连：查询域名 → 使用现有 Token 创建官方 `OpenAPIIntegration` → 使用设备 SN 开流，不调用 `request_token`。只有旧版换取路线执行 P-256 ECDH 和 `request_token`；ECDH 使用浏览器 Web Crypto，按官方协议保留 32 字节共享密钥的前导零并取前 16 字节。
 
 官方 OpenAPI 通过 `/api/sdk/openapi/...` 同源代理避免 CORS 问题，目标固定 `https://openapi-us.eufylife.com`，仅允许 GET/POST `v1/` 路径，不接受任意目标 URL，不跟随重定向。官方 Authorization 头保留给厂商；本项目团队鉴权另用 `X-EG-Access-Token`。代理必然会经过受信任的 Cloud，不应描述成密钥从未离开浏览器。
 
@@ -186,7 +186,7 @@ EG_ENV_FILE="$PWD/.env" .venv/bin/uvicorn evidenceguard.app:app --app-dir Cloud/
 | 重启与历史 | 重启服务：设备记录和已存观察仍在，会话为未连接；需重新开流 | Cloud |
 | 断网录像 | 本轮不判断设备 SD 卡录像与同步；另按官方测试方案验证 | 硬件负责人 |
 
-自有业务接口尚未实现：首次配网与绑定、更换 Wi-Fi、BLE 产品流程、家庭角色/成员分享、跨设备完整聊天同步、原生持续后台网关、设备控制/PTZ/双向对讲的业务封装、SD 卡/官方云录像拉取、R2 媒体迁移。首次绑定与完整设置可在 iOS 官方工作区核验。Web 已补齐 Skill 编辑、录像上传、试跑、任务、记忆与设置，见 [Web 0.2](WEB-PRODUCT-PARITY.md)；这些界面不会解除真机发布限制。
+自有业务接口尚未实现：首次配网与绑定、更换 Wi-Fi、BLE 产品流程、家庭角色/成员分享、跨设备完整聊天同步、原生持续后台网关、双向对讲、SD 卡/官方云录像拉取、R2 媒体迁移。设备状态、有限设置、T8171 单步 PTZ/预置位及 T8214 双摄布局已有原生桥接，仍需按设备与版本逐项真机核验，见 [工具链接入](HARDWARE-TOOLS-INTEGRATION.md)。首次绑定与完整设置可在 iOS 官方工作区核验。Web 保留已有 Skill 编辑、录像上传、试跑、任务、记忆与设置，见 [Web 0.2](WEB-PRODUCT-PARITY.md)；这些界面不会解除真机发布限制。
 
 ## 10. 常见失败
 

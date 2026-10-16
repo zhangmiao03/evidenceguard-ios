@@ -1,5 +1,7 @@
 # EvidenceGuard Web
 
+> **开发范围更新（2026-10-16）：** 团队已决定将比赛演示集中到原生 iOS + 官方 App SDK + Cloud Agent。产品 Web 停止功能扩展和与 iOS 的功能对齐验收；下文记录已有实现，不代表继续开发 Web 硬件演示。现有源码、官方 Demo 与已部署入口保留，Dashboard 继续作为团队观察与排查工具。此次决定不删除代码或下线服务，详见[仓库当前演示路线](../README.md#当前演示路线2026-10-16)。
+
 Web 0.2（React 18 + TypeScript + Vite），与新版 iOS 共用 Cloud，提供 **助手 / 摄像头 Skill / 任务 / 记忆 / 设置** 五个功能区。桌面使用侧栏，手机使用底部导航；保留官方直播、按请求获取新画面与官方 SDK 工作区切换。
 
 2026-10-16 已接入官方 `web-sdk-hackathon-demo-1016-1411.zip` 的直接 Token 登录流程。产品“接入设备”默认选择“赛事 Token 直连（PR / US）”，填写 User ID、Token 和官方示例的 App Name / Client ID / Preset Key，不调用 `request_token`。旧的 account_uuid 换取流程仍保留并明确提示会刷新 Token。官方工作区也恢复为这份新版 Demo，保留两种登录方式；Token 不进入浏览器持久存储、页面日志或 Git。
