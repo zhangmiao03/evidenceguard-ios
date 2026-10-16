@@ -1,0 +1,89 @@
+EvidenceGuard：iOS 自定义视觉场景第一版
+2026-10-16
+
+范围
+以 Visual Skill 系统设计方案 v1.1 的“一句话 → 画面框选 → 确认开启”为主线。
+新入口在“摄像头 Skill / 自定义场景”，同一列表也显示在“任务”。
+这不是通用代码 Skill、Web 管理台或 HTTP 插件平台。旧录像回放、标记任务和原始记录保留。
+普通助手聊天仍沿用已有工具；这批自然语言创建与修改走新的 iOS 场景编辑页，不宣称已替换所有旧对话创建入口。
+
+本次改动
+1. EvidenceGuard/VisualSceneView.swift：三步创建、已保存草稿恢复、同一草稿补充条件、冻结画面、触摸框选、确认、暂停、证据入口。
+   框选支持拖动和依次点两个对角。独立模拟器已实测两个对角点路径；build 14 真机已实测拖动框选成功。
+2. EvidenceGuard/APIClient.swift：复用原访问鉴权、安装身份和媒体鉴权；新增 visual-scenes API。
+3. EvidenceGuard/SkillsView.swift：只插入两处新模块入口，不替换主线程正在修复的官方设备/事件/任务部分。
+4. Cloud/server/evidenceguard/visual_skills：独立 schema、harness 适配、持久化与状态机、API。
+5. Cloud/server/evidenceguard/app.py：注册服务、路由与生命周期，沿用原 personal_client 身份证明。
+6. EvidenceGuard.xcodeproj/project.pbxproj：新 Swift 文件加入两个既有 App target。
+
+Harness 分工与 miimiao 借鉴
+实际阅读 MiiMiao/backend/core/workspace/harness.py、integrations/codex/context_handoff.py、skill_adapter.py、core/skill_forge.py。
+采用其“模块自己管理输入和验证，通过窄接口调用既有 Harness”的设计，不复制代码、依赖、供应商、账号或收费配置。
+借鉴三点：
+- 模块工具范围由宿主确定，不依赖自由聊天选了哪些工具。
+- 后续修改带上真实完整草稿和用户原话，保留没有修改的条件。
+- 草稿、确认版本、执行观察与回执分开，模型回复不能作为已经开启的证据。
+
+EvidenceGuard 的 SceneHarness 使用当前 Agent 的 executor 选择。
+codex-app-server-v1：复用当前 CodexTurn、同一 Doubao 配置和并发 gate，结构化输出，不提供硬件或启用工具。
+bounded-chat-v1：复用当前模型 provider。实际视觉判断复用已配置的 Doubao 视觉模型及自动视觉额度。
+保留既有 Codex 主聊天、硬件确认及 SDK 通道；不从 MiiMiao 引入另一套模型供应商。
+
+能力范围与真实含义
+- 首版为固定视角内对象/类别进入或离开区域，单次或持续提醒。
+- 特定物体模式：框出物体，同时把初始位置作为关注区域；类别模式：框关注区域，对象由文字指定。
+- 每次至少两个有效采样，确认跨度 15–600 秒；这是采样跨度，不证明中间每一秒都满足。
+- 先建立触发前基线，再判断变化。初始就没有目标、黑屏、遮挡、断流、过长间隔不直接产生“离开”提醒。
+- 同一帧不能重复累计；视角/直播会话变化要求重新框选。暂停清除旧框选和不完整证据。
+- 新场景每台摄像头同时只开启一项，既有任务占用优先，不抢占设备或控制摄像头。
+- 只允许新鲜 official_live_ios 画面，事件缩略图、录像回放、Web 和合成来源不能用来启用这个新入口。
+- 仍依赖 App 前台直播会话，锁屏后不能承诺持续观察。沿用已有自动视觉额度，额度耗尽时明确未知。
+- 身份识别、声音、主观行为、定时时段、多条件组合、云台跟随等未接入，不让模型自行生成执行代码。
+- 提醒原子保存到证据、助手主时间线和收件记录，推送复用原 outbox 与用户开关/免打扰/频控。
+
+一致性和保全
+visual_scenes 新表按安装身份隔离，原 Skill 数据表不迁移。
+创建请求按安装身份与 requestId 幂等，修改/框选/启用检查 revision；异步返回核对版本，暂停后旧观察不能发消息。
+模型生成中重启可恢复原话，不自动启用。主动观察重启清掉部分基线，不拼接跨重启证据。
+模型原始校验异常不展示到产品界面。
+主工作区已有修改保留，没有 reset、clean、删除原项目文件或提交他人的未完成修改。build 14 基于另一任务已提交的 1ba73c5 加入本模块。
+
+验证与尚未验证
+测试数据库、模拟器、画面和草稿均独立于手机及线上服务。
+单元/集成回归覆盖新场景、旧 Skill/试跑、harness、SDK 事件和主动消息。
+iOS Simulator Debug 原生编译及开发签名构建通过。
+真实 Doubao 文本实测：模糊需求追问、包裹离开、狗进入、只提醒一次、拒绝身份/跟随要求、纯对象名称、修改一分钟条件。
+真实视觉模型使用合成对照图复核：框内有目标、框内为空、全黑未知，最终三种结果符合预期；这不是实物摄像头准确率验收。
+原生模拟器实测：生成→获取图→两点框选→保存确认→启用→暂停；退出和重开草稿恢复通过。
+模拟器中文输入自动化未成功，UI 用英文测试句验证交互，中文语义通过独立真实模型调用验证。
+前期仅本地验证；2026-10-16 用户随后明确授权部署和直装。当前已部署到手机服务并安装 1.0 (14) Debug，详见下方追加验收。实际 APNs 送达仍未验收。
+
+接入部署注意
+app.py 与整个 visual_skills/ 包必须一起部署；只更新 app.py 会缺模块。
+iOS 新文件与 API/入口/项目文件一起构建。新客户端遇到旧服务 404 会显示“场景服务尚未更新”。
+不运行新旧服务两个 scene worker 同时写同一数据库。
+本轮测试记录与代码基线副本：
+/Users/zhangmiao/Documents/Codex/2026-10-15/new-chat-2/work/private/ios-visual-skills-20261016/
+
+
+2026-10-16 build 14 部署与真机验收
+
+用户授权部署并直连覆盖安装到原手机 App。本版包含另一任务已完成的摄像头/任务/记忆修复提交 1ba73c5，不覆盖其工作。源码使用独立 APFS 克隆快照构建，当前原项目路径不变。
+
+云端
+手机服务已切换到 /opt/evidenceguard-demo/releases/visual-skills-build14-20261016/Cloud/server，由 95-visual-skills-runtime.conf 选择；保留原 venv-build10、eg_dashboard.bootstrap:app、数据库及配置。仅新增 visual_skills 包和 app.py 接线，团队/Apple 审核服务 PID 未改变。
+回滚备份位于 /root/evidenceguard-backups/scenes14-20261016-115624，含一致性数据库、配置及 systemd drop-ins。部署前后的原记录 ID 集合包含关系、数据库完整性、实际服务健康和部署文件哈希均通过。
+在服务器实际 codex-app-server-v1 + doubao-seed-2-1-lite-260915 上实测三项：模糊需求追问、狗进入区域草稿、保留对象和条件并改为一分钟/只提醒一次；全部通过。独立测试安装身份通过正式 API 生成草稿，尚未框选时不能启用。
+
+iPhone
+真实官方 SDK 的 arm64 Debug 编译成功，27 项 Compose 资源与已验收 build 13 一致；深度签名、内置账号/服务凭证匹配、宿主启动配置均通过。
+同一 bundle com.zhangmiao.evidenceguard、同一开发团队，覆盖安装 1.0 (14)。devicectl 实际安装列表核对为 14，原安装身份、主对话及本地聊天等六项偏好逐项一致，没有卸载或清空数据。Library 私有备份已保存。
+手机镜像实测：两台设备自动恢复→新建 Skill→一句话生成草稿→获取 official_live_ios 新画面→拖动框选→保存条件→确认开启→读取真实视觉观察结果→暂停。暂停后清掉选框并回到待重新框选草稿；测试直播已关闭。测试未观察到实际进出触发，因此没有声称事件触发/锁屏通知端到端通过。
+真机自动化中文粘贴未成功，界面使用英文测试原话；中文生成与修改通过服务器实际 Codex/豆包链路验证。未改输入法、粘贴权限或系统安全设置。
+
+验证汇总与限制
+340 项后端测试通过（包含另一任务修复和本模块 22 项用例）。新增编译器真实 Codex 3 项通过；原有独立豆包文本及合成视觉验证保留，不能视为现场准确率评估。
+Debug 仍为 development APNs，手机服务仍为 production-only 推送配置，锁屏通知送达未验收。观察仍要求 App 前台连接画面，不能作为锁屏持续监控。本轮没有 TestFlight 上传或分发。
+手机保留一份本轮测试草稿，已暂停且不会持续观察；独立 API 测试身份的草稿与用户空间隔离。
+本轮私有构建、安装、备份、模型/API 实测与部署回执在：
+/Users/zhangmiao/Documents/Codex/2026-10-15/new-chat-2/work/private/visual-skills-release14-20261016/

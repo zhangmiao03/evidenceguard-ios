@@ -44,6 +44,9 @@ from .push import PushService, DeviceRegistration, Presence
 from .ops import install_ops
 from .hardware_tools.gateway import HardwareGateway
 from .hardware_tools.routes import install_hardware_routes
+from .visual_skills.harness import SceneHarness
+from .visual_skills.service import VisualScenes
+from .visual_skills.routes import install_scene_routes
 
 if os.getenv('EG_ENV_FILE'): load_dotenv(os.environ['EG_ENV_FILE'],override=False)
 class ConfirmRequest(BaseModel):
@@ -122,6 +125,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     camera.hardware=hardware
     proactive.ingest=ingest
     watch=CameraWatch(store,captures,visual_review,proactive)
+    scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -132,11 +136,15 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         personal_task=asyncio.create_task(proactive.run()) if start_worker else None
         memory_task=asyncio.create_task(memory.run()) if start_worker else None
         watch_task=asyncio.create_task(watch.run()) if start_worker else None
+        scenes_task=asyncio.create_task(scenes.run()) if start_worker else None
         ingest_task=asyncio.create_task(ingest.run()) if start_worker else None
         demo_task=asyncio.create_task(demo.run()) if start_worker and demo.enabled else None
         push_task=asyncio.create_task(push.run()) if start_worker else None
         try: yield
         finally:
+            if scenes_task:
+                scenes_task.cancel(); await asyncio.gather(scenes_task,return_exceptions=True)
+            await scenes.shutdown()
             if watch_task:
                 watch_task.cancel(); await asyncio.gather(watch_task,return_exceptions=True)
             if memory_task:
@@ -178,6 +186,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.memory=memory
     app.state.connectors=connectors
     app.state.watch=watch
+    app.state.visual_scenes=scenes
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -219,6 +228,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         connectors.proof(client,key,bind=bool(key))
         return client
     def push_key(request): return request.headers.get('X-EG-Push-Key')
+    install_scene_routes(app,scenes,personal_client)
     @app.get('/api/push/status')
     async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
     @app.put('/api/push/device')

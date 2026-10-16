@@ -200,6 +200,30 @@ struct APIClient {
     func absoluteURL(_ path: String?) -> URL? {
         guard let path else { return nil }; return URL(string: path, relativeTo: baseURL)?.absoluteURL
     }
+    func visualScenes() async throws -> [VisualScene] { try await get("/api/visual-scenes") }
+    func visualScene(_ id: String) async throws -> VisualScene { try await get("/api/visual-scenes/\(id)") }
+    func createScene(cameraID: String, message: String, requestID: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes", body: ["cameraId":cameraID, "message":message, "requestId":requestID])
+    }
+    func interpretScene(_ scene: VisualScene, message: String, requestID: String) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var message: String; var requestId: String }
+        return try await send("/api/visual-scenes/\(scene.id)/interpret", body: Body(revision:scene.revision, message:message, requestId:requestID))
+    }
+    func sceneAction(_ scene: VisualScene, action: String) async throws -> VisualScene {
+        try await send("/api/visual-scenes/\(scene.id)/\(action)", body: ["revision":scene.revision])
+    }
+    func selectScene(_ scene: VisualScene, frameID: String, box: ROI) async throws -> VisualScene {
+        struct Body: Encodable { var revision: Int; var frameId: String; var box: ROI }
+        return try await send("/api/visual-scenes/\(scene.id)/selection", body: Body(revision:scene.revision, frameId:frameID, box:box))
+    }
+    func sceneImage(_ path: String) async throws -> Data {
+        guard path.hasPrefix("/api/media/"), let url = absoluteURL(path) else { throw APIProblem(message:"画面地址无效，请重新获取。") }
+        var request = URLRequest(url:url); try authorize(&request)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (data, response) = try await transport.data(for:request)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw APIProblem(message:"画面加载失败，请重新获取。") }
+        return data
+    }
     private func get<T: Decodable>(_ path: String) async throws -> T { try await send(path, method: "GET", body: Optional<String>.none) }
     func registeredCameras() async throws -> [RegisteredCamera] { try await get("/api/devices") }
     func importDevices(account: String, environment: String, cameras: [SDKDiscoveredCamera]) async throws -> [RegisteredCamera] {

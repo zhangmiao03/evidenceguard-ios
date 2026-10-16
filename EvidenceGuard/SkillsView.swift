@@ -57,6 +57,7 @@ private struct OfficialCameraHomeView: View {
                     Text("切换页面后继续同步；锁屏后暂停。普通事件保存在列表，匹配你交代的关注事项才会发助手提醒。")
                         .font(.caption).foregroundStyle(Brand.muted)
                 }
+                VisualScenesSection()
                 HStack { Text("最近事件").font(.headline); Spacer(); NavigationLink("提醒设置", value: AppRoute.notificationSettings).font(.subheadline) }
                 if events.isEmpty {
                     Text("还没有收到摄像头事件。").foregroundStyle(Brand.muted).padding(.vertical, 12)
@@ -202,6 +203,7 @@ struct TasksView: View {
                     Label("定时", systemImage: "clock").tag("scheduled")
                 }.pickerStyle(.segmented).accessibilityIdentifier("skills.sections")
                 if section == "tasks" {
+                    VisualScenesSection()
                     if store.data.skills.isEmpty && (store.data.personal?.tasks ?? []).isEmpty {
                         EmptyState(title: "想让摄像头帮你关注什么？", detail: "告诉助手你的需求，一起确认对象、区域和提醒条件。", icon: "video")
                     }
