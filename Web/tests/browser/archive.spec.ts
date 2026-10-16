@@ -5,7 +5,8 @@ test('full inventories paginate, retain old replies and distinguish display hash
   const summary={sampledAt:Date.now()/1000,images:{total:170,uniqueContents:158,previewable:170},replies:{nonempty:95,withDisplayReceipt:3,hashMatched:1},retention:{status:'separate',records:42,recordLimit:10000,byteLimit:128000000}};
   await page.route('**/dashboard/api/info',r=>r.fulfill({json:{mode:'competition',defaultEnvironment:'demo',environments:[{id:'demo',title:'手机演示'},{id:'team',title:'团队联调'}]}}));
   await page.route('**/dashboard/api/snapshot?*',r=>r.fulfill({json:{...emptyBundle(),coverage:{observability:'connected'}}}));
-  await page.route('**/dashboard/api/archive/**',r=>{const url=new URL(r.request().url()),images=url.pathname.endsWith('/images'),cursor=url.searchParams.get('cursor');const filtered=url.searchParams.has('query');const reply=(id:string,status:string)=>({id,createdAt:1000,status:'completed',answer:'历史业务库保存的真实回复。',hasReply:true,retainedSteps:0,displayVerification:{status},bodyStatus:'available'});
+  await page.route('**/dashboard/api/archive-trace/*',r=>{const base={at:1000,traceId:'old-reply',spanId:'span',platform:'backend',source:'local',status:'completed',durationMs:1},capture={version:1,mode:'full_redacted'};return r.fulfill({json:{next:null,total:2,records:[{...base,id:'old-prompt',name:'request.snapshot',kind:'prompt',data:{capture,request:{messages:[{role:'user',content:'已保留的旧提示词'}]}}},{...base,id:'old-model',name:'image_review',kind:'model',data:{capture,promptId:'old-prompt',content:{response:{text:'旧模型真实输出'}}}}]}});});
+  await page.route('**/dashboard/api/archive/**',r=>{const url=new URL(r.request().url()),images=url.pathname.endsWith('/images'),cursor=url.searchParams.get('cursor');const filtered=url.searchParams.has('query');const reply=(id:string,status:string)=>({id,createdAt:1000,status:'completed',answer:'历史业务库保存的真实回复。',hasReply:true,retainedSteps:id==='old-reply'?2:0,displayVerification:{status},bodyStatus:'available'});
     return r.fulfill({json:{summary,sampledAt:summary.sampledAt,total:filtered?0:images?170:96,nextCursor:images&&!cursor?'page2':null,items:filtered?[]:images?[{id:cursor?'older-image':'latest-image',cameraId:'camera',sourceType:'official_live_ios',receivedAt:1000,sampledAt:999,bytes:100,media:[],sha256:'a'.repeat(64),previewStatus:'available'}]:[reply('old-reply','legacy_receipt'),reply('new-reply','backend_match'),reply('wrong-reply','backend_mismatch')]}});
   });
   await page.goto('/dashboard?view=images');
@@ -26,6 +27,13 @@ test('full inventories paginate, retain old replies and distinguish display hash
   await replies.getByText('查看完整最终回复',{exact:true}).first().click();
   await expect(replies.locator('details[open]')).toContainText('历史业务库保存的真实回复。');
   await expect(replies.getByText('历史步骤未保留或当时未采集，最终回复仍在业务库。').first()).toBeVisible();
+  await replies.getByRole('button',{name:'查看已保留的执行步骤',exact:true}).click();
+  await replies.locator('.eg-archive-history ol button').nth(1).click();
+  await expect(page.getByRole('dialog')).toContainText('已保留的旧提示词');
+  await expect(page.getByRole('dialog')).toContainText('旧模型真实输出');
+  await page.getByRole('button',{name:'查看关联提示词',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('已保留的旧提示词');
+  await page.getByRole('button',{name:'关闭详情'}).click();
   await page.locator('.judge-filter-fold > summary').click();
   await page.getByPlaceholder('Trace / 模型 / 事件 / 状态').fill('missing');
   await expect(replies.getByText('当前筛选没有记录。可清除全局筛选后查看。')).toBeVisible();

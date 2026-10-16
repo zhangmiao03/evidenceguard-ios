@@ -99,6 +99,9 @@ export default function Dashboard() {
   const [discoveryNumber, setDiscoveryNumber] = useState(0);
   const [filters, setFilters] = useState(initialFilters);
   const [selected, setSelected] = useState<Row | null>(null);
+  const [archiveContext, setArchiveContext] = useState<Row[]>([]);
+  const detailRecords = useMemo(() => [...new Map([...bundle.records,...archiveContext].map(r=>[r.id,r])).values()], [bundle.records,archiveContext]);
+  function selectArchived(record: Row, context: Row[] = []) { setArchiveContext(context); setSelected(record); }
   const [trace, setTrace] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -148,6 +151,7 @@ export default function Dashboard() {
   useEffect(() => {
     setSelected(null);
     setTrace(null);
+    setArchiveContext([]);
   }, [filters, page, bundle.dataset.id]);
   useEffect(() => {
     const c = new AbortController(); let active = true; let timer: number | undefined; let attempts = 0;
@@ -525,14 +529,14 @@ export default function Dashboard() {
   }
   function content() {
     if (page === 12) return <Showcase onMonitor={() => openPage(2)} />;
-    if (page === 13) return <><FlowStrip steps={["来源画面","本次上传副本","视觉模型理解","事实与未知"]}/><ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={setSelected}/><details className="judge-advanced"><summary>视觉分析、事件核验与模型实际输入</summary><ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></details></>;
+    if (page === 13) return <><FlowStrip steps={["来源画面","本次上传副本","视觉模型理解","事实与未知"]}/><ArchivePanel key={'images'+environment+JSON.stringify(filters)} section="images" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/><details className="judge-advanced"><summary>视觉分析、事件核验与模型实际输入</summary><ImageAnalysis rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></details></>;
     if (page === 14) return <><FlowStrip steps={["入库录像 / 分段","向量索引","文字检索候选","模型复核 / 原片核验"]}/><VideoIndex rows={rows} coverage={bundle.coverage?.mediaIndex} onSelect={setSelected} /></>;
     if (page === 10) return <ServerResources server={bundle.coverage?.server} />;
     if (page === 11) return <DeploymentPanel deployment={bundle.coverage?.deployment} />;
     const props={rows,allRows:bundle.records,coverage:bundle.coverage,onSelect:setSelected,onPage:openPage};
     if(page===0)return <JudgeOverview {...props}/>;
     if(page===1)return <DeviceStory {...props}/>;
-    if(page===2)return <><ArchivePanel key={'replies'+environment+JSON.stringify(filters)} section="replies" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={setSelected}/><TaskReplay {...props}/><details className="judge-advanced"><summary>开发者记录：所有关联追踪（含接口轮询）</summary>{traceList()}</details></>;
+    if(page===2)return <><ArchivePanel key={'replies'+environment+JSON.stringify(filters)} section="replies" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/><TaskReplay {...props}/><details className="judge-advanced"><summary>开发者记录：所有关联追踪（含接口轮询）</summary>{traceList()}</details></>;
     if(page===3)return <><TaskReplay {...props} architecture/><details className="judge-advanced"><summary>模型配置与全部调用记录</summary>{table(calls,"模型与执行器调用","HTTP 请求与 Codex 步骤分别标明；点击查看实际输入输出")}{table(rows.filter(r=>r.name.startsWith("codex.")),"Codex 协议记录","实际下发指令与工具回执；不含内部推理")}{table(resources(["model_configuration"]),"服务模型配置","配置值不代表实际调用")}</details></>;
     if(page===4)return <PromptStory {...props}/>;
     if(page===5)return <TaskBoard {...props}/>;
@@ -902,13 +906,13 @@ export default function Dashboard() {
             {trace && (
               <>
                 <p className="eg-ops-note">
-                  {traceLabel(trace,bundle.records)} · 同一任务
-                  的全部记录（包含筛选外上下文）；仅同一进程内的 duration
+                  {traceLabel(trace,detailRecords)} · 同一任务
+                  的已载入记录（历史分页未载入的步骤不在此处）；仅同一进程内的 duration
                   可直接比较。
                 </p>
-                <AgentCycle records={bundle.records.filter(r=>r.traceId===trace)} onSelect={r=>{setSelected(r as Row);setTrace(null);}} />
+                <AgentCycle records={detailRecords.filter(r=>r.traceId===trace)} onSelect={r=>{setSelected(r as Row);setTrace(null);}} />
                 <div className="eg-ops-timeline">
-                  {bundle.records
+                  {detailRecords
                     .filter((r) => r.traceId === trace)
                     .sort((a, b) => a.at - b.at)
                     .map((r) => (
@@ -951,7 +955,7 @@ export default function Dashboard() {
                   {selected.data.promptId && (
                     <button
                       onClick={() => {
-                        const prompt = bundle.records.find(
+                        const prompt = detailRecords.find(
                           (r) => r.id === selected.data.promptId,
                         );
                         if (prompt) setSelected(prompt);
@@ -962,7 +966,7 @@ export default function Dashboard() {
                     </button>
                   )}
                 </div>
-                <RecordContent record={selected} records={bundle.records} />
+                <RecordContent record={selected} records={detailRecords} />
               </>
             )}
           </section>
