@@ -89,3 +89,19 @@ def test_official_android_reference_cannot_authorize_ios(env):
     value=call(c,d,'device_inspect').json()
     assert value['referenceBaselines']==[] and value['validations']==[]
     assert call(c,d,diagnostic=False).json()['code']=='NOT_VALIDATED'
+
+
+def test_legacy_receipt_cannot_borrow_new_executor_validation_scope(env):
+    app,c=env;d,h,headers,_,args=ptz_host(c,app)
+    op=call(c,d,'camera_ptz_step',args).json();approve(c,op)
+    leased=claim(c,h,headers)['operation']
+    assert finish(c,h,headers,leased).status_code==200
+    store=app.state.hardware.runtime.store
+    with store.transaction():
+        value=store.get('operation',op['id'])
+        value.pop('validationScope');value.pop('artifactValidated')
+        store.put('operation',value)
+    result=c.post('/api/hardware/review',json=dict(operationId=op['id'],requestHash=op['requestHash'],
+        observedEffect='confirmed',evidence='旧版本操作只能查看，不能借用当前设备范围'))
+    assert result.status_code==409 and result.json()['code']=='STALE_REFERENCE'
+    assert store.get('operation',op['id'])['executionState']=='completed'
