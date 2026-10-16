@@ -90,6 +90,7 @@ def test_no_baseline_and_model_failure_are_not_passes(tmp_path,monkeypatch):
     asyncio.run(check())
 
 def test_confirm_requires_current_review_and_rejects_other_task_report(tmp_path,monkeypatch):
+    monkeypatch.setenv('EG_CAMERA_SOURCE','fixture_lab')
     monkeypatch.setenv('EG_VIDEO_ROOT',str(tmp_path/'media'))
     app=create_app(tmp_path/'app.sqlite',start_worker=False,provider=SimpleNamespace(name='off',ready=False))
     app.state.camera.active.manifests=AsyncMock(return_value=[])

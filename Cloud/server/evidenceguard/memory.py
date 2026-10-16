@@ -134,7 +134,7 @@ class MemoryService:
                                   expiresAt=now+fact.ttlHours*3600 if fact.ttlHours else None)
                         self.store.db.execute('INSERT OR REPLACE INTO personal_memories VALUES (?,?,?)',(item['id'],client,json.dumps(item,ensure_ascii=False)))
                         saved+=1
-                    self.store.db.execute("UPDATE memory_jobs SET status='completed',reason=? WHERE id=?", (f'已整理本轮对话，更新 {saved} 条记忆',rid))
+                    self.store.db.execute("UPDATE memory_jobs SET status='completed',reason=? WHERE id=?", (f'已整理本轮对话，更新 {saved} 条记忆' if saved else '本轮没有需要长期保存的个人信息；可以直接告诉我你的偏好或家庭情况',rid))
             except asyncio.CancelledError:
                 with self.store.transaction(): self.store.db.execute("UPDATE memory_jobs SET status='pending' WHERE id=? AND status='running'",(rid,))
                 raise

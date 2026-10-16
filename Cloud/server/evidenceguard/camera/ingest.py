@@ -175,13 +175,12 @@ class SDKIngest:
     def sources(self, key):
         ep=self.episode(key)
         if not ep: return []
-        sources=[dict(id=key,type='task_state',name=ep['deviceName'],result=ep['status'],revision=ep['revision'],
+        sources=[dict(id=key,type='task_state',cameraId=ep['cameraId'],name=ep['deviceName'],result=ep['status'],revision=ep['revision'],
                       reason=ep['reason'],review=ep.get('review'),limitation='已导入的事件，不等于持续守护')]
         for e in self.events(key):
-            if e['id'] not in ep.get('reviewedEvidenceIds',[]): continue
             sources.append(dict(id='evidence:'+e['id'],type='camera_evidence',evidenceId=e['id'],cameraId=e['cameraId'],
                                 observedAt=e['metadata']['startMs']/1000,sourceType='official_sdk',imageUrl=e['imageUrl'],
-                                reason=e['metadata']['detectionType'],visualReview=ep.get('review'),
+                                reason=e['metadata']['detectionType'],visualReview=ep.get('review') if e['id'] in ep.get('reviewedEvidenceIds',[]) else None,
                                 limitation='时间为设备事件时间；缩略图不保证是实时画面，SDK事件类型未代表模型已确认'))
         return sources
 
@@ -221,7 +220,7 @@ class SDKIngest:
                 if result['status'] in {'completed','metadata_only'} and 0 <= now-latest <= 300:
                     profiles=self.store.db.execute('SELECT id FROM personal_profiles').fetchall()
                     for (client,) in profiles:
-                        if self.personal.profile(client)['preferences']['enabled']:
+                        if self.personal.profile(client)['preferences']['enabled'] and self.personal.tasks.matching(client,ep,latest,now):
                             self.personal.engine.enqueue(client,ep['id'],'camera_event',ep['deviceName']+' 有新的事件',ep['reason'],now)
             return True
 

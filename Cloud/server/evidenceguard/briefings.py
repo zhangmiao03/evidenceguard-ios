@@ -15,6 +15,7 @@ from .camera.sources import REAL_SOURCES
 
 SLOTS = ('morning', 'evening')
 LABELS = {'morning': '早安报告', 'evening': '晚间报告'}
+REPORT_GRACE_SECONDS = 2 * 3600
 EVENT_LABELS = {'human': '有人', 'ring': '门铃响起', 'package_put': '包裹放下',
                 'package_take': '包裹取走', 'motion': '移动', 'vehicle': '车辆', 'pet': '宠物'}
 
@@ -45,7 +46,7 @@ def schedule_signature(p):
 
 
 def due_report(p, now):
-    """Only the latest due slot is caught up. DST folds deliver once per local day.
+    """Catch up only within two hours of the slot. DST folds deliver once per local day.
 
     A nonexistent spring-forward wall time resolves to the next valid instant.
     Intervals are adjacent in UTC and are not assumed to be exactly 12/24 hours.
@@ -65,8 +66,10 @@ def due_report(p, now):
     if len(past) < 2 or not future:
         return None
     end, slot, date = past[-1]
+    if now >= end + REPORT_GRACE_SECONDS:
+        return None
     return dict(slot=slot, localDate=date, timezone=p['timezone'], startAt=past[-2][0],
-                endAt=end, expiresAt=future[0][0], schedule=schedule_signature(p))
+                endAt=end, expiresAt=min(future[0][0], end + REPORT_GRACE_SECONDS), schedule=schedule_signature(p))
 
 
 def _rows(store, table):
@@ -134,13 +137,13 @@ def render(report, sources, selected=()):
     zone = ZoneInfo(report['timezone'])
     stamp = lambda at: datetime.fromtimestamp(at, zone).strftime('%m月%d日 %H:%M')
     period = stamp(report['startAt'])+'—'+stamp(report['endAt'])
-    greeting = '早上好' if report['slot']=='morning' else '晚上好'
+    greeting = '早间报告' if report['slot']=='morning' else '晚间报告'
     devices = [s for s in sources if s['type']=='report_device']
     tasks = [s for s in sources if s['type']=='report_task']
     # Unknown/model-injected IDs cannot hide mandatory coverage and alert counts.
     order = {key: i for i, key in enumerate(selected)}
     tasks.sort(key=lambda s: (s.get('alert')!='open', order.get(s['id'], 999), s['id']))
-    parts = [f'{greeting}，{period}的家里记录整理好了。']
+    parts = [f'{greeting}：{period}的家里记录整理好了。']
     if not devices:
         parts.append('还没有接入摄像头，目前无法判断家里的情况。')
     else:

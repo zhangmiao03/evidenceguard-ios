@@ -118,6 +118,9 @@ struct APIClient {
     func memoryOptions(enabled: Bool) async throws -> PersonalSnapshot {
         try await send("/api/personal/memory-options?enabled=\(enabled)", method: "PUT", body: [String:String]())
     }
+    func cancelPersonalTask(_ id: String) async throws -> PersonalSnapshot {
+        try await send("/api/personal/tasks/\(id)/cancel", body: [String: String]())
+    }
     func retryMemory() async throws -> PersonalSnapshot { try await send("/api/personal/memory-retry", body: [String:String]()) }
     func savePreferences(_ value: PersonalPreferences) async throws -> PersonalSnapshot { try await send("/api/personal/preferences", method: "PUT", body: value) }
     func remember(_ content: String, temporary: Bool) async throws -> PersonalSnapshot {
@@ -154,6 +157,31 @@ struct APIClient {
     func acknowledgeReplay(_ id: String) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-acknowledge", body: [String: String]()) }
     func replayTransport(_ id: String, online: Bool) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-transport", body: ["online": online]) }
     func indexRecording(_ id: String) async throws -> VideoRecording { try await send("/api/recordings/\(id)/index", body: [String: String]()) }
+    func deleteRecording(_ id: String) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/recordings/\(id)", method: "DELETE", body: Optional<String>.none)
+    }
+    func searchVideos(_ input: VideoSearchInput) async throws -> VideoSearchResult { try await send("/api/video-search", body: input) }
+    func videoSearch(_ id: String) async throws -> VideoSearchResult { try await get("/api/video-search/\(id)") }
+    func videoSearchImage(_ path: String) async throws -> Data {
+        guard let url = absoluteURL(path) else { throw APIProblem(message: "图片地址无效") }
+        var request = URLRequest(url: url); try authorize(&request)
+        let (data, response) = try await transport.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw APIProblem(message: "图片暂不可用") }
+        return data
+    }
+    func uploadSearchImage(_ data: Data) async throws -> VideoSearchImage {
+        guard !data.isEmpty && data.count <= 5_000_000 else { throw APIProblem(message: "参考图片不能超过 5 MB") }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/video-search-images"))
+        request.httpMethod = "POST"; request.timeoutInterval = 60; try authorize(&request)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let (value, response) = try await transport.upload(for: request, from: data)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let json = (try? JSONSerialization.jsonObject(with: value)) as? [String: Any]
+            throw APIProblem(message: json?["detail"] as? String ?? "参考图片上传失败，请重试")
+        }
+        return try JSONDecoder().decode(VideoSearchImage.self, from: value)
+    }
     func uploadRecording(_ file: URL, camera: String, recordedAt: Double?) async throws -> VideoRecording {
         let resource = file.startAccessingSecurityScopedResource()
         defer { if resource { file.stopAccessingSecurityScopedResource() } }
@@ -162,6 +190,7 @@ struct APIClient {
         var url = URLComponents(url: baseURL.appendingPathComponent("api/recordings"), resolvingAgainstBaseURL: true)!
         url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: file.deletingPathExtension().lastPathComponent)]
         if let recordedAt { url.queryItems?.append(URLQueryItem(name: "recordedAt", value: String(recordedAt))) }
+        url.queryItems?.append(URLQueryItem(name: "recordedTimezone", value: TimeZone.current.identifier))
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
         try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -172,9 +201,9 @@ struct APIClient {
         }
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
-    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios" }
-        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
+    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil, referenceImageID: String? = nil) async throws -> AgentRun {
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var referenceImageId: String?; var clientPlatform = "ios" }
+        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID, referenceImageId: referenceImageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
     func createDraft(camera: String, conversation: String, prompt: String, replacesID: String?) async throws -> VisualSkill {

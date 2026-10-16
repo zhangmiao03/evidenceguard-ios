@@ -53,9 +53,9 @@ def test_quiet_hours_and_disabled_preferences_suppress_new_notices(tmp_path):
     agent.preferences(client,Preferences(enabled=True,dailySummary=True,summaryHour=0,timezone='America/Los_Angeles'))
     night=datetime(2026,10,12,6,0,tzinfo=timezone.utc).timestamp()  # 23:00 PDT
     agent.tick(night); assert agent.inbox(client) == []
-    day=night+10*3600; agent.tick(day); assert len(agent.inbox(client)) == 1
+    day=night+10*3600; agent.tick(day); assert agent.inbox(client) == []  # expired overnight report is not caught up
     agent.preferences(client,Preferences(enabled=False,dailySummary=True,timezone='UTC'))
-    agent.tick(day+86400); assert len(agent.inbox(client)) == 1
+    agent.tick(day+86400); assert agent.inbox(client) == []
     with pytest.raises(ValueError): Preferences(timezone='invalid/zone')
     store.close()
 

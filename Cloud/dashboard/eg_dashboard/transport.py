@@ -29,6 +29,11 @@ def install(ops):
 
     @functools.wraps(original)
     async def model_post(client, url, *, headers, json):
+        privacy=getattr(ops,'PRIVATE_CONTENT',None)
+        if privacy is not None and privacy.get():
+            # The business service's private-content boundary overrides public
+            # dashboard capture, including media_assets.capture_inputs.
+            return await original(client,url,headers=headers,json=json)
         recorder = ops.RECORDER.get()
         if not recorder:
             return await client.post(url, headers=headers, json=json)

@@ -108,12 +108,14 @@ def test_schedule_pause_and_stale_observation_revalidate_before_sending(tmp_path
 def test_fresh_device_event_without_image_can_notify_with_explicit_metadata_boundary(tmp_path,kind):
     async def check():
         app,p,s,w,owner=setup(tmp_path); now=time.time()
+        app.state.personal.tasks.create(owner,dict(id='watch-request',clientId=owner,executionMode='live',conversationId='watch',message='有新事件提醒我'),
+            '设备事件关注',kind,app.state.ingest.camera_id('T8214-TEST'),'today','Asia/Shanghai',now-60)
         app.state.ingest.accept(SDKBatch.model_validate(dict(events=[event(image=False,detectionType=kind)],reviewRequested=True)),owner,now)
         await app.state.ingest.step(now+11)
         ep=app.state.ingest.status()['episodes'][0]
         assert ep['status']=='metadata_only'
         sources=app.state.ingest.sources(ep['id'])
-        assert len(sources)==1 and sources[0]['type']=='task_state' and '尚无可核验图片' in sources[0]['reason']
+        assert len(sources)==2 and sources[0]['type']=='task_state' and '尚无可核验图片' in sources[0]['reason']
         p.answers=iter([tool('read_proactive_context',{}),dict(role='assistant',content=json.dumps(dict(valueScore=85,title='门口有设备事件',body='设备报告了新事件，还没有可核验图片，你可以打开查看。',reason='新设备事件',sourceIds=[ep['id']]),ensure_ascii=False))])
         await app.state.proactive.step(now+12)
         assert len(app.state.proactive.messages(owner))==1

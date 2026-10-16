@@ -8,11 +8,13 @@ from .codex import CodexTurn, EXECUTOR as CODEX_EXECUTOR
 from .scheduler import TaskScheduler, TaskEnvelope
 from ..history import HistoryFilter, resolve_filter
 from ..camera.sources import official_mode
-from ..ops import traced, CTX, RECORDER
+from ..ops import traced, CTX, RECORDER, PRIVATE_CONTENT
 from ..assistant_identity import ASSISTANT_NAME, VOICE_GUIDANCE
 
-PRODUCT_GUIDANCE = '''当前 iOS 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”，Web 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 设置”。两端都有主会话、独立话题、历史查询、草案编辑、区域圈选、录像上传与回放试跑，不能把 Web 说成只有设备和直播的工作台。
+PRODUCT_GUIDANCE = '''用户明确交代未来关注、提醒或待办时，调用 save_personal_task 保存到“任务”，不要只口头答应，也不要当成历史录像查询。例如“今天有快递来了提醒我”保存包裹出现事件关注，今天结束。依据保存回执准确说明等待设备事件或尚待配置；不能承诺锁屏持续采集。普通“快递到没到”是查询，不创建任务。复杂场景需要创建草案时仍用 draft_visual_skill。未执行保存工具不能说已记下任务。记忆是用户自述的长期偏好和家庭信息，任务及问题不是个人事实；记忆整理在回复后异步完成，不能宣称已经保存未返回的记忆。
+当前 iOS 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 我的”，Web 导航为“助手 / 摄像头 Skill / 任务 / 记忆 / 设置”。两端都有主会话、独立话题、历史查询、草案编辑、区域圈选、录像上传与回放试跑，不能把 Web 说成只有设备和直播的工作台。
 当前比赛硬件演示以原生 iOS + 官方 App SDK + Cloud Agent 为准，Web 产品停止功能扩展，已有网页功能仍可使用；Dashboard 仅供观察与排查，不是硬件执行器。明确使用 iOS 的用户应得到 iOS 操作入口。
+新版 iOS 可在“录像库 → 用文字或图片检索录像”或历史对话菜单进行图文检索，需当前云端开放 retrievalVersion=2 并有完成索引的录像。可选参考图裁剪、查看候选和原片、带同一参考图继续问助手；产品 Web 没有这项新图片检索入口。外观相似不能确认身份，视频核验失败不代表没有发生。
 接上摄像头仅说明完成接入，不能承诺从此可以整夜守护。用户问整夜、锁屏、退出 App 后是否持续观察或能否保证安全时，必须说明当前采集仍依赖前台 iOS/Web 会话，云端独立采集尚未验收。APNs 能在 App 未运行时接收通知，不代表摄像头事件一定会持续上传。早晚报告只汇总已有记录，不会自动开始采集；没有数据必须明确未知。当前没有房主身份参照录入与比对功能，不要指引用户到 App 录入人脸或暗示已有自动身份识别。
 两端都可从“任务”打开草案，选择“继续设置守护”，按“对象 / 条件 / 确认”完成编辑；也可从助手草案卡继续设置，或在“摄像头 Skill”选择设备后进入“圈选守护”。保存草案不会启用，实际能否执行以服务端 capability 和确认回执为准。界面能编辑宠物或车辆需求，不代表对应执行器已经就绪。
 提醒设置位于 iOS“我的 → 通知与提醒”或 Web“设置 → 通知与提醒”；iOS 偏好自动保存，Web 需要点击“保存提醒设置”。iOS 已接入需用户授权和服务配置的 APNs，Web 只有应用内提醒，关闭网页后没有 Web Push。投递状态以回执为准，不承诺通知已送达。
@@ -84,7 +86,7 @@ class AgentRuntime:
                 yield turn
         else:
             yield self.model_provider
-    def start(self,text,conversation_id,skill_id=None,request_id=None,camera_id=None,execution_mode='live',history_filter=None,personal_context=None,reply_to=None,client_platform=None,client_id=None,connector_access=False):
+    def start(self,text,conversation_id,skill_id=None,request_id=None,camera_id=None,execution_mode='live',history_filter=None,personal_context=None,reply_to=None,client_platform=None,client_id=None,connector_access=False,reference_image_id=None):
         if execution_mode not in {'live','history'}: raise ValueError('未知任务方式')
         if history_filter is not None:
             if execution_mode!='history': raise ValueError('时间范围仅用于历史回顾')
@@ -92,7 +94,7 @@ class AgentRuntime:
         if request_id:
             existing=self.store.run(request_id)
             if existing:
-                if existing['conversationId']!=conversation_id or existing['message']!=text or existing.get('skillId')!=skill_id or existing.get('requestedCameraId')!=camera_id or existing.get('executionMode','live')!=execution_mode or existing.get('historyFilter')!=history_filter or existing.get('replyToMessageId')!=reply_to: raise ValueError('请求 ID 冲突')
+                if existing['conversationId']!=conversation_id or existing['message']!=text or existing.get('skillId')!=skill_id or existing.get('requestedCameraId')!=camera_id or existing.get('executionMode','live')!=execution_mode or existing.get('historyFilter')!=history_filter or existing.get('replyToMessageId')!=reply_to or existing.get('referenceImageId')!=reference_image_id: raise ValueError('请求 ID 冲突')
                 return existing
         skill = self.store.skill(skill_id) if skill_id else None
         if skill_id and not skill: raise ValueError('当前 Skill 不存在')
@@ -107,8 +109,9 @@ class AgentRuntime:
             raise ValueError('这段对话仍有运行中的请求，请先等待或取消')
         run=dict(id=request_id or 'run-'+uuid.uuid4().hex,conversationId=conversation_id,skillId=skill_id,executionMode=execution_mode,message=text,cameraId=selected_camera,requestedCameraId=camera_id,status='queued',createdAt=time.time(),text=None,error=None,draft=None,toolReceipts=[],captures=[],videos=[],historyFilter=history_filter,historyScope=resolve_filter(history_filter))
         run['clientPlatform'] = client_platform
-        scoped = self.tools.for_context(skill_id, selected_camera, execution_mode, run.get('historyScope'),run=run) if self.tools.for_context else self.tools
         run['clientId']=client_id
+        run['referenceImageId']=reference_image_id
+        scoped = self.tools.for_context(skill_id, selected_camera, execution_mode, run.get('historyScope'),run=run) if self.tools.for_context else self.tools
         run['connectorAccess']=bool(connector_access and client_id)
         if run['connectorAccess'] and self.connectors: scoped=self.connectors.tools(scoped,client_id)
         contract = ExecutionContract(execution_mode, tuple(scoped.names), selected_camera, skill_id,executor=self.executor)
@@ -236,6 +239,7 @@ class AgentRuntime:
         await asyncio.gather(*list(self.tasks.values()),return_exceptions=True)
     @traced('agent')
     async def _execute(self,run,camera_id):
+        privacy_token=PRIVATE_CONTENT.set(True) if run.get('referenceImageId') else None
         try:
             async with asyncio.timeout(420 if run.get('executionMode')=='history' else 180):
                 if not self.ready: raise ProviderError('助手暂时无法使用，请稍后重试或联系团队。')
@@ -278,6 +282,8 @@ class AgentRuntime:
                 if run.get('historyScope') is not None:
                     messages.append(dict(role='system',content='本轮历史查询范围已由客户端固定。工具强制使用 selectedHistoryScope；不得改变、扩大或沿用旧日期。全部日期包含日期未知录像；相对日期以该范围快照为准。'))
                 messages.append(dict(role='system',content=CHAT_GUIDANCE+'\n本轮表达要求：单独的问候只回一句自然问候，例如“嗨，我在。”，不要介绍功能或举例。只问名字或身份时仅回答名字或身份，不查设备、不追加设备状态或连接指引。必要的能力限制用一句话说清，不展开与本轮问题无关的回放、采样和验收清单，不重复邀请用户提出需求。'))
+                if run.get('referenceImageId'):
+                    messages.append(dict(role='system',content='本轮用户附加了已授权的参考图片，引用为 '+run['referenceImageId']+'。必须调用 search_recordings 查录像；工具会把原图同时送入联合检索与视频核验，不要只改写为文字。仅能说明可见外观相似，不确认身份。'))
                 content=[dict(type='text',text=run['message'])]
                 messages.append(dict(role='user',content=content if len(content)>1 else run['message']))
                 async with asyncio.timeout(390 if run.get('executionMode')=='history' else 150), self.turn_provider(run) as turn:
@@ -367,25 +373,32 @@ class AgentRuntime:
                 self.store.save_run(run)
                 if self.push: self.push.completed_run(run)
                 if self.memory: self.memory.enqueue(run)
+            if privacy_token is not None: PRIVATE_CONTENT.reset(privacy_token)
 
 
 def video_answer(result):
     """Summarize executed receipts, never let chat invent an unsupported video card."""
     videos=result.get('videos',[]); scope=result.get('scope',{})
-    if not videos:
+    if result.get('status') in {'failed','interrupted'}:
+        text='本次录像检索未完成，请重试；服务失败不能解释为没有发生。'
+    elif result.get('status')=='no_recordings':
+        text='当前范围尚未导入录像，暂时无法判断。'
+    elif not videos:
         text='本次范围内没有已完成索引的录像，暂时无法判断。'
     else:
         matched=[v for v in videos if v['verdict']=='matched']
         failed=sum(v.get('verificationStatus')=='failed' for v in videos)
         uncertain=sum(v['verdict']=='uncertain' and v.get('verificationStatus')!='failed' for v in videos)
         negative=sum(v['verdict']=='not_matched' for v in videos)
+        candidates=sum(v['verdict']=='candidate' for v in videos)
         parts=[]
         if matched:
             parts.append('找到模型判断匹配的录像，请播放核验：')
             for v in matched:
                 seconds=int(v['seekSeconds']); parts.append(f"{v['title']} · 原片 {seconds//60:02d}:{seconds%60:02d} 附近。")
         else: parts.append('本轮候选片段中没有得到明确匹配。')
-        if negative: parts.append(f'{negative} 段未发现所问动作。')
+        if negative: parts.append(f'{negative} 段未满足本次查询条件。')
+        if candidates: parts.append(f'{candidates} 段仍为相关候选，尚未经视频核验。')
         if uncertain: parts.append(f'{uncertain} 段无法确认（如遮挡或画面不清）。')
         if failed: parts.append(f'{failed} 段模型复核失败，可以重试；失败不代表没有发生。')
         text='\n'.join(parts)

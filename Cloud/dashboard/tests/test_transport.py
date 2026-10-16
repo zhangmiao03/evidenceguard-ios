@@ -14,6 +14,18 @@ from eg_dashboard import content, transport
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
+    async def test_private_search_never_exports_input_media_or_body(self):
+        self.ops.PRIVATE_CONTENT=contextvars.ContextVar('testprivate',default=True)
+        response=SimpleNamespace(status_code=200)
+        calls=[]
+        async def post(*args,**kwargs): calls.append(kwargs);return response
+        with patch('eg_dashboard.media_assets.capture_inputs',side_effect=AssertionError('private media must not be copied')):
+            result=await self.ops.model_post(SimpleNamespace(post=post),'https://model.invalid/chat',headers={},
+                json={'model':'test','messages':[{'role':'user','content':'private query'}]})
+        self.assertIs(result,response)
+        self.assertEqual(len(calls),1)
+        self.assertEqual(self.rec.rows,[])
+
     def setUp(self):
         async def original(client,url,**kwargs): return await client.post(url,**kwargs)
         self.ops=SimpleNamespace(model_post=original, safe=lambda v:v,

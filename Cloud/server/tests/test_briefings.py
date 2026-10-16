@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from evidenceguard.app import create_app
-from evidenceguard.briefings import due_report, facts, render
+from evidenceguard.briefings import due_report, facts, render, REPORT_GRACE_SECONDS
 from evidenceguard.personal import PersonalAgent, Preferences
 from evidenceguard.proactive import Decision, ProactiveEngine
 from evidenceguard.camera.ingest import SDKDevices, SDKDevice, SDKBatch, SDKEvent
@@ -59,11 +59,11 @@ def test_legacy_opt_in_migrates_without_enabling_morning_and_old_put_preserves_n
 ])
 def test_timezone_dst_intervals_do_not_assume_24_hours(zone,date,hour,expected_hours):
     p=Preferences(enabled=True,morningReport=True,morningHour=hour,timezone=zone).model_dump()
-    report=due_report(p,at(date+'T12:00',zone))
+    report=due_report(p,at(date+f'T{hour:02d}:30',zone))
     assert report['slot']=='morning'
     assert (report['endAt']-report['startAt'])/3600==expected_hours
     if zone=='America/New_York' and date=='2026-11-01':
-        assert report==due_report(p,at(date+'T15:00',zone))
+        assert due_report(p,at(date+'T15:00',zone)) is None
 
 
 def test_two_reports_have_adjacent_windows_and_only_latest_missed_slot_catches_up():
@@ -71,7 +71,7 @@ def test_two_reports_have_adjacent_windows_and_only_latest_missed_slot_catches_u
     morning=due_report(p,at('2026-10-15T08:00'))
     evening=due_report(p,at('2026-10-15T20:00'))
     after_outage=due_report(p,at('2026-10-17T21:00'))
-    assert morning['endAt']==evening['startAt'] and morning['expiresAt']==evening['endAt']
+    assert morning['endAt']==evening['startAt'] and morning['expiresAt']==morning['endAt']+REPORT_GRACE_SECONDS
     assert after_outage['localDate']=='2026-10-17' and after_outage['slot']=='evening'
     assert morning['startAt']==at('2026-10-14T20:00')
     with pytest.raises(ValueError): Preferences(morningReport=True,eveningReport=True,morningHour=20)
@@ -254,5 +254,23 @@ def test_old_daily_job_is_cancelled_and_report_does_not_consume_ordinary_quota(t
             app.state.store.db.execute('INSERT INTO assistant_messages VALUES (?,?,?,?,?)',(str(n),c,'old'+str(n),now-600,json.dumps(message)))
         job=dict(client=c,expiresAt=now+3600,kind='schedule',dedupe='custom',skillId=None)
         assert e.gate(job,now+1) is None
+        app.state.store.close()
+    asyncio.run(check())
+
+
+def test_afternoon_activation_and_persisted_old_morning_job_do_not_send(tmp_path, monkeypatch):
+    async def check():
+        app,p,e,r,c=configured(tmp_path,monkeypatch)
+        morning=at('2026-10-15T08:00'); afternoon=at('2026-10-15T16:50')
+        assert due_report(p.profile(c)['preferences'],afternoon) is None
+        p.tick(morning)
+        with app.state.store.transaction():
+            row=app.state.store.db.execute('SELECT id,payload FROM proactive_jobs').fetchone()
+            job=json.loads(row[1]); job['expiresAt']=at('2026-10-15T20:00')
+            app.state.store.db.execute('UPDATE proactive_jobs SET payload=? WHERE id=?',(json.dumps(job),row[0]))
+        await e.step(afternoon)
+        assert not e.messages(c)
+        assert e.activity(c)[0]['status']=='expired'
+        r.proactive.assert_not_awaited()
         app.state.store.close()
     asyncio.run(check())

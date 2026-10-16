@@ -21,14 +21,14 @@ class HistoryFilter(BaseModel):
         return self
 
 
-def resolve_filter(value, now=None):
+def resolve_filter(value, now=None, timezone='Asia/Shanghai'):
     if value is None: return None
     value=HistoryFilter.model_validate(value)
     now=time.time() if now is None else now
-    midnight=datetime.fromtimestamp(now,ZoneInfo('Asia/Shanghai')).replace(hour=0,minute=0,second=0,microsecond=0)
+    midnight=datetime.fromtimestamp(now,ZoneInfo(timezone)).replace(hour=0,minute=0,second=0,microsecond=0)
     start=end=None
     if value.period=='custom': start,end=value.startAt,value.endAt
     elif value.period=='today': start,end=midnight.timestamp(),now
     elif value.period=='yesterday': start,end=(midnight-timedelta(days=1)).timestamp(),midnight.timestamp()
     elif value.period=='last_24_hours': start,end=now-86400,now
-    return dict(period=value.period,startAt=start,endAt=end,timezone='Asia/Shanghai')
+    return dict(period=value.period,startAt=start,endAt=end,timezone=timezone)

@@ -87,9 +87,15 @@ struct RecordingLibraryView: View {
     @State private var cameraID = ""
     @State private var knownDate = false
     @State private var recordedAt = Date()
+    @State private var pendingDelete: VideoRecording?
     @State private var error: String?
     var body: some View {
         List {
+            Section {
+                NavigationLink { VideoSearchView() } label: {
+                    Label("用文字或图片检索录像", systemImage: "magnifyingglass")
+                }.accessibilityIdentifier("recordings.search")
+            }
             Section("导入录像") {
                 Picker("来源摄像头", selection: $cameraID) { ForEach(store.data.cameras) { c in Text(c.name).tag(c.id) } }
                 Toggle("我知道录像的拍摄开始时间", isOn: $knownDate)
@@ -116,10 +122,21 @@ struct RecordingLibraryView: View {
                         if ["failed", "interrupted", "stale"].contains(video.status) {
                             Button("重新建立索引") { Task { await store.perform { _ = try await store.client.indexRecording(video.id) } } }
                         }
+                        Button("删除导入录像", role: .destructive) { pendingDelete = video }
+                            .font(.caption).disabled(["queued", "indexing"].contains(video.status))
                     }
                 }
             }
         }.pageStyle("录像库")
+        .alert("删除这段录像？", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } })) {
+            Button("取消", role: .cancel) { pendingDelete = nil }
+            Button("删除", role: .destructive) {
+                if let video = pendingDelete { Task { await store.perform { try await store.client.deleteRecording(video.id) } } }
+                pendingDelete = nil
+            }
+        } message: {
+            Text("将删除当前服务中的录像、关键帧和检索索引。摄像头存储卡中的原始录像不受此操作影响。")
+        }
         .onAppear { if cameraID.isEmpty { cameraID = store.selectedCameraID } }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.movie, .mpeg4Movie], allowsMultipleSelection: false) { result in
             switch result {
