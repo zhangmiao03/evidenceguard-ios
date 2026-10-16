@@ -7,7 +7,7 @@ import re
 import shlex
 import subprocess
 from urllib.parse import urlsplit
-from check_sdk_host import validate_sdk_host
+from check_sdk_host import validate_sdk_host, validate_sdk_app
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -30,8 +30,13 @@ if args.demo_config:
     if not args.demo_config.is_file(): parser.error('Demo config file is missing')
     values = dict(line.split('=',1) for line in args.demo_config.read_text().splitlines() if '=' in line and not line.lstrip().startswith('//'))
     values = {k.strip():v.strip() for k,v in values.items()}
-    if set(values) != {'EG_INTERNAL_DEMO','EG_SERVICE_BASE_URL','EG_DEMO_ACCESS_TOKEN'} or values['EG_INTERNAL_DEMO'] != 'YES' or not re.fullmatch(r'[A-Za-z0-9_-]{32,}',values['EG_DEMO_ACCESS_TOKEN']):
-        parser.error('Demo config must contain only the internal flag, origin and a demo-scoped token')
+    required = {'EG_INTERNAL_DEMO','EG_SERVICE_BASE_URL','EG_DEMO_ACCESS_TOKEN'}
+    sdk_keys = {'EG_SDK_MANAGED_ACCOUNT','EG_SDK_USER_ID','EG_SDK_AUTH_TOKEN','EG_SDK_ENVIRONMENT'}
+    if not required <= set(values) or set(values) - required - sdk_keys or values['EG_INTERNAL_DEMO'] != 'YES' or not re.fullmatch(r'[A-Za-z0-9_-]{32,}',values['EG_DEMO_ACCESS_TOKEN']):
+        parser.error('Invalid internal demo configuration; use only supported service and SDK account fields')
+    if set(values) & sdk_keys:
+        if not sdk_keys <= set(values) or values['EG_SDK_MANAGED_ACCOUNT'] != 'YES' or values['EG_SDK_ENVIRONMENT'] not in {'PR','QA'} or not all(values[k] and '$(' not in values[k] and '\n' not in values[k] for k in ('EG_SDK_USER_ID','EG_SDK_AUTH_TOKEN')):
+            parser.error('Private SDK account configuration is incomplete')
     if values['EG_SERVICE_BASE_URL'].replace('/$()/','//').rstrip('/') != args.api_url.rstrip('/'):
         parser.error('Demo credential origin differs from the archive service URL')
     config = ['-xcconfig',str(args.demo_config.resolve())]
@@ -51,8 +56,7 @@ else:
     apps = list((args.archive.resolve() / 'Products/Applications').glob('*.app'))
     if len(apps) != 1:
         parser.error('Expected exactly one archived app for SDK host validation.')
-    with (apps[0] / 'Info.plist').open('rb') as file:
-        try:
-            validate_sdk_host(plistlib.load(file))
-        except ValueError as error:
-            parser.error(str(error))
+    try:
+        validate_sdk_app(apps[0])
+    except ValueError as error:
+        parser.error(str(error))

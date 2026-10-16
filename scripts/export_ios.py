@@ -11,7 +11,7 @@ import re
 import shlex
 import subprocess
 from urllib.parse import urlsplit
-from check_sdk_host import validate_sdk_host
+from check_sdk_host import validate_sdk_app
 
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
@@ -46,7 +46,7 @@ app = apps[0]
 with (app / 'Info.plist').open('rb') as file:
     info = plistlib.load(file)
 try:
-    validate_sdk_host(info)
+    validate_sdk_app(app)
 except ValueError as error:
     parser.error(str(error))
 if info.get('CFBundleIdentifier') != args.bundle_id:

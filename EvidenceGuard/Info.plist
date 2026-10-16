@@ -24,6 +24,14 @@
 	<string>$(EG_SERVICE_BASE_URL)</string>
 	<key>EGSDKArtifactHash</key>
 	<string>$(EG_SDK_ARTIFACT_HASH)</string>
+	<key>EGSDKManagedAccount</key>
+	<string>$(EG_SDK_MANAGED_ACCOUNT)</string>
+	<key>EGSDKUserID</key>
+	<string>$(EG_SDK_USER_ID)</string>
+	<key>EGSDKAuthToken</key>
+	<string>$(EG_SDK_AUTH_TOKEN)</string>
+	<key>EGSDKEnvironment</key>
+	<string>$(EG_SDK_ENVIRONMENT)</string>
 	<key>EGInternalDemo</key>
 	<string>$(EG_INTERNAL_DEMO)</string>
 	<key>EGDemoAccessToken</key>

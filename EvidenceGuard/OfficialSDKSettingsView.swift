@@ -12,6 +12,16 @@ struct OfficialSDKSettingsView: View {
                 Text(connection.buildStatus).font(.subheadline)
                 Text(connection.message).font(.caption).foregroundStyle(Brand.muted)
             }
+            if connection.usesManagedAccount {
+                Section("摄像头连接") {
+                    Label("已配置联调账号", systemImage: "checkmark.circle")
+                    Text("连接时自动使用此版本的摄像头账号。").font(.caption).foregroundStyle(Brand.muted)
+                    Button { connection.discoverConfigured(client: store.client) } label: {
+                        HStack { if connection.checking { ProgressView() }; Text("重新检查设备") }
+                    }.disabled(connection.checking || connection.inspecting || !connection.canDiscover)
+                        .accessibilityIdentifier("sdk.discover")
+                }
+            } else {
             Section("主办方账号") {
                 Picker("SDK 环境", selection: $credentials.environment) {
                     Text("PR").tag("PR")
@@ -34,6 +44,7 @@ struct OfficialSDKSettingsView: View {
                 }.disabled(!credentials.isComplete || connection.checking || connection.inspecting || !connection.canDiscover)
                     .accessibilityIdentifier("sdk.discover")
                 if let feedback { Text(feedback).font(.caption) }
+            }
             }
             if !connection.devices.isEmpty {
                 Section("官方账号下的设备") {
@@ -64,7 +75,7 @@ struct OfficialSDKSettingsView: View {
             Section("连接方式") {
                 Label("iPhone：通过 TestFlight 安装测试包", systemImage: "airplane")
                 Label("摄像头 → SDK：网络连接，用于查询与读取媒体", systemImage: "wifi")
-                Text("TestFlight 安装不需要连接 Mac 或开启开发者模式。决赛拿到摄像头与赛事账号后再检查设备；USB 是可选的 Xcode 调试方式。")
+                Text("TestFlight 安装不需要连接 Mac 或开启开发者模式。拿到摄像头后检查设备；USB 是可选的 Xcode 调试方式。")
                     .font(.caption).foregroundStyle(Brand.muted)
             }
             Section("设备验收") {
@@ -73,14 +84,21 @@ struct OfficialSDKSettingsView: View {
             }
             Section {
                 Button("断开 SDK 会话") { connection.disconnect() }.disabled(connection.devices.isEmpty && !connection.checking)
+                if !connection.usesManagedAccount {
                 Button("清除本机 SDK 凭证", role: .destructive) {
                     do { try connection.clearCredentials(); credentials = SDKCredentials(); feedback = nil }
                     catch { feedback = error.localizedDescription }
                 }
+                }
             }
         }.pageStyle("连接摄像头")
             .task {
-                do { if let saved = try SDKCredentialVault.load() { credentials = saved } }
+                do {
+                    if let saved = try connection.configuredCredentials() { credentials = saved }
+                    if connection.usesManagedAccount && connection.canDiscover && connection.devices.isEmpty {
+                        connection.discoverConfigured(client: store.client)
+                    }
+                }
                 catch { feedback = error.localizedDescription }
             }
     }

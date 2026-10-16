@@ -22,7 +22,7 @@ struct ProfileView: View {
             }
             Section("摄像头与记录") {
                 NavigationLink(value: AppRoute.cameraObservation) { Label("定时观察", systemImage: "clock.arrow.circlepath") }
-                NavigationLink(value: AppRoute.officialSDK) { Label("摄像头账号", systemImage: "video") }
+                NavigationLink(value: AppRoute.officialSDK) { Label("连接摄像头", systemImage: "video") }
                     .accessibilityIdentifier("profile.officialSDK")
                 NavigationLink(value: AppRoute.personalInbox) { Label("提醒记录", systemImage: "tray") }
             }

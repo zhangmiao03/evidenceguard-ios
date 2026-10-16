@@ -6,6 +6,8 @@ check_dir="$(mktemp -d -t evidenceguard-mobile-check)"
 trap 'rm -rf "$check_dir"' EXIT
 swiftc EvidenceGuard/MobileServiceConfiguration.swift EvidenceGuard/DeviceQRCode.swift Tests/MobileContracts/main.swift -o "$check_dir/check"
 "$check_dir/check"
+swiftc EvidenceGuard/SDKConfiguration.swift Tests/SDKConfiguration/main.swift -o "$check_dir/sdk-check"
+"$check_dir/sdk-check"
 swiftc EvidenceGuard/AppModels.swift Tests/ChatPersistence/main.swift -o "$check_dir/chat-check"
 "$check_dir/chat-check"
 swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/ReminderSettings.swift Tests/ReminderSettings/main.swift -o "$check_dir/reminder-check"

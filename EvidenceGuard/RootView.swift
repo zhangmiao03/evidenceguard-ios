@@ -161,7 +161,9 @@ struct OfficialSDKDeveloperView: View {
                         .disabled(!connection.canDiscover || connection.switchingWorkspace)
                         .accessibilityIdentifier("settings.openOfficialWorkspace")
                     Text("官方模式加载赛事 Demo 的完整 SampleApp 导航，用于绑定、配网、直播与设备配置。返回后重新查询并同步设备；不会自动恢复直播。")
-                    Text("切换的是界面与会话，不会下载或更换底层 SDK 二进制。官方模式采用自己的登录表单与缓存，请核对账号及 PR / QA。")
+                    Text(connection.usesManagedAccount
+                         ? "此版本自动使用已配置的联调账号打开官方页面，设备连接状态以页面回执为准。"
+                         : "官方模式采用自己的登录表单与缓存，请核对账号及 PR / QA。")
                 }
                 Section("T8171 · 云台摄像头") {
                     Label("添加设备：按型号完成官方配网和绑定", systemImage: "wifi")

@@ -16,6 +16,7 @@ import com.anker.esiotkit.event.model.EventCondition
 import com.anker.esiotkit.manager.MegaEventManager
 import com.anker.esiotkit.mega.category.Category
 import com.anker.esiotkit.sample.main.mega.login.business.BusinessLoginConfig
+import com.anker.esiotkit.sample.main.mega.login.business.BusinessLoginViewModel
 import com.anker.esiotkit.sample.model.isOnline
 import com.anker.esiotkit.sample.support.utils.domain.DomainProfileDefaults
 import com.anker.esiotkit.support.di.esInject
@@ -101,12 +102,38 @@ class EvidenceGuardSDKBridge {
      * Keep its entire navigator, binding flows and capability-driven settings.
      * The disposable wrapper lets Swift await Compose cleanup before reconnecting.
      */
+    @Throws(Exception::class)
     fun openOfficialDemo(): UIViewController {
         check(officialHost == null) { "official_demo_already_open" }
         disconnect()
         InfoCache.tokenValid = false
         InfoCache.userConfig = ""
         startupEnvironment = null
+        return EvidenceGuardOfficialHost().also { officialHost = it }.controller
+    }
+
+    /** Configure the official login flow from the host's private build config.
+     * Credentials are not returned in receipts or rendered by the product UI.
+     */
+    @Throws(Exception::class)
+    fun openOfficialDemoWithAccount(userId: String, token: String, environment: String): UIViewController {
+        check(officialHost == null) { "official_demo_already_open" }
+        require(userId.isNotBlank() && token.isNotBlank() && environment in listOf("PR", "QA")) {
+            "invalid_configuration"
+        }
+        disconnect()
+        InfoCache.tokenValid = false
+        InfoCache.userConfig = ""
+        startupEnvironment = null
+        val login = BusinessLoginViewModel()
+        if (environment == "QA") login.switchToQA() else login.switchToPR()
+        login.clientId = if (environment == "QA") BusinessLoginConfig.EnvQA.CLIENT_ID else BusinessLoginConfig.EnvPR.CLIENT_ID
+        login.appName = if (environment == "QA") BusinessLoginConfig.EnvQA.APP_NAME else BusinessLoginConfig.EnvPR.APP_NAME
+        login.userId = userId.trim()
+        login.token = token.trim()
+        login.login()
+        // SampleApp's own supported auto-login path opens its device navigator.
+        // Actual account/device availability is still decided by SDK responses.
         return EvidenceGuardOfficialHost().also { officialHost = it }.controller
     }
 
