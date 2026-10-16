@@ -146,4 +146,24 @@ Web 新发现的兼容问题已修复：JSON 解码会保留新服务返回的�
 
 10 月 16 日 12:44（新加坡时间）AWS 会话恢复，SSM 再次确认实际运行路径为上述 `briefings-20261015/Cloud/server`。当前应用模块与 requirements 全部匹配本地；89 个云端应用/测试/依赖文件中，86 个相同，3 个仅测试有差异；本地另有测试补充。当前逐文件结果见 [10 月 16 日源码核对](CLOUD-REPOSITORY-COMPARISON-2026-10-16.csv)。原模型联调命令通过 `--resume` 取回完整 Success 回执，没有重复执行。
 
-监控 collector 仍指向旧 tools release，因此显示的源码漂移不代表当前应用加载错误。新增 `web_release.py` 只更新 `80-demo-web.conf` 的 `EG_WEB_ROOT`，并将 collector 的 demo source 指向实际后端；不覆盖 60/70 的 Codex 配置、应用源码或数据。执行前要求运行源码逐文件匹配包内 manifest、没有活动 Agent/硬件操作；回滚备份检查后续配置/源码漂移，只恢复本次 Web 覆盖与 demo source。发布结果待下方后续验收记录补充。
+监控 collector 原先仍指向旧 tools release，因此显示的源码漂移不代表当前应用加载错误。新增 `web_release.py` 只更新 `80-demo-web.conf` 的 `EG_WEB_ROOT`，并将 collector 的 demo source 指向实际后端；不覆盖 60/70 的 Codex 配置、应用源码或数据。执行前要求运行源码逐文件匹配包内 manifest、没有活动 Agent/硬件操作；回滚备份检查后续配置/源码漂移，只恢复本次 Web 覆盖与 demo source。
+
+### 10 月 16 日 Web 发布与验收
+
+- 12:56（新加坡时间）SSM `2806431d-7977-44b9-be95-e536b2a4a2ca` 返回 Success。Web 发布目录为 `/opt/evidenceguard-demo/releases/tools-56389d827a535987/web`，后端仍为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`。本次发布前后 team/review 的 PID 相同。
+- 新包 119 个文件；archive SHA-256 `56389d827a5359874c6370eb674e1f3074574b043d7b55528bb7a2c942c6b27b`；manifest 内容摘要 `dadca1c1fe6bd910bc14892140f726237276afeb065e415de15236043406b0c7`；打包基准提交 `86aaa75`。当前 59 份应用模块、contract JSON 与 requirements 全部匹配运行目录。
+- 新包在 Linux 隔离环境 **306 passed**，包括先前 Windows 跳过的 9 项 Codex 子进程测试。生产数据库仅只读备份到临时库做迁移检查：skills 4、media/evidence 各 15、runs 48、recordings 1、personal_profiles 2、personal_memories 2、push_devices 1、connector_tokens 0、private_clients 6，迁移前后数量相同，quick_check 为 ok。正式库没有回写或恢复。
+- 当前 Web 入口 `/assets/index-emoaA4TN.js` 的公网 SHA-256 与本地构建相同。Chromium、Firefox、桌面 WebKit、手机 WebKit 均通过公网入口、团队令牌表单和官方 SDK 切换检查，没有页面异常或横向溢出；未输入团队/设备凭据。
+- 公网 `/`、SDK manifest、官方 Demo 入口均 200；匿名 `/api/bootstrap`、`/api/hardware/snapshot`、`/api/sdk/events` 均 401。修正 collector 后 `diskVsRunning=[]`、`processMatchesObserver=true`。`diskVsRepository` 仍以 Dashboard 自身声明的旧参考提交计算，不等同于本次逐文件对照结果。
+- Web 配置备份：`/var/backups/evidenceguard-demo-web/20261016T045638379467Z`。没有为网页更新改动数据库。回滚逻辑通过故障注入测试，未在正式 demo 上故意制造故障或实际回退。
+
+本次只更新 Web 的复现入口如下；此时不要运行旧的 `activate.py --release` 覆盖新后端：
+
+```sh
+/opt/evidenceguard-demo/venv-build10/bin/python RELEASE/preflight.py
+/opt/evidenceguard-demo/venv-build10/bin/python RELEASE/web_release.py --release RELEASE
+# 回滚先核对当前 ExecStart、drop-in 和源码指纹；若后续已发布其他更新，脚本会拒绝旧备份。
+/opt/evidenceguard-demo/venv-build10/bin/python RELEASE/web_release.py --rollback BACKUP
+```
+
+另一独立会话正在更新 Dashboard 观察器，可能随后重启服务并改变 observer 配置；上述 PID/指纹是本次 Web 发布时点的证据。当前 Codex 的真实 iOS/Web 契约联调将在该次维护结束后进行，避免把重启中断误判成模型或工具失败。
