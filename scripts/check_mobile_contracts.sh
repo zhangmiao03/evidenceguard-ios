@@ -16,3 +16,6 @@ swiftc EvidenceGuard/AppModels.swift Tests/AssistantTimeline/main.swift -o "$che
 "$check_dir/timeline-check"
 swiftc -parse-as-library EvidenceGuard/AppModels.swift EvidenceGuard/MobileServiceConfiguration.swift EvidenceGuard/ReminderSettings.swift EvidenceGuard/AppStore.swift Tests/AssistantStore/Stubs.swift Tests/AssistantStore/main.swift -o "$check_dir/store-check"
 "$check_dir/store-check"
+
+swiftc EvidenceGuard/AppModels.swift Tests/ChatPresentation/main.swift -o "$check_dir/presentation-check"
+"$check_dir/presentation-check"

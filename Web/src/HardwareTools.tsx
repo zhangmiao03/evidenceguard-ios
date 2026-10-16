@@ -1,19 +1,22 @@
+import { action, operationDetails, operationStatus, chatError } from "./chat-presentation.mjs";
 import { useEffect, useState } from "react";
-import { hardware, type HardwareDevice, type HardwareOperation, type HardwareSnapshot } from "./hardware-tools";
+import { hardware, type HardwareReference, type HardwareDevice, type HardwareOperation, type HardwareSnapshot } from "./hardware-tools";
 import { newID } from "./browser-support";
 
-const labels: Record<string, string> = { awaitingApproval: "等待你确认", queued: "等待执行端领取", executing: "执行中", verifying: "等待停止回执", completed: "已收到执行回执", failed: "执行失败", cancelled: "已取消", unknown: "结果未知，请核对设备" };
+const noReferences: HardwareReference[] = [];
 const terminal = (op: HardwareOperation) => ["completed", "failed", "cancelled"].includes(op.executionState) || op.leaseReleasedByHuman;
 
-export function HardwareOperationCard({ operation, poll = true }: { operation: HardwareOperation; poll?: boolean }) {
+export function HardwareOperationCard({ operation, poll = true, deviceName, references = noReferences }: { operation: HardwareOperation; poll?: boolean; deviceName?: string; references?: HardwareReference[] }) {
   const [op, setOp] = useState(operation), [error, setError] = useState(""), [busy, setBusy] = useState(false), [note, setNote] = useState("");
+  const [knownReferences, setKnownReferences] = useState<HardwareReference[]>(references);
+  useEffect(() => { setKnownReferences(references); }, [references]);
   useEffect(() => { setOp(operation); }, [operation]);
   useEffect(() => {
     if (!poll || terminal(op)) return;
     let active = true, loading = false;
     const id = setInterval(async () => {
       if (loading || document.hidden) return; loading = true;
-      try { const s = await hardware<HardwareSnapshot>("snapshot"); const next = s.operations.find(v => v.id === op.id); if (active && next) setOp(next); }
+      try { const s = await hardware<HardwareSnapshot>("snapshot"); const next = s.operations.find(v => v.id === op.id); if (active && next) { setOp(next); setKnownReferences(s.operations.flatMap(o => o.result?.references || [])); } }
       catch { /* Keep the last receipt; never show success on a poll failure. */ }
       finally { loading = false; }
     }, 2000);
@@ -24,9 +27,8 @@ export function HardwareOperationCard({ operation, poll = true }: { operation: H
     try { setOp(await hardware<HardwareOperation>(path, body)); } catch (e) { setError(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
   }
   return <article className="hardware-operation" aria-label="硬件操作回执">
-    <strong>{op.tool}</strong><p>{labels[op.executionState] || op.executionState} · 执行端 {op.executorPlatform}</p>
-    <small>请求端 {op.requesterPlatform || op.requestedPlatform} · SDK {op.sdkUsed ? "已调用" : "尚无调用回执"} · 物理效果待核验</small>
-    <details><summary>本次参数与回执</summary><pre>{JSON.stringify({ arguments: op.arguments, result: op.result, error: op.error }, null, 2)}</pre></details>
+    <strong>{action(op.tool)}</strong><p>{operationDetails(op, deviceName, knownReferences)}</p>
+    <p role="status">{operationStatus(op)}</p>
     {op.executionState === "awaitingApproval" && <div className="actions">
       <button disabled={busy} className="primary" onClick={() => void act("confirmations", { operationId: op.id, requestHash: op.requestHash, decision: "approve" })}>确认这次操作</button>
       <button disabled={busy} onClick={() => void act("confirmations", { operationId: op.id, requestHash: op.requestHash, decision: "reject" })}>拒绝</button>
@@ -34,10 +36,10 @@ export function HardwareOperationCard({ operation, poll = true }: { operation: H
     {!terminal(op) && op.executionState !== "awaitingApproval" && <button disabled={busy} onClick={() => void act("call", { name: "camera_stop", arguments: { operationId: op.id }, idempotencyKey: newID(), platform: "web", taskId: op.taskId })}>取消 / 请求停止</button>}
     {op.executionState === "unknown" && !op.leaseReleasedByHuman && <div>
       <label>人工核对记录<input value={note} onChange={e => setNote(e.target.value)} placeholder="已检查实际设备状态（至少 10 字）" /></label>
-      <button disabled={busy || note.trim().length < 10} onClick={() => void act("reconcile", { operationId: op.id, requestHash: op.requestHash, decision: "release_after_manual_check", evidence: note })}>已核对设备，释放未知租约</button>
+      <button disabled={busy || note.trim().length < 10} onClick={() => void act("reconcile", { operationId: op.id, requestHash: op.requestHash, decision: "release_after_manual_check", evidence: note })}>已核对设备，解除操作占用</button>
     </div>}
     {op.leaseReleasedByHuman && <p>已人工释放；原物理结果仍为未知。</p>}
-    {error && <p role="alert" className="error">{error}</p>}
+    {error && <p role="alert" className="error">{chatError(error)}</p>}
   </article>;
 }
 
@@ -92,6 +94,6 @@ export function HardwarePanel({ deviceID }: { deviceID: string }) {
       </details>
     </>}
     {error && <p role="alert" className="error">{error}</p>}
-    {snapshot.operations.filter(o => o.deviceId === deviceID).slice(0, 10).map(o => <HardwareOperationCard key={o.id} operation={o} poll={false} />)}
+    {snapshot.operations.filter(o => o.deviceId === deviceID).slice(0, 10).map(o => <HardwareOperationCard key={o.id} operation={o} poll={false} deviceName={device?.label} references={snapshot.operations.flatMap(o => o.result?.references || [])} />)}
   </section>;
 }

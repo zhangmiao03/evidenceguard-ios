@@ -1,0 +1,14 @@
+[
+ {"input":"包裹还在门口。记录时间 08:30，不能确认之后的情况。","expected":"包裹还在门口。记录时间 08:30，不能确认之后的情况。"},
+ {"input":"正在查看资料。\n```json\n{\"tool\":\"camera_observe\"}\n```\n这一帧看不清。","expected":"正在查看资料。\n\n这一帧看不清。"},
+ {"input":"{\"requestHash\":\"secret\",\"result\":{\"state\":\"unknown\"}}","expected":"处理信息已记录，请查看相关状态。"},
+ {"input":"{\"text\":\"这张图看不清，暂时无法判断。\"}","expected":"这张图看不清，暂时无法判断。"},
+ {"input":"\"正在查看客厅。\"","expected":"正在查看客厅。"},
+ {"input":"camera_ptz_step({\"direction\":\"LEFT\"})","expected":"处理信息已记录，请查看相关状态。"},
+ {"input":"查看完成。\n{\n  \"result\": {\n    \"executionState\": \"completed\"\n  },\n  \"token\": \"hidden\"\n}\n仍需核对实际效果。","expected":"查看完成。\n仍需核对实际效果。"},
+ {"input":"```python\nprint('unfinished')","expected":"处理信息已记录，请查看相关状态。"},
+ {"input":"<tool_call>{\"name\":\"camera_stop\"}</tool_call>请先核对设备状态。","expected":"请先核对设备状态。"},
+ {"input":"Traceback (most recent call last):\nFile \"/private/path.py\", line 10\nError: requestHash=hidden","expected":"处理信息已记录，请查看相关状态。"},
+ {"input":"正在使用 camera_observe 查看当前画面。","expected":"正在使用 查看摄像头新画面 查看当前画面。"},
+ {"input":"新消息来自 future_internal_tool。","expected":"新消息来自 相关记录。"}
+]

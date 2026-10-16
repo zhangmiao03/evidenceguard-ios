@@ -1,3 +1,4 @@
+import { chatText, chatError, receipt, eventProgress } from "./chat-presentation.mjs";
 import { HardwareOperationCard } from "./HardwareTools";
 import {
   forwardRef,
@@ -167,6 +168,7 @@ export const Assistant = forwardRef<
         persist(local.current);
       }
     };
+    const [progressByRun, setProgressByRun] = useState<Record<string, string>>({});
     const callbacks = useRef({ onRefresh, onPersonal });
     callbacks.current = { onRefresh, onPersonal };
 
@@ -233,6 +235,7 @@ export const Assistant = forwardRef<
       if (!conversation) return;
       setInput(local.current.drafts[stream] || "");
       setRuns([]);
+      setProgressByRun({});
       setReply("");
       setError("");
       local.current.active = conversation;
@@ -251,6 +254,15 @@ export const Assistant = forwardRef<
           if (!alive || v !== version.current) return;
           setRuns(list);
           setSyncError("");
+          const updates = await Promise.all(list.filter(r => running(r.status)).map(async r => {
+            try {
+              const events = await client.current.request<{runId: string; type: string; payload?: {tool?: string}}[]>(`/api/runs/${r.id}/events`);
+              const event = events.filter(e => e.runId === r.id).at(-1);
+              return [r.id, event ? eventProgress(event) : "正在处理请求…"] as const;
+            } catch { return [r.id, "正在等待处理进度…"] as const; }
+          }));
+          if (!alive || v !== version.current) return;
+          setProgressByRun(Object.fromEntries(updates));
           const pending = local.current.pending[stream];
           if (pending && list.some((r) => r.id === pending.requestId)) {
             delete local.current.pending[stream];
@@ -552,7 +564,7 @@ export const Assistant = forwardRef<
             </button>
           </div>
         )}
-        <ErrorNotice error={error || syncError} />
+        <ErrorNotice error={error ? chatError(error) : syncError} />
         {!conversation && !initializing && (
           <button className="secondary" onClick={() => setRetry((n) => n + 1)}>
             重试连接助手
@@ -599,9 +611,8 @@ export const Assistant = forwardRef<
                   <span className="agent-icon small">✧</span>
                   <div>
                     <p className="prewrap">
-                      {run.text ||
-                        run.error ||
-                        (running(run.status) ? "正在处理…" : "本次回复已结束")}
+                      {run.text ? chatText(run.text, running(run.status) ? "正在整理处理结果…" : "本次回复未能完整显示，请查看操作状态或重试。") : run.error ? chatError(run.error) :
+                        (running(run.status) ? (progressByRun[run.id] || "正在理解需求…") : "本次回复已结束")}
                     </p>
                     <small>
                       {assistantName} · {timeLabel(run.createdAt)} ·{" "}
@@ -625,7 +636,7 @@ export const Assistant = forwardRef<
                         编辑后重试
                       </button>
                     )}
-                    {run.hardwareOperations?.map(op => <HardwareOperationCard key={op.id} operation={op} />)}
+                    {run.hardwareOperations?.map(op => <HardwareOperationCard key={op.id} operation={op} deviceName={data.cameras.find(c => c.id === op.deviceId)?.name} />)}
                     {run.captures?.map((c) => (
                       <div className="capture-receipt" key={c.id}>
                         {c.imageUrl && (
@@ -635,7 +646,7 @@ export const Assistant = forwardRef<
                           />
                         )}
                         <small>
-                          {c.reason} · {c.historical ? "历史资料" : "本次取样"}{" "}
+                          {chatText(c.reason)} · {c.historical ? "历史资料" : "本次取样"}{" "}
                           · {timeLabel(c.capturedAt || c.sampledAt)}
                         </small>
                       </div>
@@ -645,7 +656,7 @@ export const Assistant = forwardRef<
                         className="draft-link"
                         onClick={() => onSkill(run.draft!.id)}
                       >
-                        <strong>{run.draft.name}</strong>
+                        <strong>{chatText(run.draft.name)}</strong>
                         <span>继续设置对象、条件与确认 →</span>
                       </button>
                     )}
@@ -665,12 +676,12 @@ export const Assistant = forwardRef<
                         }
                       >
                         <strong>
-                          {v.title} ·{" "}
+                          {chatText(v.title)} ·{" "}
                           {v.verdict === "matched" ? "已匹配片段" : "候选片段"}
                         </strong>
-                        <span>{v.summary}</span>
+                        <span>{chatText(v.summary)}</span>
                         <small>
-                          {v.limitation} · 播放 {v.seekSeconds.toFixed(1)} s
+                          {chatText(v.limitation)} · 播放 {v.seekSeconds.toFixed(1)} s
                           附近
                         </small>
                       </button>
@@ -680,7 +691,7 @@ export const Assistant = forwardRef<
                         <summary>本次操作</summary>
                         {run.toolReceipts.map((r, i) => (
                           <p key={i}>
-                            {r.tool} · {r.status}
+                            {receipt(r.tool, r.status)}
                           </p>
                         ))}
                       </details>
@@ -694,17 +705,17 @@ export const Assistant = forwardRef<
                   <span className="pill blue">
                     {assistantName} 的提醒{notice.read ? " · 已读" : " · 未读"}
                   </span>
-                  <h3>{notice.title}</h3>
-                  <p>{notice.body}</p>
+                  <h3>{chatText(notice.title)}</h3>
+                  <p>{chatText(notice.body)}</p>
                   <small>
-                    {notice.why} · {timeLabel(notice.createdAt)}
+                    {chatText(notice.why)} · {timeLabel(notice.createdAt)}
                   </small>
                   <details>
                     <summary>查看依据</summary>
                     {notice.sources.map((s) => (
                       <p key={s.id}>
-                        {s.name || s.type} ·{" "}
-                        {s.reason || s.limitation || "相关记录"}
+                        {chatText(s.name || "相关记录")} ·{" "}
+                        {chatText(s.reason || s.limitation || "相关记录")}
                         {s.skillId && (
                           <button
                             className="text-button"
@@ -721,7 +732,7 @@ export const Assistant = forwardRef<
                       className="secondary"
                       onClick={() => {
                         setReply(notice.id);
-                        saveInput(`关于“${notice.title}”，`);
+                        saveInput(`关于“${chatText(notice.title)}”，`);
                       }}
                     >
                       继续追问

@@ -31,7 +31,10 @@ test('event-only camera, millisecond timeline and native confirmation are usable
   await expect(page.getByText('设备事件时间 2026',{exact:false})).toBeVisible();
   await expect(page.getByRole('button',{name:'确认这次操作'})).toBeVisible();
   await page.getByRole('button',{name:'确认这次操作'}).click();
-  await expect(page.getByText('等待执行端领取 · 执行端 iOS')).toBeVisible();
+  await expect(page.getByText('正在等待设备响应，尚未开始调整摄像头设置')).toBeVisible();
+  await expect(page.locator('.hardware-operation')).not.toContainText('requestHash');
+  await expect(page.locator('.hardware-operation')).not.toContainText('device_settings_set');
+  await expect(page.locator('.hardware-operation pre')).toHaveCount(0);
   expect(confirmations).toEqual([{operationId:'op-test',requestHash:'exact-request',decision:'approve'}]);
   expect(errors).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBeTruthy();

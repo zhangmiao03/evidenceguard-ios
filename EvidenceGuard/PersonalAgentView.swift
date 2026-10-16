@@ -285,19 +285,19 @@ struct ProactiveMessageCard: View {
                 Spacer()
                 if !message.read { Circle().fill(Brand.blue).frame(width: 7, height: 7) }
             }
-            Text(message.body.isEmpty ? message.title : message.body).font(.body).textSelection(.enabled)
+            Text(ChatPresentation.text(message.body.isEmpty ? message.title : message.body)).font(.body).textSelection(.enabled)
             Text(displayTime(message.createdAt)).font(.caption2).foregroundStyle(Brand.muted)
             if testSource { Label("测试 / 回放资料", systemImage: "clock").font(.caption).foregroundStyle(Brand.muted) }
             DisclosureGroup("查看来源") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(message.why).font(.caption)
-                    ForEach(limitations, id: \.self) { Text($0).font(.caption2).foregroundStyle(Brand.muted) }
+                    Text(ChatPresentation.text(message.why)).font(.caption)
+                    ForEach(limitations, id: \.self) { Text(ChatPresentation.text($0)).font(.caption2).foregroundStyle(Brand.muted) }
                     ForEach(message.sources) { source in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(source.name ?? source.title ?? source.reason ?? "已记录的摄像头观察").font(.caption)
+                            Text(ChatPresentation.text(source.name ?? source.title ?? source.reason ?? "已记录的摄像头观察")).font(.caption)
                             if let at = source.observedAt { Text("记录于 " + displayTime(at)).font(.caption2).foregroundStyle(Brand.muted) }
                             if let id = source.evidenceId { NavigationLink("查看这条证据", value: AppRoute.evidence(id)).font(.caption) }
-                            if let limitation = source.limitation { Text(limitation).font(.caption2).foregroundStyle(Brand.muted) }
+                            if let limitation = source.limitation { Text(ChatPresentation.text(limitation)).font(.caption2).foregroundStyle(Brand.muted) }
                         }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)

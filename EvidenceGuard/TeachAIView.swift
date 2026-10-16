@@ -123,7 +123,7 @@ struct ConversationView: View {
                         }
                     }
                     if let syncError { Text(syncError).font(.caption).foregroundStyle(.orange) }
-                    if let error { Text(error).font(.caption).foregroundStyle(.orange) }
+                    if let error { Text(ChatPresentation.error(error)).font(.caption).foregroundStyle(.orange) }
                     Color.clear.frame(height: 1).id("bottom")
                 }.padding(16)
             }
@@ -258,7 +258,7 @@ struct ConversationView: View {
         VStack(alignment: .leading, spacing: 9) {
             if let message = replyingTo, executionMode == "live" {
                 HStack {
-                    Label("回复：" + message.title, systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(1)
+                    Label("回复：" + ChatPresentation.text(message.title, fallback: "这条提醒"), systemImage: "arrowshape.turn.up.left").font(.caption).lineLimit(1)
                     Spacer()
                     Button { replyingTo = nil } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("取消引用提醒")
                 }
@@ -371,10 +371,11 @@ struct ConversationView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(AssistantIdentity.name) · \(displayTime(run.completedAt ?? run.createdAt))").font(.caption2).foregroundStyle(Brand.muted)
             if run.isRunning {
-                HStack { ProgressView(); Text((run.conversationId == effectiveConversationID ? events.last?.progressLabel : nil) ?? "正在处理…").font(.subheadline) }
+                HStack { ProgressView(); Text((run.conversationId == effectiveConversationID ? events.last(where: { $0.runId == run.id })?.progressLabel : nil) ?? "正在处理…").font(.subheadline) }
                 Button("停止本次回复", role: .cancel) { Task { await cancel(run) } }.accessibilityIdentifier("chat.cancel")
             }
-            if let text = run.text {
+            if let raw = run.text {
+                let text = ChatPresentation.text(raw, fallback: run.isRunning ? "正在整理处理结果…" : "本次回复未能完整显示，请查看操作状态或重试。")
                 Text((try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)).textSelection(.enabled)
                     .onAppear {
                         if reportedRuns.insert(run.id).inserted {
@@ -383,7 +384,7 @@ struct ConversationView: View {
                     }
             }
             if let error = run.error {
-                Text(error).foregroundStyle(.orange).font(.subheadline)
+                Text(ChatPresentation.error(error)).foregroundStyle(.orange).font(.subheadline)
                 Button("编辑后重试") { prepareRetry(run) }
             }
             ForEach(Array((run.hardwareOperations ?? []).enumerated()), id: \.offset) { item in
@@ -391,7 +392,7 @@ struct ConversationView: View {
             }
             ForEach(run.captures ?? []) { capture in
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(store.camera(capture.cameraId)?.name ?? capture.cameraId, systemImage: "video")
+                    Label(store.camera(capture.cameraId)?.name ?? "所选摄像头", systemImage: "video")
                         .font(.subheadline.bold())
                     if capture.status == "completed", let url = store.client.absoluteURL(capture.imageUrl) {
                         if let draft = draftForCapture(capture) {
@@ -407,7 +408,7 @@ struct ConversationView: View {
                                 Button("为此摄像头新建草案并圈选") { Task { await createDraft(camera: capture.cameraId) } }.disabled(creatingDraft || !store.isConnected).accessibilityIdentifier("chat.capture.newDraft")
                             }
                         }
-                    } else { Text(capture.reason).font(.caption).foregroundStyle(.orange) }
+                    } else { Text(ChatPresentation.text(capture.reason)).font(.caption).foregroundStyle(.orange) }
                 }.padding(12).background(Brand.background).clipShape(RoundedRectangle(cornerRadius: 12))
             }
             ForEach(run.videos ?? []) { video in
@@ -415,9 +416,9 @@ struct ConversationView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(video.verdictLabel, systemImage: video.verdict == "matched" ? "checkmark.circle" : "questionmark.circle")
                             .font(.subheadline.bold()).foregroundStyle(video.verdict == "matched" ? Brand.blue : .orange)
-                        Text(video.summary).font(.subheadline).foregroundStyle(.primary)
-                        Text("\(store.camera(video.cameraId)?.name ?? video.cameraId) · \(video.title)").font(.caption).foregroundStyle(Brand.muted)
-                        if !video.limitation.isEmpty { Text(video.limitation).font(.caption).foregroundStyle(Brand.muted) }
+                        Text(ChatPresentation.text(video.summary)).font(.subheadline).foregroundStyle(.primary)
+                        Text("\(store.camera(video.cameraId)?.name ?? "所选摄像头") · \(video.title)").font(.caption).foregroundStyle(Brand.muted)
+                        if !video.limitation.isEmpty { Text(ChatPresentation.text(video.limitation)).font(.caption).foregroundStyle(Brand.muted) }
                         Label("\(video.verdict == "matched" ? "核验动作" : "查看候选") · \(videoTime(video.seekSeconds))", systemImage: "play.circle.fill").font(.headline)
                         Text(video.recordedAt == nil ? "拍摄日期未知 · 显示录像内时间，定位为模型估计" : "录像始于 \(displayTime(video.recordedAt)) · 定位为模型估计")
                             .font(.caption2).foregroundStyle(Brand.muted)
@@ -434,7 +435,7 @@ struct ConversationView: View {
                     if current.status == "draft" { store.openEditor(current) } else { store.path.append(.skill(current.id)) }
                 } label: {
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(current.name, systemImage: "doc.badge.gearshape").font(.headline)
+                        Label(ChatPresentation.text(current.name), systemImage: "doc.badge.gearshape").font(.headline)
                         Text(current.status == "draft" ? "还没开始运行，等你确认" : "查看任务当前状态").font(.caption)
                         Text(current.status == "draft" ? "继续设置 →" : "查看任务 →").font(.subheadline.bold())
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -447,7 +448,7 @@ struct ConversationView: View {
                 }
                 DisclosureGroup("查看处理过程") {
                     ForEach(Array(run.toolReceipts.enumerated()), id: \.offset) { _, receipt in
-                        Text("\(toolLabel(receipt.tool)) · \(receipt.status == "completed" ? "已完成" : "未完成")")
+                        Text(ChatPresentation.receipt(receipt.tool, receipt.status))
                             .font(.caption).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -520,9 +521,7 @@ struct ConversationView: View {
         do { _ = try await store.client.cancel(run.id); await reload() }
         catch { self.error = error.localizedDescription }
     }
-    private func toolLabel(_ name: String) -> String {
-        ["search_recordings":"检索录像并观看片段复核", "read_stored_image":"读取历史图片", "request_camera_snapshot":"请求摄像头新画面", "list_camera_capabilities":"读取设备", "list_tasks":"查询任务", "get_task_state":"读取状态", "search_evidence":"检索证据", "draft_visual_skill":"整理守护设置", "list_camera_events":"查看摄像头事件", "request_recheck":"重新观察"][name] ?? name
-    }
+
 }
 
 private struct ConversationListSheet: View {
@@ -564,11 +563,11 @@ private struct ConversationListSheet: View {
                                 Image(systemName: "bubble.left").foregroundStyle(Brand.blue).padding(.top, 3)
                                 VStack(alignment: .leading, spacing: 5) {
                                     HStack {
-                                        Text(topic.title).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.dark).lineLimit(1)
+                                        Text(ChatPresentation.text(topic.title, fallback: "对话")).font(.subheadline.weight(.semibold)).foregroundStyle(Brand.dark).lineLimit(1)
                                         Spacer(minLength: 4)
                                         Text(Date(timeIntervalSince1970: topic.updatedAt), style: .date).font(.caption2).foregroundStyle(Brand.muted)
                                     }
-                                    Text(topic.preview).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
+                                    Text(ChatPresentation.text(topic.preview, fallback: "打开查看对话")).font(.caption).foregroundStyle(Brand.muted).lineLimit(2)
                                     if topic.hasActiveRun { Label("正在回复", systemImage: "ellipsis").font(.caption2).foregroundStyle(Brand.blue) }
                                 }
                                 if topic.id == store.activeConversationID { Image(systemName: "checkmark").foregroundStyle(Brand.blue) }
@@ -579,7 +578,7 @@ private struct ConversationListSheet: View {
                     }
                 }
                 if let problem = store.conversationListError {
-                    Section { Text(problem).font(.caption).foregroundStyle(.orange); Button("重新加载") { Task { await store.reloadConversations() } } }
+                    Section { Text(ChatPresentation.error(problem)).font(.caption).foregroundStyle(.orange); Button("重新加载") { Task { await store.reloadConversations() } } }
                 }
             }
             .listStyle(.insetGrouped)

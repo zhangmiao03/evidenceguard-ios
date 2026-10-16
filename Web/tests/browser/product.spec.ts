@@ -432,7 +432,7 @@ test("assistant waits for conversation restoration before accepting input", asyn
   let restore!: () => void;
   const restoreGate = new Promise<void>((resolve) => { restore = resolve; });
   await setup(page, { restoreGate });
-  const input = page.getByPlaceholder("告诉我，你想看什么…");
+  const input = page.getByRole("textbox", { name: "消息输入框" });
   await expect(input).toBeDisabled();
   restore();
   await expect(input).toBeEnabled();
@@ -783,4 +783,22 @@ test("recording import keeps unknown capture dates and playback failures are vis
       receiver.close((error) => (error ? reject(error) : resolve())),
     );
   }
+});
+
+test("assistant presents action progress and hides legacy code without altering user messages", async ({page}) => {
+  const {state} = await setup(page);
+  state.runs[main.id] = [{id:'run-display',conversationId:main.id,message:'请查看客厅摄像头',status:'running',createdAt:10,toolReceipts:[]}];
+  await page.route('**/api/runs/run-display/events', route => route.fulfill({json:[{runId:'run-display',sequence:1,type:'tool_started',payload:{tool:'camera_observe'}}]}));
+  await expect(page.getByText('正在查看摄像头新画面',{exact:true})).toBeVisible();
+  state.runs[main.id] = [{id:'run-display',conversationId:main.id,message:'我输入的 camera_ptz_step 保留',status:'completed',createdAt:10,
+    text:'这一帧看不清。\n```json\n{"requestHash":"never-display","executionState":"completed"}\n```\n请核对实际情况。',
+    toolReceipts:[{tool:'camera_observe',status:'completed'},{tool:'future_internal_tool',status:'future_state'}]}];
+  await expect(page.locator('.agent-message')).toContainText('这一帧看不清。');
+  await expect(page.locator('.agent-message')).toContainText('请核对实际情况。');
+  await page.getByText('本次操作',{exact:true}).click();
+  await expect(page.locator('.agent-message')).toContainText('查看摄像头新画面 · 已收到处理结果');
+  await expect(page.locator('.agent-message')).not.toContainText('requestHash');
+  await expect(page.locator('.agent-message')).not.toContainText('camera_observe');
+  await expect(page.locator('.agent-message')).not.toContainText('future_internal_tool');
+  await expect(page.getByText('我输入的 camera_ptz_step 保留',{exact:true})).toBeVisible();
 });
