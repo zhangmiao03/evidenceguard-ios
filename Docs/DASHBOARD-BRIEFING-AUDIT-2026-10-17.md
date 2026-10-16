@@ -48,3 +48,10 @@
 - 精简后四种浏览器的 8 项相关复查通过；最后自动打开证据与原片/片段计时说明再次通过 8 项浏览器检查。
 - `09-showcase-public.png` 是公网入口截图；`10-processing-public.png` 为直接转发线上响应的本地只读验收窗口，数据和媒体来自公网，没有替换样本。最终发布版本与后续截图见下方记录。
 
+### 最终发布记录
+
+- 前端来源提交：`30d080e70a89edc4a533f7b2b458dbb8f8c656d2`；最终前端目录：`/opt/evidenceguard-dashboard/releases/270f6676c1f470f2/web`。12 份静态资源逐个校验通过。
+- 采集器继续使用本次已验证版本 `68696346a63fa0be`；三个业务进程和采集器在最终前端切换时均未重启。
+- 网站下载包 SHA-256：`ab676d3eae15eeef686dd1e20d1f0ede45b41225bc800260472b71b3477b007d`，公网下载检查通过。当前与前一版前端保留回滚；本次三份上传分块目录已删除，回收约 10 MB。
+- 最终画面：`13-guided-evidence-published.png` 自动导览的证据步骤；`10-processing-public.png` 原图/深度/光流对照；`11-reference-verified.png` 重新查询实际使用的水瓶参考帧。图像与导览截图的本地验收入口仅转发公网响应，未替换代码或数据。
+- 完整核验输出保存在本地忽略目录 `Cloud/data/audit-20261017-briefing/` 的 `public-verification.json`、`deployment-final.json`、`cleanup.json`；不把包含业务快照的验收目录上传 Git。
