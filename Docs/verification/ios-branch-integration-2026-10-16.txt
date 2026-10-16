@@ -6,6 +6,7 @@
 feat/anker-assistant@ce8204d2809a758eb65a286abb860ab54b7efbc7。
 main@cc16c985b2686efb520f375247993fd63c80c7e7 已在历史中。
 本轮不发布云端服务、不构建或上传 TestFlight。
+已提交 iOS 整合 2e509b4；并发 Dashboard 整合 e8cd0a5，推送至 PR #5。
 
 推送前远端新增 dongrunze@0993957，已另行合并其 Dashboard 实际模型输入图、
 检索证据与图片展示改动。保留新版展示样式，同时保留 iOS 为硬件演示端的
@@ -67,6 +68,9 @@ Cloud/server/evidenceguard/harness/runtime.py：
    类型检查通过。AAR SHA-256 为
    27916001d9f973361910e2a59da3a870f540f3038816dfc6141b3d33c633f87a。
    不覆盖 EvidenceGuardSDKBridge.kt 的 iOS 专用导出、SwiftUI 或 arm64 链接。
+8. scripts/check_sdk_host.py 的源 plist 检查通过；合入最新 Dashboard 后
+   scripts/check_repository.py 检查 518 个跟踪文件，未发现其能识别的凭证
+   或禁止提交的本地产物；这不是完整安全审计。
 
 四、Mac 与真机交接
 
