@@ -77,6 +77,7 @@ async function setup(
         enabled: false,
         dailySummary: false,
         summaryHour: 18,
+        morningReport: false, eveningReport: false, morningHour: 8, eveningHour: 20,
         quietStart: 22,
         quietEnd: 8,
         timezone: "Asia/Shanghai",
@@ -411,31 +412,34 @@ test("reminder edits survive refresh, navigation, failure and explicit retry", a
   const { state } = await setup(page, { failPreferences: true });
   await nav(page, "设置");
   await page.getByLabel("应用内主动提醒", { exact: true }).check();
-  await page.getByLabel("每日守护概况", { exact: true }).check();
-  await page.getByLabel("每日概况时间").selectOption("21");
+  await page.getByLabel("晚间报告", { exact: true }).check();
+  await page.getByLabel("早安报告", { exact: true }).check();
+  await page.getByLabel("晚间报告时间").selectOption("21");
   await nav(page, "任务");
   await page.getByRole("button", { name: "定时", exact: true }).click();
   await page.getByRole("button", { name: "设置时间与免打扰" }).click();
-  await expect(page.getByLabel("每日概况时间")).toHaveValue("21");
+  await expect(page.getByLabel("晚间报告时间")).toHaveValue("21");
   await page.getByRole("button", { name: "保存提醒设置" }).click();
   await expect(page.getByRole("alert")).toContainText("修改已保留");
-  await expect(page.getByLabel("每日概况时间")).toHaveValue("21");
+  await expect(page.getByLabel("晚间报告时间")).toHaveValue("21");
   await page.getByRole("button", { name: "保存提醒设置" }).click();
   await expect(page.getByRole("status")).toContainText("提醒设置已保存");
   expect(state.personal.preferences).toMatchObject({
     enabled: true,
     dailySummary: true,
     summaryHour: 21,
+    morningReport: true,
+    eveningReport: true,
   });
   await nav(page, "任务");
-  await expect(page.getByRole("heading", { name: "每天 21:00" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "早安 08:00 · 晚间 21:00" })).toBeVisible();
 });
 
 test("assistant waits for conversation restoration before accepting input", async ({ page }) => {
   let restore!: () => void;
   const restoreGate = new Promise<void>((resolve) => { restore = resolve; });
   await setup(page, { restoreGate });
-  const input = page.getByPlaceholder("告诉我，你想看什么…");
+  const input = page.getByRole("textbox", { name: "消息输入框" });
   await expect(input).toBeDisabled();
   restore();
   await expect(input).toBeEnabled();
@@ -449,7 +453,7 @@ test("assistant sends without a device and reuses the failed request identity", 
 }) => {
   const { state } = await setup(page, { lostSend: true });
   await page
-    .getByPlaceholder("告诉我，你想看什么…")
+    .getByRole("textbox", { name: "消息输入框" })
     .fill("我关心的任务现在怎么样？");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect(page.getByRole("alert")).toContainText("输入已保留");
@@ -477,7 +481,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
   await page
-    .getByPlaceholder("告诉我，你想看什么…")
+    .getByRole("textbox", { name: "消息输入框" })
     .fill("只属于独立话题的问题");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect
@@ -488,7 +492,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await expect(page.getByLabel("选择对话")).toHaveValue(main.id);
   const taskPrompt =
     "我想创建一项摄像头 Skill，请先帮我确认观察对象和提醒条件。";
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     taskPrompt,
   );
   release();
@@ -496,7 +500,7 @@ test("late topic replies stay in their own conversation after starting a task", 
   await expect(
     page.getByText("只属于独立话题的问题", { exact: true }),
   ).toHaveCount(0);
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     taskPrompt,
   );
   await page.getByLabel("选择对话").selectOption("topic-test");
@@ -514,7 +518,7 @@ test("history queries use a separate read-only stream and validate the time rang
   const { state } = await setup(page);
   await page.getByLabel("对话范围", { exact: true }).selectOption("history");
   await page.getByLabel("查询日期").selectOption("custom");
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("查找包裹离区片段");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("查找包裹离区片段");
   await page.getByRole("button", { name: "发送问题" }).click();
   await expect(page.getByRole("alert")).toContainText("起止时间");
   expect(state.calls.some((c) => c.path === "/api/agent/runs")).toBe(false);
@@ -540,23 +544,23 @@ test("topics rename and browser drafts restore while main inbox stays fixed", as
 }) => {
   const { state } = await setup(page);
   await expect(page.getByLabel("选择对话")).toHaveValue(main.id);
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("主对话未发送内容");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("主对话未发送内容");
   await page.getByRole("button", { name: "新对话", exact: true }).click();
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue("");
   await page.getByRole("button", { name: "重命名" }).click();
   await page.getByLabel("对话名称").fill("客厅观察讨论");
   await page.getByRole("button", { name: "保存名称" }).click();
   await expect(page.getByRole("dialog", { name: "重命名对话" })).toHaveCount(0);
-  await page.getByPlaceholder("告诉我，你想看什么…").fill("独立话题草稿");
+  await page.getByRole("textbox", { name: "消息输入框" }).fill("独立话题草稿");
   await page.reload();
   await enter(page);
   await expect(page.getByLabel("选择对话")).toHaveValue("topic-test");
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     "独立话题草稿",
   );
   await page.getByLabel("选择对话").selectOption(main.id);
-  await expect(page.getByPlaceholder("告诉我，你想看什么…")).toHaveValue(
+  await expect(page.getByRole("textbox", { name: "消息输入框" })).toHaveValue(
     "主对话未发送内容",
   );
   expect(state.conversations[0].kind).toBe("main");
@@ -807,11 +811,13 @@ test("cloud automatic memory is optional and disabling preserves saved memories"
   expect(errors).toEqual([]);
 });
 
-test("legacy summary settings do not echo hidden new-server report fields", async ({ page }) => {
+test("old servers receive only supported daily-summary fields", async ({ page }) => {
   const { state } = await setup(page);
-  Object.assign(state.personal.preferences, { dailySummary: true, morningReport: true, eveningReport: false, morningHour: 8, eveningHour: 20 });
+  Object.assign(state.personal.preferences, { dailySummary: true });
+  for (const key of ["morningReport", "eveningReport", "morningHour", "eveningHour"]) delete (state.personal.preferences as any)[key];
   await page.reload(); await enter(page); await nav(page, "设置");
-  await page.getByLabel("每日守护概况", { exact: true }).uncheck();
+  await expect(page.getByLabel("早安报告", { exact: true })).toBeDisabled();
+  await page.getByLabel("晚间报告", { exact: true }).uncheck();
   await page.getByRole("button", { name: "保存提醒设置" }).click();
   await expect(page.getByRole("status")).toContainText("提醒设置已保存");
   const request = state.calls.findLast(c => c.path === "/api/personal/preferences")!;
@@ -820,4 +826,22 @@ test("legacy summary settings do not echo hidden new-server report fields", asyn
   expect(request.body).not.toHaveProperty("eveningReport");
   expect(request.body).not.toHaveProperty("morningHour");
   expect(request.body).not.toHaveProperty("eveningHour");
+});
+
+test("assistant presents action progress and hides legacy code without altering user messages", async ({page}) => {
+  const {state} = await setup(page);
+  state.runs[main.id] = [{id:'run-display',conversationId:main.id,message:'请查看客厅摄像头',status:'running',createdAt:10,toolReceipts:[]}];
+  await page.route('**/api/runs/run-display/events', route => route.fulfill({json:[{runId:'run-display',sequence:1,type:'tool_started',payload:{tool:'camera_observe'}}]}));
+  await expect(page.getByText('正在查看摄像头新画面',{exact:true})).toBeVisible();
+  state.runs[main.id] = [{id:'run-display',conversationId:main.id,message:'我输入的 camera_ptz_step 保留',status:'completed',createdAt:10,
+    text:'这一帧看不清。\n```json\n{"requestHash":"never-display","executionState":"completed"}\n```\n请核对实际情况。',
+    toolReceipts:[{tool:'camera_observe',status:'completed'},{tool:'future_internal_tool',status:'future_state'}]}];
+  await expect(page.locator('.agent-message')).toContainText('这一帧看不清。');
+  await expect(page.locator('.agent-message')).toContainText('请核对实际情况。');
+  await page.getByText('本次操作',{exact:true}).click();
+  await expect(page.locator('.agent-message')).toContainText('查看摄像头新画面 · 已收到处理结果');
+  await expect(page.locator('.agent-message')).not.toContainText('requestHash');
+  await expect(page.locator('.agent-message')).not.toContainText('camera_observe');
+  await expect(page.locator('.agent-message')).not.toContainText('future_internal_tool');
+  await expect(page.getByText('我输入的 camera_ptz_step 保留',{exact:true})).toBeVisible();
 });

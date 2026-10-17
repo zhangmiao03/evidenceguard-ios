@@ -9,6 +9,7 @@ import {
 } from "./ProductUI";
 import {
   defaultRules,
+  reportPreferences,
   initialROI,
   running,
   statusLabel,
@@ -147,11 +148,13 @@ export function TasksPage({
       )}
       {section === "scheduled" && (
         <section className="card product-card">
-          <span className="pill blue">每日守护概况</span>
+          <span className="pill blue">早晚报告</span>
           <h2>
-            {prefs?.dailySummary
-              ? `每天 ${String(prefs.summaryHour).padStart(2, "0")}:00`
-              : "尚未开启每日概况"}
+            {prefs && (prefs.morningReport || (prefs.eveningReport ?? prefs.dailySummary))
+              ? [[reportPreferences(prefs).morningReport, "早安", reportPreferences(prefs).morningHour],
+                 [reportPreferences(prefs).eveningReport, "晚间", reportPreferences(prefs).eveningHour]]
+                  .filter(([enabled]) => enabled).map(([,label,hour]) => `${label} ${String(hour).padStart(2,"0")}:00`).join(" · ")
+              : "尚未开启早晚报告"}
           </h2>
           <p>
             {prefs?.dailySummary && !prefs.enabled
@@ -160,7 +163,7 @@ export function TasksPage({
           </p>
           <small>时区：{prefs?.timezone || "未读取"} · 应用内提醒</small>
           <p>
-            当前支持每日概况。摄像头任务按规则持续或单次执行，暂不支持预约启停。
+            报告会说明缺少记录的时段，不把没有事件当作家里安全；不会自动启动摄像头。
           </p>
           <button className="primary" onClick={onSettings}>
             设置时间与免打扰
