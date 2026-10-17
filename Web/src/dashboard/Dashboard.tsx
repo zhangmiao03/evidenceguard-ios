@@ -19,6 +19,7 @@ import {ImageMemory} from "./ImageMemory";
 import { ArchivePanel } from "./ArchivePanel";
 import { Showcase } from "./Showcase";
 import {JudgeOverview,TaskReplay,DeviceStory,PromptStory,TaskBoard,EvidenceStory,QualityStory,UsageStory,DataStory,FlowStrip} from "./JudgePanels";
+import {SkillStudio} from './SkillStudio';
 import {deviceLabel,eventLabel,recordLabel,traceLabel} from './labels';
 
 type Row = {
@@ -47,7 +48,7 @@ const pages = [
   "对话与 Trace",
   "Agent 与模型",
   "提示词与上下文",
-  "Skill 与任务",
+  "自定义 Skill",
   "证据与录像",
   "质量与试跑",
   "用量与覆盖",
@@ -542,7 +543,7 @@ export default function Dashboard() {
     if(page===2)return <><ArchivePanel key={'replies'+environment+JSON.stringify(filters)} section="replies" environment={environment} online={cloud&&mode==='cloud'} filters={filters} rows={rows} onSelect={selectArchived}/><TaskReplay {...props}/><details className="judge-advanced"><summary>开发者记录：所有关联追踪（含接口轮询）</summary>{traceList()}</details></>;
     if(page===3)return <><TaskReplay {...props} architecture/><details className="judge-advanced"><summary>模型配置与全部调用记录</summary>{table(calls,"模型与执行器调用","HTTP 请求与 Codex 步骤分别标明；点击查看实际输入输出")}{table(rows.filter(r=>r.name.startsWith("codex.")),"Codex 协议记录","实际下发指令与工具回执；不含内部推理")}{table(resources(["model_configuration"]),"服务模型配置","配置值不代表实际调用")}</details></>;
     if(page===4)return <PromptStory {...props}/>;
-    if(page===5)return <TaskBoard {...props}/>;
+    if(page===5)return <><SkillStudio {...props}/><details className="judge-advanced"><summary>已采集的任务与旧版 Skill 记录</summary><TaskBoard {...props}/></details></>;
     if(page===6)return <EvidenceStory {...props}/>;
     if(page===7)return <><QualityStory {...props}/><details className="judge-advanced"><summary>采集覆盖与原始失败记录</summary>{coverage()}{table(problems,"失败 / 不支持 / 取消记录")}</details></>;
     if(page===8)return <UsageStory {...props}/>;
@@ -644,9 +645,9 @@ export default function Dashboard() {
         </div>
         <nav aria-label="Dashboard 页面">
           <p className="eg-ops-nav-label">作品与真实效果</p>
-          {[12,0,3,13,14,2].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
-          <details className="eg-nav-more" open={[1,4,5,6,7,8,9,10,11].includes(page)||undefined}><summary>开发诊断 · 9 个页面</summary>
-            {[5,6,7,1,4,8,9,10,11].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
+          {[12,5,14,13,0,3,2].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
+          <details className="eg-nav-more" open={[1,4,6,7,8,9,10,11].includes(page)||undefined}><summary>开发诊断 · 8 个页面</summary>
+            {[6,7,1,4,8,9,10,11].map(i=><button key={i} aria-current={page===i?"page":undefined} className={page===i?"active":""} onClick={()=>openPage(i)}><span>{glyphs[i]}</span>{pages[i]}</button>)}
           </details>
         </nav>
         <div className="eg-ops-sidebar-bottom">
@@ -684,7 +685,7 @@ export default function Dashboard() {
               "逐步回放需求、模型调用、工具执行与最终交付。",
               "Agent Loop：上下文 → 模型 ⇄ 工具 → 证据核验 → 最终回复。",
               "系统指令、对话上下文与工具定义，都关联到具体一次调用。",
-              "从草案到执行，查看已保存的 Skill 和任务当前状态。",
+              "从自然语言生成规则，配合实拍画面理解框选、修改与确认。",
               "回到图片与录像本身，核对结论依据和来源边界。",
               "分开阅读已观测结果、无法确认和仍待真机验收的能力。",
               "哪些模型实际被调用、花了多久、记录了多少用量。",

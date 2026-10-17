@@ -54,6 +54,22 @@ def project(output, label, assets, records, state, environment, now):
         value.update(source=source,publication='explicit_public_test',createdAt=item.get('createdAt',at))
         value['signatureCompatible']=recording.get('embeddingSignature')==value.get('indexSignature')
         rows.append(resource('media_retrieval_case',safe_record(value),value['createdAt']))
+    skill_file=folder/'skills.json'
+    if skill_file.is_file() and not skill_file.is_symlink() and skill_file.stat().st_size<=100_000:
+        skill=json.loads(skill_file.read_text(encoding='utf8'))
+        if (skill.get('schema')=='evidenceguard.skill-case/v1' and skill.get('mode')=='real_api_draft_only'
+                and skill.get('source',{}).get('recordingId')==source['recordingId']
+                and skill.get('source',{}).get('assetId')==source['assetId']):
+            value=pick(skill,'id createdAt model executor compilerSha256 mode referenceOffset')
+            value['revisions']=[]
+            for revision in skill.get('revisions',[])[:4]:
+                # Only this deliberate draft test is published, never private scene rows.
+                if revision.get('status')!='draft' or revision.get('canActivate') is not False:continue
+                entry=pick(revision,'id revision status stage question unsupportedReason summary reason limitation canActivate input durationMs capturedAt')
+                entry['plan']=pick(revision.get('plan'),'title target selection trigger confirmationSeconds completion') or None
+                value['revisions'].append(entry)
+            value.update(source=source,publication='explicit_public_test',referenceMedia=media(skill.get('referenceMedia',[])))
+            rows.append(resource('media_skill_generation_case',safe_record(value),value.get('createdAt',at)))
     return rows
 
 

@@ -39,6 +39,21 @@ class PublicBriefingTests(unittest.TestCase):
             self.assertEqual(len(rows[0]['data']['media']),1)
             self.assertEqual(rows[1]['data']['videos'][0]['summary'],'public result')
             self.assertTrue(rows[1]['data']['signatureCompatible'])
+            skill={'schema':'evidenceguard.skill-case/v1','id':'test-skill','mode':'real_api_draft_only','createdAt':190,
+                   'source':value['source'],'referenceMedia':[media], 'model':'actual-test-model',
+                   'revisions':[{'id':'draft','status':'draft','canActivate':False,'revision':1,'input':'public request',
+                        'clientId':'PRIVATE OWNER','plan':{'target':'bottle','trigger':'leaves','api_key':'SECRET KEY'}},
+                        {'id':'active','status':'active','canActivate':True,'input':'PRIVATE ACTIVE'}]}
+            (folder/'skills.json').write_text(json.dumps(skill))
+            with_skill=project(root,'demo',assets,[record],{'pid':3},{'database':str(db)},200)
+            published=next(r['data'] for r in with_skill if r['name']=='media_skill_generation_case')
+            self.assertEqual(len(published['revisions']),1)
+            self.assertEqual(published['revisions'][0]['plan'],{'target':'bottle','trigger':'leaves'})
+            self.assertEqual(len(published['referenceMedia']),1)
+            self.assertNotIn('PRIVATE',json.dumps(with_skill));self.assertNotIn('SECRET',json.dumps(with_skill))
+            skill['source']={'recordingId':'video-private','assetId':'a'*64}
+            (folder/'skills.json').write_text(json.dumps(skill))
+            self.assertEqual(len(project(root,'demo',assets,[record],{}, {'database':str(db)},200)),2)
             status=processing_status({'pid':3,'startedAt':190,'guardTracking':'per_run_v1',
                 'localVision':{'depthReady':True}}, {'database':str(db)},200)
             self.assertEqual(status['data']['endpoint_analysesCount'],1)
