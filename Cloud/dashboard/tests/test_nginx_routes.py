@@ -25,6 +25,14 @@ class RouteTests(unittest.TestCase):
         self.assertEqual(original,SOURCE)
         self.assertEqual(result.count('proxy_pass http://127.0.0.1:8795;'),2)
         self.assertNotIn('location /api',result)
+    def test_compression_is_scoped_to_public_dashboard_payloads(self):
+        result=with_dashboard(SOURCE,'demo.example')
+        location=result.split('location ^~ /dashboard/ {',1)[1].split('}',1)[0]
+        self.assertIn('gzip on;',location)
+        self.assertIn('application/json',location)
+        self.assertIn('gzip_vary on;',location)
+        self.assertEqual(result.count('gzip on;'),1)
+        self.assertNotIn('proxy_cache',result)
     def test_unknown_host_or_preexisting_route_is_not_overwritten(self):
         with self.assertRaises(ValueError):with_dashboard(SOURCE,'other.example')
         with self.assertRaises(ValueError):with_dashboard(SOURCE.replace('ssl_certificate','location /dashboard { return 403; }\n ssl_certificate'),'demo.example')

@@ -21,6 +21,13 @@ ROUTES = '''    location = /dashboard {
         proxy_pass http://127.0.0.1:8795;
         proxy_set_header Host $host;
         proxy_read_timeout 15s;
+        # Public snapshots contain no credentials. Keep compression scoped to
+        # the read-only Dashboard, not authenticated App API responses.
+        gzip on;
+        gzip_types application/json application/javascript text/css application/x-ndjson;
+        gzip_min_length 1024;
+        gzip_comp_level 5;
+        gzip_vary on;
     }'''
 
 

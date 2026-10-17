@@ -2,7 +2,9 @@
  * @param {string} path
  * @param {{signal?: AbortSignal, timeout?: number, fetcher?: typeof fetch}} options
  */
-export async function cloudJSON(path, { signal, timeout = 12000, fetcher = fetch } = {}) {
+// This covers the entire body download, not just time to first byte. Snapshot
+// payloads can be several MB; allow a bounded weak-network download budget.
+export async function cloudJSON(path, { signal, timeout = 30000, fetcher = fetch } = {}) {
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort();
