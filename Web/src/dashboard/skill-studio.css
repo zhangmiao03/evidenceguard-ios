@@ -3,3 +3,4 @@
 @media(max-width:720px){.eg-skill-path{grid-template-columns:repeat(2,1fr)}.eg-skill-path li:nth-child(-n+2){border-bottom:1px solid #2d4358}.eg-skill-workbench{grid-template-columns:1fr;padding:16px}.eg-skill-generated{border-left:0;border-top:1px solid #2d4358;padding:20px 0 0}.eg-skill-runtime{grid-template-columns:1fr;gap:4px}.eg-skill-status{flex-wrap:wrap}.eg-skill-fields>div{grid-template-columns:78px 1fr;gap:8px}}
 
 .eg-skill-roi b{color:#f1fff8}.eg-ops .eg-skill-revisions button[aria-pressed=true]{background:#194238;color:#c0f3e1;border-color:#68bda1}
+@media(max-width:760px){.eg-ops-sidebar nav{align-items:flex-start}.eg-ops-sidebar .eg-nav-more{flex-shrink:0;margin-top:0}.eg-ops-sidebar .eg-nav-more summary{white-space:nowrap}}

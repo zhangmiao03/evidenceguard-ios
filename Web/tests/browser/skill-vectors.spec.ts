@@ -28,6 +28,7 @@ test('custom Skill shows actual revisions, keeps unchanged conditions and never 
   await expect(panel.locator('.changed')).toHaveCount(0);
   await panel.getByRole('button',{name:'继续修改 · 第 2 版',exact:true}).click();
   await expect(panel.locator('.changed')).toHaveCount(2);
+  if((await page.viewportSize())!.width<760)expect((await page.getByRole('navigation',{name:'Dashboard 页面'}).boundingBox())!.height).toBeLessThan(75);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   expect(writes).toEqual([]);expect(errors).toEqual([]);
 });

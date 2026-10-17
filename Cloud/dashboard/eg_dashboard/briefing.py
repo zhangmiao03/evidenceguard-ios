@@ -56,7 +56,9 @@ def project(output, label, assets, records, state, environment, now):
         rows.append(resource('media_retrieval_case',safe_record(value),value['createdAt']))
     skill_file=folder/'skills.json'
     if skill_file.is_file() and not skill_file.is_symlink() and skill_file.stat().st_size<=100_000:
-        skill=json.loads(skill_file.read_text(encoding='utf8'))
+        try:skill=json.loads(skill_file.read_text(encoding='utf8'))
+        except (OSError,ValueError):return rows
+        if not isinstance(skill,dict):return rows
         if (skill.get('schema')=='evidenceguard.skill-case/v1' and skill.get('mode')=='real_api_draft_only'
                 and skill.get('source',{}).get('recordingId')==source['recordingId']
                 and skill.get('source',{}).get('assetId')==source['assetId']):

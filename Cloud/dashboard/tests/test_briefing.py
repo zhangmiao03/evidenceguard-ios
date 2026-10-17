@@ -54,6 +54,9 @@ class PublicBriefingTests(unittest.TestCase):
             skill['source']={'recordingId':'video-private','assetId':'a'*64}
             (folder/'skills.json').write_text(json.dumps(skill))
             self.assertEqual(len(project(root,'demo',assets,[record],{}, {'database':str(db)},200)),2)
+            for malformed in ('{"unfinished"','[]'):
+                (folder/'skills.json').write_text(malformed)
+                self.assertEqual(len(project(root,'demo',assets,[record],{}, {'database':str(db)},200)),2)
             status=processing_status({'pid':3,'startedAt':190,'guardTracking':'per_run_v1',
                 'localVision':{'depthReady':True}}, {'database':str(db)},200)
             self.assertEqual(status['data']['endpoint_analysesCount'],1)
