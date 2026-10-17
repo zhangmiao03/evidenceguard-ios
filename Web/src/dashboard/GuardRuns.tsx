@@ -19,7 +19,11 @@ const ms=(n:any)=>typeof n==='number'?n<1000?Math.round(n)+' ms':(n/1000).toFixe
 
 export function GuardRuns({rows,onSelect}:{rows:MediaRow[];onSelect:(r:any)=>void}){
   const [chosen,setChosen]=useState<string>();
-  const starts=rows.filter(r=>r.name==='guard.started'&&!r.data.privateContent&&['live_guard','stored_video_replay'].includes(r.data.mode)).sort((a,b)=>b.at-a.at).slice(0,12);
+  const [mode,setMode]=useState<string>();
+  const all=rows.filter(r=>r.name==='guard.started'&&!r.data.privateContent&&['live_guard','stored_video_replay'].includes(r.data.mode)).sort((a,b)=>b.at-a.at);
+  const live=all.filter(r=>r.data.mode==='live_guard'),replays=all.filter(r=>r.data.mode==='stored_video_replay');
+  const currentMode=mode||(live.length?'live_guard':'stored_video_replay');
+  const starts=all.filter(r=>r.data.mode===currentMode).slice(0,12);
   const selected=starts.find(r=>r.traceId===chosen)||starts[0];
   const trace=selected?rows.filter(r=>r.traceId===selected.traceId).sort((a,b)=>a.at-b.at):[];
   const last=(name:string)=>trace.filter(r=>r.name===name).sort((a,b)=>(a.data.guardSequence||0)-(b.data.guardSequence||0)).at(-1);
@@ -28,13 +32,13 @@ export function GuardRuns({rows,onSelect}:{rows:MediaRow[];onSelect:(r:any)=>voi
   const media=prompts.flatMap(r=>r.data.inputMedia||[]);
   const by=(pattern:RegExp)=>media.filter(m=>pattern.test(m.label||''));
   const runtime=rows.find(r=>r.name==='vision_processing_status')?.data||{};
-  const live=starts.filter(r=>r.data.mode==='live_guard'),replays=starts.filter(r=>r.data.mode==='stored_video_replay');
   const d=end?.data||{},aux=pre?.data||{},flow=aux.flow||{},depth=aux.depth||{};
   const replay=selected?.data.mode==='stored_video_replay';
   const result=d.disposition==='discarded'?'结果已丢弃：任务已修改或暂停':end?.status==='cancelled'?'本次检查已取消':end?.status==='failed'?'本次检查失败':outcomes[d.resultState||d.judgment?.state]||'等待最终记录';
   return <section className="eg-ops-panel eg-guard-runs" aria-label="守护逐次处理记录">
     <div className="eg-media-cardhead"><div><span className="eg-media-eyebrow">每次检查都有来路与去向</span><h2>这次守护，如何得出结果</h2><p>从同一条检查链路核对画面、辅助算法、模型调用与最终采用的判断。</p></div><span className="eg-ops-badge">{runtime.guardRunCoverage==='per_run_v1'?'逐次记录已部署':'逐次记录待部署'}</span></div>
-    <p className="eg-case-footer">最近留存窗口：实时守护 {live.length} 次 · 保存视频验证 {replays.length} 次。仅展示本快照最新 12 次；旧记录和媒体会按容量淘汰。</p>
+    <p className="eg-case-footer">最近留存窗口：实时守护 {live.length} 次 · 保存视频验证 {replays.length} 次。每类展示本快照最新 12 次；旧记录和媒体会按容量淘汰。</p>
+    {(live.length>0||replays.length>0)&&<div className="eg-tour-mode" aria-label="检查来源"><button aria-pressed={currentMode==='live_guard'} onClick={()=>{setMode('live_guard');setChosen(undefined);}}>实时守护</button><button aria-pressed={currentMode==='stored_video_replay'} onClick={()=>{setMode('stored_video_replay');setChosen(undefined);}}>保存视频验证</button></div>}
     {!live.length&&<p className="eg-guard-notice">尚无实时守护记录。需要 iOS App 保持真实摄像头直播并开启守护后验证。</p>}
     {!selected?<p>新记录到达后自动显示；没有记录不等于运行成功。</p>:<>
       <label className="eg-guard-picker">查看哪次检查 <select value={selected.traceId} onChange={e=>setChosen(e.target.value)}>{starts.map((r,i)=><option key={r.id} value={r.traceId}>{r.data.mode==='stored_video_replay'?'保存视频验证':'实时守护'} · {time(r.at)} · {text(r.data.title,'检查 '+(i+1))}</option>)}</select></label>
