@@ -48,16 +48,17 @@ def put(root, raw, mime, *, protected=()):
 
 
 def capture_inputs(request, recorder):
-    """Opt-in; no remote fetch. Return paths-free descriptors for at most 6 inputs."""
+    """Opt-in; no remote fetch. Up to 8 inputs (guard: 4 RGB + 2 depth + flow)."""
     if os.getenv('EG_DASHBOARD_CAPTURE_MEDIA') != '1' or not getattr(recorder, 'path', None): return []
     root = Path(recorder.path).parent / 'observer-media'
     found = []; visited = 0
     def walk(value, location, depth=0):
         nonlocal visited
         visited += 1
-        if depth > 12 or visited > 3000 or len(found) >= 6: return
+        if depth > 12 or visited > 3000 or len(found) >= 8: return
         if isinstance(value, dict):
             for key, item in value.items():
+                if len(found) >= 8: break
                 if key in {'image_url', 'video_url'}:
                     url = item.get('url') if isinstance(item, dict) else item
                     match = re.match(r'^data:(image/jpeg|image/png|video/mp4);base64,', url or '') if isinstance(url,str) else None
@@ -73,7 +74,16 @@ def capture_inputs(request, recorder):
                     found.append(descriptor)
                 elif isinstance(item, (dict,list)): walk(item, location+'.'+str(key), depth+1)
         elif isinstance(value,list):
-            for index,item in enumerate(value[:2000]): walk(item, location+f'[{index}]', depth+1)
+            label = None
+            for index,item in enumerate(value[:2000]):
+                if isinstance(item,dict) and item.get('type')=='text':
+                    label = item.get('text')
+                before = len(found)
+                walk(item, location+f'[{index}]', depth+1)
+                if len(found)>before and isinstance(label,str) and len(label)<=120:
+                    # The adjacent label belongs to these exact request bytes;
+                    # do not guess roles from nearby timestamps or image content.
+                    for descriptor in found[before:]: descriptor['label']=label
     walk(request, 'request')
     return found
 

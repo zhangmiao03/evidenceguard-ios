@@ -18,6 +18,21 @@ from eg_dashboard.server import create_app
 from eg_dashboard.retrieval import observe_search
 
 class MediaAssetTests(unittest.TestCase):
+    def test_guard_seventh_flow_image_is_retained_and_limit_remains_bounded(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'EG_DASHBOARD_CAPTURE_MEDIA':'1'}):
+            rec=SimpleNamespace(path=Path(tmp)/'ops.db')
+            content=[]
+            for i in range(10):
+                content += [{'type':'text','text':'光流' if i==6 else 'frame '+str(i)},
+                    {'type':'image_url','image_url':{'url':'data:image/png;base64,'+
+                        base64.b64encode(b'\x89PNG\r\n\x1a\n'+bytes([i])).decode()}}]
+            items=capture_inputs({'messages':[{'content':content}]},rec)
+            self.assertEqual(len(items),8)
+            self.assertEqual(items[6]['label'],'光流')
+            self.assertEqual(items[6]['status'],'captured')
+            cache=PublicMedia(Path(tmp)/'public','demo',Path(tmp)/'observer-media')
+            self.assertEqual(cache.reference(items[6])['status'],'available')
+
     def test_exact_input_copy_no_remote_fetch_or_secrets_and_read_only_ranges(self):
         from fastapi.testclient import TestClient
         with tempfile.TemporaryDirectory() as tmp:

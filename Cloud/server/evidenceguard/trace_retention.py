@@ -10,7 +10,7 @@ import os
 def important(row):
     name = row.get('name', '')
     return (row.get('kind') in {'model', 'prompt'} or
-            name.startswith(('agent.', 'tool.', 'codex.', 'context.', 'model.')) or
+            name.startswith(('agent.', 'tool.', 'codex.', 'context.', 'model.', 'guard.')) or
             name in {'camera_completed', 'camera_failed', 'vector.search'})
 
 

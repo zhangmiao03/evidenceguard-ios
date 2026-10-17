@@ -154,7 +154,7 @@ def visual_traces(db):
     source = 'critical_records' if db.execute("SELECT 1 FROM sqlite_master WHERE name='critical_records'").fetchone() else 'records'
     traces=[r[0] for r in db.execute(f"""SELECT json_extract(payload,'$.traceId') FROM {source}
         WHERE json_extract(payload,'$.kind')='model'
-        OR json_extract(payload,'$.name') IN ('agent.result','vector.search')
+        OR json_extract(payload,'$.name') IN ('agent.result','vector.search','guard.finished')
         OR (json_extract(payload,'$.kind')='prompt' AND json_array_length(payload,'$.data.inputMedia')>0)
         GROUP BY json_extract(payload,'$.traceId') ORDER BY MAX(at) DESC LIMIT 20""")]
     if not traces:return [],{'traces':0,'returned':0,'truncated':False,'traceLimit':20,'recordLimit':240,'byteLimit':2500000}
@@ -170,4 +170,4 @@ def visual_traces(db):
 
 def is_critical(row):
     name=row.get('name','')
-    return row.get('kind') in {'model','prompt'} or name.startswith(('agent.','tool.','codex.','context.','model.')) or name in {'camera_completed','camera_failed','vector.search'}
+    return row.get('kind') in {'model','prompt'} or name.startswith(('agent.','tool.','codex.','context.','model.','guard.')) or name in {'camera_completed','camera_failed','vector.search'}
