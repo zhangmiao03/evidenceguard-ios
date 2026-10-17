@@ -88,7 +88,7 @@ class EndpointVisionService:
     def configuration(self):
         return dict(enabled=self.enabled, ready=bool(self.enabled and self.port.ready),
                     model=self.port.model or None, mode='read_only', condition='B',
-                    supportedConditions=['B','C'],
+                    supportedConditions=['B','C'], freshSamplingSupported=True,
                     depthEnabled=self.local.configuration()['depthReady'], flowEnabled=self.local.configuration()['flowReady'],
                     modelProfile=self.profile, localVision=self.local.configuration(), promptVersion=VERSION, promptSha256=PROMPT_HASH)
 

@@ -296,3 +296,11 @@ def test_agent_analysis_and_followup_keep_private_content_boundary(setup,tmp_pat
         assert not app.state.store.skills() and not app.state.store.evidence()
         await runtime.scheduler.shutdown();app.state.store.close()
     asyncio.run(check())
+
+
+def test_frontend_capabilities_explicitly_advertise_fresh_sampling(setup):
+    service, _, _, _ = setup
+    config = service.configuration()
+    assert config['freshSamplingSupported'] is True
+    assert 'C' in config['supportedConditions']
+    assert isinstance(config['depthEnabled'], bool)

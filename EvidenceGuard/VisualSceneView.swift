@@ -15,15 +15,6 @@ struct VisualSceneObservation: Codable, Equatable {
 struct VisualSceneResult: Codable, Equatable {
     var state: String; var label: String; var reason: String
 }
-struct EndpointVisionConfiguration: Codable, Equatable { var ready: Bool }
-struct EndpointAnalysis: Codable, Equatable {
-    struct Analysis: Codable, Equatable { var summary: String }
-    struct Frame: Codable, Equatable { var captured_at: Double?; var sampled_at: Double? }
-    struct Sources: Codable, Equatable { var a: Frame; var b: Frame }
-    var status: String; var reason: String?; var limitation: String
-    var analysis: Analysis?; var cached: Bool?; var model: String?
-    var sources: Sources?
-}
 struct VisualScene: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var prompt: String; var revision: Int
     var status: String; var stage: String; var plan: VisualScenePlan?
@@ -134,6 +125,8 @@ struct VisualSceneEditor: View {
     @State private var origin: URL?
     @State private var requestID = UUID().uuidString
     @State private var lastSubmission = ""
+    @State private var includeDepth = false
+    @State private var analysisAction: String?
     private let initialCameraID: String?
     init(initialScene: VisualScene? = nil, initialCameraID: String? = nil) {
         _scene = State(initialValue: initialScene); self.initialCameraID = initialCameraID
@@ -273,25 +266,37 @@ struct VisualSceneEditor: View {
             } else {
                 Text(scene.observation.reason).accessibilityIdentifier("scene.observation")
                 if scene.endpointVision?.ready == true {
-                    Button("对照参考图与最近采样") { Task { await operation {
-                        let source = store.client
-                        let result = try await source.analyzeScene(scene)
-                        guard source.baseURL == store.client.baseURL,
-                              self.scene?.revision == scene.revision else { return }
-                        self.scene?.endpointAnalysis = result
-                    } } }.disabled(busy).accessibilityIdentifier("scene.analyzeEndpoints")
-                    Text("只分析已保存图片；不会补拍、告警或转动摄像头。").font(.caption).foregroundStyle(Brand.muted)
+                    if scene.endpointVision?.canUseDepth == true {
+                        Toggle("使用空间关系辅助分析", isOn: $includeDepth).disabled(busy)
+                            .accessibilityIdentifier("scene.includeDepth")
+                        Text("结合相对深度辅助判断物体位置，不能测量实际距离。").font(.caption).foregroundStyle(Brand.muted)
+                    }
+                    Button("对照参考图与最近采样") { Task { await analyze(scene, fresh: false) } }
+                        .disabled(busy).accessibilityIdentifier("scene.analyzeEndpoints")
+                    Text("使用已保存图片，不补拍，也不改变守护状态。").font(.caption).foregroundStyle(Brand.muted)
+                    if scene.endpointVision?.canSampleFresh == true {
+                        Button("取新画面并分析") { Task { await analyze(scene, fresh: true) } }
+                            .disabled(busy).accessibilityIdentifier("scene.sampleAnalysis")
+                        Text("保持 App 在前台；连接这台摄像头并短时取样，结合参考图分析。不会转动摄像头或发送提醒。").font(.caption).foregroundStyle(Brand.muted)
+                    }
+                    if let analysisAction { ProgressView(analysisAction).accessibilityIdentifier("scene.analysisProgress") }
                 }
                 if let report = scene.endpointAnalysis {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("首尾图分析 · 仅供核对").font(.headline)
-                        Text(report.analysis?.summary ?? report.reason ?? "本次无法确认")
-                        if let at = report.sources?.b.sampled_at ?? report.sources?.b.captured_at {
-                            Text("对照图取样时间：" + Date(timeIntervalSince1970: at).formatted(date: .abbreviated, time: .standard)).font(.caption)
+                        Text("画面对照 · 仅供核对").font(.headline)
+                        Text(ChatPresentation.text(report.analysis?.summary ?? report.reason ?? "本次无法确认"))
+                        if let at = report.sources?.a.sampled_at ?? report.sources?.a.captured_at {
+                            Text("参考图时间：" + Date(timeIntervalSince1970: at).formatted(date: .abbreviated, time: .standard)).font(.caption)
                         }
+                        if let at = report.sources?.b.sampled_at ?? report.sources?.b.captured_at {
+                            Text("对照图时间：" + Date(timeIntervalSince1970: at).formatted(date: .abbreviated, time: .standard)).font(.caption)
+                        }
+                        if let depth = report.depthSummary { Text(depth).font(.caption) }
+                        if let flow = report.flowSummary { Text(flow).font(.caption) }
                         if report.cached == true { Text("复用相同证据的分析，未获取新画面").font(.caption) }
-                        Text(report.limitation).font(.caption).foregroundStyle(Brand.muted)
+                        Text(ChatPresentation.text(report.limitation)).font(.caption).foregroundStyle(Brand.muted)
                     }.padding().background(Brand.paleBlue).clipShape(RoundedRectangle(cornerRadius: 16))
+                        .accessibilityIdentifier("scene.analysisResult")
                 }
                 if scene.status == "active" {
                     Button("暂停守护") { Task { await operation { self.scene = try await store.client.sceneAction(scene, action: "pause"); frozenImage = nil; box = nil } } }
@@ -302,6 +307,30 @@ struct VisualSceneEditor: View {
                 }
                 Button("回到助手") { store.openAI(); dismiss() }
             }
+        }
+    }
+    private func analyze(_ current: VisualScene, fresh: Bool) async {
+        await operation {
+            let source = store.client.scoped()
+            let usesDepth = includeDepth && current.endpointVision?.canUseDepth == true
+            guard !fresh || current.endpointVision?.canSampleFresh == true else { return }
+            analysisAction = fresh ? "正在连接摄像头并请求新画面…" : "正在对照已保存的画面…"
+            self.scene?.endpointAnalysis = nil
+            defer { analysisAction = nil }
+            @MainActor func stillCurrent() -> Bool {
+                !Task.isCancelled && source.baseURL == store.client.baseURL && source.accessToken == store.client.accessToken &&
+                self.scene?.id == current.id && self.scene?.revision == current.revision && self.scene?.status == current.status
+            }
+            if fresh {
+                try await store.officialSDK.prepareAssistantCamera(current.cameraId, client: source)
+                guard stillCurrent() else { return }
+                analysisAction = "正在获取新画面并分析，可能需要约一分钟…"
+            }
+            let report: EndpointAnalysis
+            if fresh { report = try await source.sampleScene(current) }
+            else { report = try await source.analyzeScene(current, includeDepth: usesDepth) }
+            guard stillCurrent() else { return }
+            self.scene?.endpointAnalysis = report
         }
     }
     private var modification: some View {
