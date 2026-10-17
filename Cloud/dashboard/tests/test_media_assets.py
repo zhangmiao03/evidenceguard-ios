@@ -18,6 +18,19 @@ from eg_dashboard.server import create_app
 from eg_dashboard.retrieval import observe_search
 
 class MediaAssetTests(unittest.TestCase):
+    def test_guard_evidence_receipt_survives_read_only_projection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'app.db'
+            with sqlite3.connect(path) as db:
+                db.execute('CREATE TABLE evidence(id TEXT,payload TEXT)')
+                db.execute('INSERT INTO evidence VALUES (?,?)',('evidence',json.dumps({
+                    'guardRunId':'guard-exact-run','reason':'recorded result','privateKey':'not public'})))
+            db.close()
+            rows,_=read_media(path,123)
+            row=next(r for r in rows if r['name']=='media_evidence')
+            self.assertEqual(row['data']['guardRunId'],'guard-exact-run')
+            self.assertNotIn('not public',json.dumps(row))
+
     def test_guard_seventh_flow_image_is_retained_and_limit_remains_bounded(self):
         with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'EG_DASHBOARD_CAPTURE_MEDIA':'1'}):
             rec=SimpleNamespace(path=Path(tmp)/'ops.db')

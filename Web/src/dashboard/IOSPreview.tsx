@@ -22,16 +22,16 @@ function Frame({scene,condition='baseline',box,select,sample=false}:{scene:TourS
     else{anchor.current=to;setMarker(to);select(null);}
     down.current=null;
   }
-  return <figure className="ios-frame"><div className={`ios-frame-canvas ${select?'is-selecting':''}`} role={select?'group':undefined} aria-label={select?'演示画面框选':undefined}
+  return <figure className="ios-frame"><div className={`ios-frame-canvas ${select?'is-selecting':''}`} style={scene.id==='door'?undefined:{aspectRatio:'1586 / 992'}} role={select?'group':undefined} aria-label={select?'演示画面框选':undefined}
     onPointerDown={e=>{if(select){down.current=point(e);e.currentTarget.setPointerCapture(e.pointerId);}}}
     onPointerMove={e=>{if(select&&down.current){const b=selectionBox(down.current,point(e));if(b){anchor.current=null;setMarker(null);select(b);}}}}
     onPointerUp={finish} onPointerCancel={()=>{down.current=null;}}>
-    {sample&&scene.id!=='door'?<svg className="ios-scene-map" viewBox="0 0 360 220" role="img" aria-label={`${scene.label}状态示意：${condition==='changed'?scene.changed:condition==='unknown'?'画面不可用':scene.present}`}><rect width="360" height="220" fill="#e9eff4"/><path d="M20 58H340V200H20Z" fill="#fbfaf6" stroke="#c8d3dc"/><rect x="105" y="92" width="180" height="93" rx="10" fill="#d3e8fb" stroke="#327fce" strokeDasharray="5 4"/><text x="195" y="120" textAnchor="middle" fill="#355a7e" fontSize="14">{scene.area} · 关注区</text><g transform={`translate(${(scene.id==='pet')===(condition==='changed')?195:55},157)`}><circle r="22" fill="#327fce"/><text textAnchor="middle" y="5" fill="white" fontSize="13">{scene.id==='pet'?'狗':'相机'}</text></g><text x="180" y="39" textAnchor="middle" fill="#526c84" fontSize="12">脚本状态示意 · 非采样照片</text></svg>:<img src={condition==='changed'?scene.changedPhoto:scene.photo} draggable={false} alt={`${scene.label}设计参考图，非实时摄像头画面`}/>}
+    <img src={condition==='changed'?scene.changedPhoto:scene.photo} draggable={false} alt={`${scene.label}演示图：${condition==='changed'?scene.changed:scene.present}，非实时摄像头画面`}/>
     <span className="ios-frame-tag">{scene.camera} · {sample?'示例观察':'创建时参考图'}</span>
-    {box&&!(sample&&scene.id!=='door')&&<div className="ios-selection" style={{left:box.x*100+'%',top:box.y*100+'%',width:box.width*100+'%',height:box.height*100+'%'}}><i/><i/><i/><i/></div>}
+    {box&&<div className="ios-selection" style={{left:box.x*100+'%',top:box.y*100+'%',width:box.width*100+'%',height:box.height*100+'%'}}><i/><i/><i/><i/></div>}
     {marker&&<i className="ios-selection-anchor" style={{left:marker.x*100+'%',top:marker.y*100+'%'}}/>}
     {condition==='unknown'&&<div className="ios-unavailable"><PhoneIcon name="camera"/><b>画面不可用</b><span>示例遮挡 · 等待有效证据</span></div>}
-  </div><figcaption>{sample?'演示脚本的当前状态；真实检查需要手机上传有效画面。':'创建时的参考素材，仅用于选框，不代表后续采样。'}</figcaption></figure>;
+  </div><figcaption>{scene.id==='door'?'设计素材':'AI 场景演示'} · {sample?'示例观察，非设备采集。':'参考画面，仅用于演示选框。'}</figcaption></figure>;
 }
 
 export function IOSPreview({tour:t}:{tour:IOSTour}){

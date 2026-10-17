@@ -1,6 +1,33 @@
 import {test,expect} from '@playwright/test';
 import {emptyBundle} from '../../src/dashboard/data.mjs';
 
+test('automatic tour gives each scene ten seconds and finishes after thirty seconds',async({page})=>{
+  const errors:string[]=[],writes:string[]=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  const now=new Date('2026-10-17T00:00:00Z');
+  await page.clock.install({time:now});await page.clock.pauseAt(now);
+  await page.goto('/dashboard?view=showcase');
+  await expect(page.getByRole('button',{name:'30 秒自动导览',exact:true})).toBeVisible();
+  const current=page.locator('.eg-brief-current'),controls=page.locator('.eg-brief-controls');
+  for(let position=0;position<15;position++){
+    await expect(current.locator('small')).toHaveText(`${['门口包裹','室内宠物','工作室物品'][Math.floor(position/5)]} · ${position%5+1} / 5`);
+    await expect(controls).toContainText(`${position*2} / 30 秒`);
+    if(position%5>=1){
+      const img=page.locator('.ios-current .ios-frame img');
+      await expect.poll(()=>img.evaluate((e:HTMLImageElement)=>e.naturalWidth)).toBeGreaterThan(0);
+    }
+    await page.clock.runFor(1999);
+    await expect(page.getByRole('button',{name:'暂停自动导览',exact:true})).toBeVisible();
+    await page.clock.runFor(1);
+  }
+  await expect(controls).toContainText('30 秒 · 导览结束');
+  await expect(page.getByRole('button',{name:'继续自动导览',exact:true})).toBeVisible();
+  await page.clock.runFor(6000);await expect(current).toContainText('工作室物品 · 5 / 5');
+  expect(errors).toEqual([]);expect(writes).toEqual([]);
+});
+
 test('default tour progresses without writes, can pause, and reaches all three outcomes',async({page})=>{
   const writes:string[]=[];page.on('request',r=>{if(!['GET','HEAD'].includes(r.method()))writes.push(r.url());});
   await page.clock.install();await page.goto('/dashboard?view=showcase');
@@ -16,7 +43,7 @@ test('default tour progresses without writes, can pause, and reaches all three o
     await expect(page.locator('.ios-current')).toContainText('演示证据 · 非真实设备记录');
     await expect(page.locator('.ios-current .ios-frame')).toBeVisible();
   }
-  await page.getByRole('button',{name:'重播',exact:true}).click();await page.clock.runFor(4100);
+  await page.getByRole('button',{name:'重播',exact:true}).click();await page.clock.runFor(2100);
   await expect(current).toContainText('圈定关注区域');
   expect(writes).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);

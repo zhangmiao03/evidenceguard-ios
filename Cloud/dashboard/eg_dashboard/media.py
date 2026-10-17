@@ -16,7 +16,7 @@ def read_media(path, now, signature=None, assets=None, video_root=None):
         'recordings': {'id','cameraId','title','recordedAt','sourceType','createdAt','status','duration','segmentCount','indexedSegments','embeddingModel','embeddingSignature','error'},
         'sdk_episodes': {'id','cameraId','kind','status','revision','reason','review','reviewedEvidenceIds','attempts','updatedAt'},
         'visual_cache': {'status','review','cached','limitation'},
-        'evidence': {'id','cameraId','skillId','capturedAt','sampledAt','receivedAt','observedAt','sourceType','reviewStatus','reason','visualReview','limitation','timestampMeaning'},
+        'evidence': {'id','cameraId','skillId','capturedAt','sampledAt','receivedAt','observedAt','sourceType','reviewStatus','reason','visualReview','limitation','timestampMeaning','guardRunId'},
         'sdk_events': {'id','cameraId','episodeId','kind','hasVideo','createdAt','receivedAt','sourceType'},
     }
     with readonly(path) as db:
