@@ -1,10 +1,12 @@
 # anker 的云端 Codex 执行器
 
+本文随 `feat/anker-assistant@2cc803e` 的后端同步保留；下方历史验收结果来自该分支记录，不代表本轮重新执行。`dongrunze` 的独立源码核对、测试和实际部署状态以 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md) 为准。
+
 手机后端支持 `EG_AGENT_EXECUTOR=codex-app-server-v1`：使用官方 Codex CLI **0.162.1** 的 App Server 执行多步对话和只读主动评估。模型保持豆包 `doubao-seed-2-1-lite-260915`，通过现有网关的 Responses API 调用。记忆提取、专用视觉核验和 1024 维 Embedding 继续使用原有豆包服务。
 
 ```mermaid
 flowchart TD
-    A[iOS 对话 / 云端主动事件] --> B[鉴权、队列、冻结工具权限]
+    A[iOS / Web 对话 / 云端主动事件] --> B[鉴权、队列、冻结工具权限]
     B --> C[官方 Codex App Server]
     C <--> D[豆包 Responses API]
     C --> E[动态工具调用]
@@ -54,4 +56,4 @@ Linux x86_64 二进制来自官方 npm 包 `@openai/codex@0.162.1-linux-x64`；�
 
 ## 早晚报告与记忆验收（2026-10-15）
 
-手机活跃源码已更新为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`，由 `70-briefing-runtime.conf` 选择，Codex 版本与豆包模型不变。新报告通过同一 Codex 只读评估，事实模板负责证据边界；记忆专用 JSON 请求关闭深度思考并保留持久重试。上线前后检查及公开数据集选题范围见 [验收记录](BRIEFINGS-AND-ACCEPTANCE.txt)。
+该分支记录的手机活跃源码为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`，由 `70-briefing-runtime.conf` 选择，Codex 版本与豆包模型不变；维护时仍须读取实际 ExecStart。新报告通过同一 Codex 只读评估，事实模板负责证据边界；记忆专用 JSON 请求关闭深度思考并保留持久重试。上线前后检查及公开数据集选题范围见 [该分支的验收记录](https://github.com/zhangmiao03/evidenceguard-ios/blob/2cc803e/Docs/BRIEFINGS-AND-ACCEPTANCE.txt)。

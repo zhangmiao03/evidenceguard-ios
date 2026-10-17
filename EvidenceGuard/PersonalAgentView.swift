@@ -24,13 +24,14 @@ struct MemoryView: View {
                     if let memory = store.data.personal?.automaticMemory {
                         Toggle("从聊天整理记忆", isOn: Binding(get: { memory.enabled }, set: { value in
                             Task { await store.perform { store.data.personal = try await store.client.memoryOptions(enabled: value) } }
-                        })).disabled(store.busy || !store.isConnected)
+                        })).disabled(store.busy || !store.isConnected).accessibilityIdentifier("memory.automatic")
                         HStack {
                             if memory.pending > 0 { ProgressView() }
                             Text(memory.pending > 0 ? "正在整理 \(memory.pending) 轮对话…" : memory.reason).font(.caption)
                         }.foregroundStyle(Brand.muted)
                         if memory.status == "failed" {
                             Button("重试整理") { Task { await store.perform { store.data.personal = try await store.client.retryMemory() } } }
+                                .disabled(store.busy || !store.isConnected)
                         }
                     }
                     Button { adding = true } label: {

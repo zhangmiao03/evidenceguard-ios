@@ -70,6 +70,7 @@ class AgentRequest(BaseModel):
     executionMode: Literal['live','history'] = Field(default='live',description='live 允许受限现场工具，但不自动启动播放器；history 只读已保存资料。不是客户端平台或硬件在线状态。')
     historyFilter: HistoryFilter | None = None
     replyToMessageId: str | None = Field(default=None,max_length=100)
+    referenceImageId: str | None = Field(default=None,pattern=r'^query-image-[0-9a-f]{32}$')
 class RecheckRequest(BaseModel): acknowledged: bool = False
 class ReplayTransport(BaseModel): online: bool
 class ManualDraftRequest(BaseModel):
@@ -128,6 +129,16 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     watch=CameraWatch(store,captures,visual_review,proactive)
     scenes=VisualScenes(store,captures,SceneHarness(agent,visual_review),proactive)
     agent.visual_scenes=scenes
+    hardware.scenes=scenes
+    from .vision.endpoints import EndpointVisionService
+    endpoint_vision=EndpointVisionService(store,visual_review)
+    scenes.endpoint_vision=endpoint_vision
+    scenes.harness.local_vision=endpoint_vision.local
+    scenes.harness.live=camera.live
+    from .vision.control import VisualControl
+    visual_control=VisualControl(store,hardware,scenes,endpoint_vision)
+    scenes.visual_control=visual_control
+    hardware.visual_control=visual_control
     demo=DemoScenes(store,visual_review,proactive)
     if official_events: demo.enabled=False
     proactive.demo=demo
@@ -162,6 +173,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
                 personal_task.cancel(); await asyncio.gather(personal_task, return_exceptions=True)
             await trials.shutdown()
             await agent.shutdown()
+            await visual_control.close()
+            await endpoint_vision.local.close()
             if task:
                 task.cancel(); await asyncio.gather(task,return_exceptions=True)
             await worker.shutdown()
@@ -189,6 +202,8 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
     app.state.connectors=connectors
     app.state.watch=watch
     app.state.visual_scenes=scenes
+    app.state.endpoint_vision=endpoint_vision
+    app.state.visual_control=visual_control
     app.state.proactive=proactive
     app.state.ingest=ingest
     app.state.visual_review=visual_review
@@ -223,14 +238,30 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             skills=[s for s in skills if set(s['devices'])<=ids and not s.get('replay')]
             evidence=[e for e in evidence if e['sourceType'] in REAL_SOURCES]
             recordings=[r for r in recordings if visible_recording(r,ids)]
-        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(personal_client(request)) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='iOS event relay and iOS/Web foreground relay implemented; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready))
+        return dict(cameraEvents=ingest.timeline() if official_events else None,personal=personal.snapshot(personal_client(request)) if request.headers.get('X-EG-Installation-ID') else None,now=time.time(),summary=dict(activeSkills=sum(s['status']=='active' for s in skills),openAlerts=sum(s['alert']=='open' for s in skills),unknownSkills=sum(s['result']=='unknown' and s['status']=='active' for s in skills)),skills=skills,cameras=[m.api_dict() for m in manifests],evidence=[{k:v for k,v in e.items() if k!='videoPath'} for e in evidence],agent=dict(provider=agent.provider,mode=agent.mode,ready=agent.ready,tools=tools.names),integration=dict(lab='' if official_events else 'fixture-lab/v1',officialSdk='iOS event relay and iOS/Web foreground relay implemented; physical validation pending',physicalDevicesValidated=False),recordings=[videos.public(r) for r in recordings],videoModels=dict(visionModel=videos.vision.model,embeddingModel=videos.embedding.model,embeddingReady=videos.embedding.ready,retrievalVersion=2 if videos.v2_enabled else 1))
     def personal_client(request):
         client=installation(request.headers.get('X-EG-Installation-ID'))
         key=request.headers.get('X-EG-Private-Key')
         connectors.proof(client,key,bind=bool(key))
         return client
+    def search_owner(request):
+        # An installation ID alone is caller-controlled, not proof of ownership.
+        client=personal_client(request)
+        if not connectors.proof(client,request.headers.get('X-EG-Private-Key')):
+            raise HTTPException(403,'图片检索需要当前设备的私有空间凭据，请重新连接服务')
+        return client
+    @app.get('/api/vision/status')
+    async def vision_status(request: Request):
+        client=search_owner(request)
+        return dict(endpoint=endpoint_vision.configuration(),local=endpoint_vision.local.configuration(),
+                    controls={d:visual_control.readiness(d,client) for d in hardware.devices()})
+    @app.get('/api/vision/controls/{control_id}')
+    async def visual_control_status(control_id: str,request: Request):
+        return visual_control.result(control_id,search_owner(request))
+    from .video.search import install_search_routes
+    install_search_routes(app,videos,search_owner)
     def push_key(request): return request.headers.get('X-EG-Push-Key')
-    install_scene_routes(app,scenes,personal_client)
+    install_scene_routes(app,scenes,personal_client,analysis_client=search_owner)
     @app.get('/api/push/status')
     async def push_status(request: Request): return push.status(personal_client(request),push_key(request))
     @app.put('/api/push/device')
@@ -304,10 +335,14 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         return proactive.feedback(personal_client(request),key,body.action)
     @app.get('/api/recordings/{recording_id}')
     async def recording(recording_id:str):
-        r=videos.db.recording(recording_id)
+        r=videos.accessible(recording_id)
         if not r.get('aspectRatio'):
+            # Metadata must remain readable while preprocessing is queued, or
+            # after it fails before a playback file exists.
+            try: source=videos.file(recording_id)
+            except KeyError: return videos.public(r)
             import json
-            value=json.loads(await command('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(videos.file(recording_id))))['streams'][0]
+            value=json.loads(await command('ffprobe','-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','json',str(source)))['streams'][0]
             r['aspectRatio']=value['width']/value['height']; videos.db.save_recording(r)
         return videos.public(r)
     @app.get('/api/recordings/{recording_id}/video')
@@ -351,7 +386,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         videos.start_index(recording_id)
         return videos.public(videos.db.recording(recording_id))
     @app.post('/api/recordings',status_code=202)
-    async def upload_recording(request:Request,cameraId:str,title:str=Query(default='导入录像',max_length=100),recordedAt:float|None=None):
+    async def upload_recording(request:Request,cameraId:str,title:str=Query(default='导入录像',max_length=100),recordedAt:float|None=None,recordedTimezone:str=Query(default='UTC',max_length=100)):
         if cameraId not in {m.id for m in await camera.manifests()}: raise ValueError('请为录像选择已配置的摄像头')
         if len(videos.jobs)>=3: raise ValueError('已有多段录像排队，请稍后上传')
         incoming=videos.root/('upload-'+uuid.uuid4().hex); size=0
@@ -361,7 +396,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
                     size+=len(chunk)
                     if size>150_000_000: raise HTTPException(413,'当前录像上限为 150 MB')
                     file.write(chunk)
-            value=videos.stage(incoming,cameraId,recordedAt,title)
+            value=videos.stage(incoming,cameraId,recordedAt,title,recorded_timezone=recordedTimezone)
             videos.start_index(value['id'])
             return videos.public(value)
         finally: incoming.unlink(missing_ok=True)
@@ -506,6 +541,10 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
         conversation_access(body.conversationId,request)
         if store.run(body.requestId): run_access(body.requestId,request)
         client=personal_client(request) if request.headers.get('X-EG-Installation-ID') else None
+        if body.referenceImageId:
+            if body.executionMode!='history': raise ValueError('参考图检索请使用历史回顾')
+            if len(body.message)>1000: raise ValueError('带参考图的检索文字请控制在 1000 字以内')
+            videos.retrieval.image(body.referenceImageId,search_owner(request))
         context=personal.context(client)
         main = conversations.root(body.conversationId)
         if context and proactive.owner(main)==client:
@@ -516,7 +555,7 @@ def create_app(db_path=None,seed=False,start_worker=True,provider=None,camera_ad
             if not client or proactive.owner(body.conversationId)!=client: raise HTTPException(404,'要回复的主动消息不存在')
             reply=proactive.message(client,body.replyToMessageId)
             context['replyToMessage']={k:reply.get(k) for k in ('id','body','why','sources','createdAt','feedback')}
-        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),guard_flow_version=body.guardFlowVersion)
+        value=agent.start(body.message,body.conversationId,body.skillId,body.requestId,body.cameraId,body.executionMode,body.historyFilter.model_dump() if body.historyFilter else None,personal_context=context,reply_to=body.replyToMessageId,client_platform=body.clientPlatform,client_id=client,connector_access=bool(client and request.headers.get('X-EG-Private-Key')),reference_image_id=body.referenceImageId,guard_flow_version=body.guardFlowVersion)
         if client: value['clientId']=client; store.save_run(value)
         return value
     @app.get('/api/agent/conversations')

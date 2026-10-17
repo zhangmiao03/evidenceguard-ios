@@ -62,6 +62,7 @@ class FrameUpload(Input):
     width: int = Field(gt=0, le=8192)
     height: int = Field(gt=0, le=8192)
     sampledAt: float = Field(gt=0, allow_inf_nan=False)
+    decoderFrame: dict | None = None
 
 
 class CaptureRequest(Input):
@@ -189,6 +190,28 @@ class LiveDevices:
             if now - frame.received_at > 30:
                 del self.frames[fid]
 
+    def trim_frames(self):
+        # Bounded, ephemeral window of actual uploaded bytes; no invented frames.
+        total = 0
+        counts = {}
+        for fid, (frame, raw, _) in reversed(list(self.frames.items())):
+            count = counts.get(frame.device_id, 0)
+            if time.time()-frame.received_at > 30 or count >= 12 or total+len(raw) > 64_000_000:
+                del self.frames[fid]
+            else:
+                counts[frame.device_id] = count+1
+                total += len(raw)
+
+    def recent_pair(self, device_id, ending_frame_id):
+        self.trim_frames()
+        end = self.frames.get(ending_frame_id)
+        if not end or end[0].device_id != device_id: return None
+        from ..vision.processing import pair_gate
+        for frame, raw, _ in reversed(list(self.frames.values())):
+            if pair_gate(asdict(frame), asdict(end[0])) is None:
+                return raw, end[1], asdict(frame), asdict(end[0])
+        return None
+
     def commands(self, s):
         self.expire()
         return [dict(requestId=rid, sessionId=p['sessionId'], deviceId=p['deviceId'],
@@ -226,11 +249,18 @@ class LiveDevices:
                 im.verify()
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
             raise ValueError('无法解码直播取样图片') from error
+        if body.decoderFrame is not None:
+            from ..hardware_tools.vendor.camera_tools.verification import check_frame
+            check_frame(body.decoderFrame, s['deviceId'], time.time()*1000)
+            if body.decoderFrame['sessionId'] != s['id'] or body.decoderFrame['dimensions'] != [body.width, body.height]:
+                raise ValueError('解码帧会话或尺寸与当前取样不一致')
         frame = FrameRef(frame_id='live-' + uuid.uuid4().hex, device_id=s['deviceId'], channel_id='main',
                          captured_at=None, received_at=time.time(), source_type='official_live_' + s['platform'],
                          freshness='sampled_after_request', view_revision=s['id']+':'+str(s.get('viewVersion',0)),
-                         sampled_at=body.sampledAt, request_id=body.requestId, session_id=s['id'])
+                         sampled_at=body.sampledAt, request_id=body.requestId, session_id=s['id'],
+                         execution_epoch=p.get('executionEpoch'), decoder_frame=body.decoderFrame)
         self.frames[frame.frame_id] = (frame, raw, mime)
+        self.trim_frames()
         media = self.store.save_media(asdict(frame), raw, mime)
         s.update(sequence=max(s['sequence'], body.sequence), lastFrameUrl=media['imageUrl'], lastSampledAt=body.sampledAt)
         p['future'].set_result(frame)
@@ -266,7 +296,8 @@ class LiveDevices:
             raise ValueError('没有活跃的新画面输入，请在 iOS 或 Web 前台打开这台设备的直播')
         future = asyncio.get_running_loop().create_future()
         self.pending[context.request_id] = dict(sessionId=s['id'], deviceId=device_id,
-            afterSequence=s['sequence'], deadline=context.deadline, future=future,trace=dict(CTX.get()))
+            afterSequence=s['sequence'], deadline=context.deadline, future=future,trace=dict(CTX.get()),
+            executionEpoch=getattr(context,'execution_epoch',None))
         try:
             async with asyncio.timeout(max(0, context.deadline - time.time())):
                 frame = await future

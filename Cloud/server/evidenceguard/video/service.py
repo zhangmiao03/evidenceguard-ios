@@ -44,47 +44,85 @@ class VideoService:
         self.embedding=embedding or ArkVideoEmbedding(); self.vision=vision or LiteVideoProvider()
         self.ingest_gate=asyncio.Semaphore(1); self.verify_gate=asyncio.Semaphore(2)
         self.jobs={}
+        from .index_v2 import RetrievalIndex
+        from .search import VideoSearchService
+        self.index_db=RetrievalIndex(store)
+        self.retrieval=VideoSearchService(self)
+
+    @property
+    def v2_enabled(self):
+        return hasattr(self.embedding,'embed_v2') and os.getenv('EG_VIDEO_INDEX_V2','1')!='0'
+
+    @property
+    def index_signature(self):
+        return self.embedding.corpus_signature if self.v2_enabled else self.embedding.signature
+
+    def accessible(self,rid):
+        r=self.db.recording(rid)
+        if official_mode(self) and (r['cameraId'] not in registered_device_ids(self.store) or not visible_recording(r,registered_device_ids(self.store))):
+            raise KeyError(rid)
+        return r
 
     def recover(self):
+        self.retrieval.recover()
         for r in self.db.recordings():
             if r['status'] in {'queued','indexing'}:
                 r.update(status='interrupted',error='服务重启中断索引，请重新尝试索引'); self.db.save_recording(r)
 
     def public(self,r):
-        value={k:v for k,v in r.items() if k not in {'sourcePath'}} | {'playbackUrl':f"/api/recordings/{r['id']}/video"}
-        if r['status']=='ready' and r.get('embeddingSignature')!=self.embedding.signature:
+        value={k:v for k,v in r.items() if k not in {'sourcePath','legacyIndex'}} | {'playbackUrl':f"/api/recordings/{r['id']}/video"}
+        if not self.v2_enabled and r.get('legacyIndex',{}).get('embeddingSignature')==self.embedding.signature:
+            value.update(r['legacyIndex'])
+        if value['status']=='ready' and value.get('embeddingSignature')!=self.index_signature:
             value.update(status='stale',error='Embedding 模型或索引策略已变化，请重新建立索引')
         return value
 
     def file(self,recording_id):
-        r=self.db.recording(recording_id)
+        r=self.accessible(recording_id)
         path=self.root/recording_id/'playback.mp4'
         if not path.is_file(): raise KeyError(recording_id)
         return path
 
-    def stage(self,path,camera_id,recorded_at=None,title='导入录像',source_type='uploaded',source_reference=None):
+    def stage(self,path,camera_id,recorded_at=None,title='导入录像',source_type='uploaded',source_reference=None,recorded_timezone='UTC'):
         path=Path(path).resolve()
         if not path.is_file() or not 0<path.stat().st_size<=150_000_000: raise ValueError('录像文件不存在、为空或超过 150 MB')
         if recorded_at is not None and (not math.isfinite(recorded_at) or recorded_at<0): raise ValueError('录像开始时间无效')
+        try: ZoneInfo(recorded_timezone)
+        except (ValueError,KeyError): raise ValueError('录像来源时区无效')
         # Keep a content digest for provenance; capture time is never fabricated from import time.
         digest=hashlib.sha256(path.read_bytes()).hexdigest()
+        for existing in self.db.recordings(camera_id):
+            if existing.get('sha256')==digest and existing.get('recordedAt')==recorded_at and existing.get('sourceType')==source_type and existing.get('sourceReference')==source_reference:
+                return existing
         rid='video-'+uuid.uuid4().hex[:16]; folder=self.root/rid; folder.mkdir()
         shutil.copyfile(path,folder/'original')
         r=dict(id=rid,cameraId=camera_id,title=title,recordedAt=recorded_at,sourceType=source_type,
                sourceReference=source_reference,sha256=digest,createdAt=time.time(),status='queued',
-               duration=None,segmentCount=0,error=None,embeddingModel=self.embedding.model)
+               duration=None,segmentCount=0,error=None,embeddingModel=self.embedding.model,recordedTimezone=recorded_timezone)
         return self.db.save_recording(r)
 
     def start_index(self,rid):
         if rid in self.jobs: return
         if len(self.jobs)>=3: raise ValueError('已有多段录像排队，请稍后再试')
-        r=self.db.recording(rid); r.update(status='queued',error=None); self.db.save_recording(r)
+        r=self.accessible(rid)
+        if r['status']=='ready' and r.get('embeddingSignature')==self.index_signature: return
+        if r.get('embeddingSignature')==self.embedding.signature and r['status']=='ready':
+            r['legacyIndex']={k:r[k] for k in ('status','embeddingSignature','embeddingModel','segmentCount') if k in r}
+        r.update(status='queued',error=None); self.db.save_recording(r)
         task=asyncio.create_task(self.index(rid)); self.jobs[rid]=task
         task.add_done_callback(lambda _:self.jobs.pop(rid,None))
 
     async def index(self,rid):
         async with self.ingest_gate:
-            r=self.db.recording(rid); r.update(status='indexing',error=None); self.db.save_recording(r)
+            r=self.db.recording(rid)
+            if self.v2_enabled:
+                with self.store.lock:
+                    row=self.store.db.execute('SELECT payload FROM retrieval_recordings WHERE id=? AND active_signature=?',(rid,self.index_signature)).fetchone()
+                if row:
+                    published=json.loads(row[0]); self.db.save_recording(published); return self.public(published)
+                if r.get('embeddingSignature')==self.embedding.signature and r['status']=='ready':
+                    r['legacyIndex']={k:r[k] for k in ('status','embeddingSignature','embeddingModel','segmentCount') if k in r}
+            r.update(status='indexing',error=None); self.db.save_recording(r)
             folder=self.root/rid; playback=folder/'playback.mp4'
             try:
                 duration=await probe(folder/'original')
@@ -95,6 +133,10 @@ class VideoService:
                         '-pix_fmt','yuv420p','-movflags','+faststart',str(folder/'building.mp4'))
                     (folder/'building.mp4').replace(playback)
                 if not self.embedding.ready: raise ProviderError('录像已保存，可播放；Embedding 尚未配置，不能完成语义索引')
+                if self.v2_enabled:
+                    from .index_media import build
+                    await build(self,r,playback,self.index_signature)
+                    return self.public(r)
                 segments=[]
                 for i,(start,end) in enumerate(windows(duration)):
                     clip=folder/f'segment-{i}.mp4'
@@ -108,13 +150,34 @@ class VideoService:
                 r.update(embeddingModel=self.embedding.model,embeddingSignature=self.embedding.signature)
                 self.db.publish(r,segments)
             except asyncio.CancelledError:
+                self.index_db.failed(rid,self.index_signature,'interrupted','索引中断，可重试复用已完成单元')
                 r.update(status='interrupted',error='索引被中断，可重新尝试'); self.db.save_recording(r); raise
             except Exception as error:
+                self.index_db.failed(rid,self.index_signature,'failed',type(error).__name__)
                 r.update(status='failed',error=str(error) if isinstance(error,(ProviderError,ValueError)) else '视频索引失败，请重试')
                 self.db.save_recording(r)
             return self.public(r)
 
-    async def search(self,query,camera_id=None,skill_id=None,period=None,limit=3,history_scope=None,progress=None):
+    async def search(self,query,camera_id=None,skill_id=None,period=None,limit=3,history_scope=None,progress=None,*,image_ref=None,owner=None):
+        if self.v2_enabled:
+            from .search import SearchInput
+            from ..history import resolve_filter
+            selected={camera_id} if camera_id else None
+            if skill_id:
+                skill=self.store.skill(skill_id)
+                if not skill: raise ValueError('任务不存在')
+                selected=set(skill['devices']) if selected is None else selected & set(skill['devices'])
+                if not selected: return dict(status='no_recordings',videos=[],scope={},reason='当前任务范围没有可查询摄像头')
+            scope=history_scope or resolve_filter({'period':period or 'all'})
+            request=SearchInput(text=query,image_ref=image_ref,camera_ids=sorted(selected) if selected else [],limit=min(limit,10),
+                time_range={'period':'custom','startAt':scope['startAt'],'endAt':scope['endAt']} if scope['startAt'] is not None else {'period':'all'})
+            result=self.retrieval.start(request,owner or 'team-tool')
+            if progress: progress('video_search_started',{})
+            await self.retrieval.jobs[result['id']]
+            value=self.retrieval.get(result['id'],owner or 'team-tool')
+            if progress: progress('video_search_completed',{'total':len(value['videos'])})
+            return value
+        if image_ref: raise ValueError('旧版索引不支持图片查询，请启用并重建 v2 索引')
         notify=progress or (lambda *args:None)
         notify('video_search_started',{})
         if not self.embedding.ready: raise ProviderError('Embedding 尚未配置，不能执行录像语义检索')
@@ -124,6 +187,7 @@ class VideoService:
             if not skill: raise ValueError('任务不存在')
             scope=set(skill['devices'])
         recordings={r['id']:r for r in self.db.recordings(camera_id) if not scope or r['cameraId'] in scope}
+        recordings={key:(r | r['legacyIndex'] if r.get('legacyIndex',{}).get('embeddingSignature')==self.embedding.signature else r) for key,r in recordings.items()}
         if official_mode(self): recordings={k:r for k,r in recordings.items() if visible_recording(r,registered_device_ids(self.store))}
         now=datetime.now(ZoneInfo('Asia/Shanghai')); start_at=end_at=None
         if period:
@@ -189,6 +253,24 @@ class VideoService:
                     reason='相似度只用于候选排序，不是事件概率；matched 为模型视频复核结果，时间点是估计值，请播放原片核验。')
 
     async def shutdown(self):
+        await self.retrieval.shutdown()
         tasks=list(self.jobs.values())
         for t in tasks: t.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)
+
+    async def delete_recording(self,rid):
+        self.accessible(rid)
+        if rid in self.jobs: raise ValueError('请等待当前索引完成后再删除')
+        for skill in self.store.skills():
+            if (skill.get('replay') or {}).get('recordingId')==rid and skill.get('status') in {'active','paused'}:
+                raise ValueError('录像仍用于回放任务，请先结束任务')
+        folder=(self.root/rid).resolve()
+        if folder.parent!=self.root: raise ValueError('录像路径无效')
+        # Delete the search-visible facts first. A failed filesystem cleanup can
+        # leave inaccessible files, but cannot leave playable search results.
+        with self.store.transaction():
+            self.index_db.delete(rid)
+            self.store.db.execute('DELETE FROM video_segments WHERE recording_id=?',(rid,))
+            self.store.db.execute('DELETE FROM recordings WHERE id=?',(rid,))
+        if folder.exists(): await asyncio.to_thread(shutil.rmtree,folder)
+        return {'status':'deleted'}

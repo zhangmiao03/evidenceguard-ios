@@ -1,6 +1,7 @@
 """Exercise the real stdio transport against a deterministic fake App Server."""
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -13,6 +14,8 @@ from evidenceguard.harness.providers import ProviderError
 
 @pytest.fixture
 def server(tmp_path):
+    if os.name != 'posix':
+        pytest.skip('Linux cloud executor uses POSIX process groups and an executable shebang; run this transport suite on Linux')
     capture=tmp_path/'wire.jsonl'
     script=tmp_path/'app-server'
     script.write_text('#!'+sys.executable+'\n'+'''import json, os, sys, time

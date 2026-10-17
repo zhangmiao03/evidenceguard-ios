@@ -1,5 +1,7 @@
 # iOS TestFlight 准备
 
+2026-10-16 源码整合后的版本尚未分发。下方 build 11 记录属于 `2cc803e`，不包含本次完整时间线合并与硬件停止/双摄修复；本次仍须按 [整合验收记录](verification/ios-branch-integration-2026-10-16.txt) 在 Mac 构建和验收。
+
 当前优先以 TestFlight 安装 iPhone 测试包，不需要数据线连接 Mac 或开启 Developer Mode。Xcode 直接安装是 Apple 支持的可选调试路径；外部 TestFlight 的首个构建需要 Beta App Review。开发编译无需等待该审核。
 
 依据：[Developer Mode](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device)、[TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/)、[上传构建](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)。
@@ -17,7 +19,7 @@
 
 2026-10-14 APNs 更新：`1.0 (7)` 包含五栏界面、手机通知授权/登记、测试入口和通知详情跳转；归档含 App 自身 Keychain 访问组及 APNs entitlement，真实官方 SDK 已核对。161 项 Cloud 测试通过。build 7 于 14:18 成功上传，Apple 处理已完成；沿用不变 SDK 的标准加密分类和已确认的不在法国分发范围保存合规问卷，测试说明已保存。构建已加入现有 EvidenceGuard Internal 组，组内显示“正在测试”、90 天后过期，仍为原来的 3 位测试员。build 7 没有加入外部组。用户已授权新建同范围 APNs 密钥，已安装到新加坡手机服务并启用，服务返回 `serverReady=true`；真实 iPhone 送达及点开仍待验收。详见 [APNs 接入](APNS.md)。
 
-手机请在 TestFlight 直接更新到 `1.0 (10)`，保留本机数据。进入「我的 → 通知与提醒」开启手机推送、允许系统权限；在同页开启需要的摄像头提醒和每日概况，更改会自动保存。展开「测试通知与连接检查」，点击测试后在 10 秒内离开 App 或锁屏；检查收到通知及点开进入测试结果。
+按上方已记录的分发状态，内部测试可更新到 `1.0 (11)`，保留本机数据；本次源码修复须等待另行构建。进入「我的 → 通知与提醒」开启手机推送、允许系统权限；在同页开启需要的摄像头提醒和早晚报告，更改会自动保存。展开「测试通知与连接检查」，点击测试后在 10 秒内离开 App 或锁屏；检查收到通知及点开进入测试结果。
 
 15:24 真机链路补充：用户开启通知后，服务已登记一台生产 iPhone；向该手机发送的测试通知被 Apple 首次接受，随后收到手机鉴权点开的回执。具体锁屏展示、测试结果页内容及任务/证据跳转仍需手机侧反馈，不把回执扩大为完整 UI 或摄像头验收。
 

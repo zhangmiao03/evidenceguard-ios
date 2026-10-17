@@ -102,6 +102,7 @@ enum SDKCredentialVault {
         let value = LiveCameraController(); liveControllers[id] = value; return value
     }
     func stopAllCameras() {
+        if downloadingRecording { cancelInspection() }
         for value in liveControllers.values { value.stop(message: "画面连接已暂停") }
     }
     private var cameraOrigin: URL?
@@ -112,6 +113,7 @@ enum SDKCredentialVault {
     // The vendor native video decoder is not safe for concurrent players.
     // Keep exactly one player alive and switch it automatically on demand.
     func selectCamera(_ camera: SDKDiscoveredCamera, client: APIClient) async {
+        guard !downloadingRecording else { return }
         while switchingCamera && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
         guard !Task.isCancelled else { return }
         switchingCamera = true; defer { switchingCamera = false }
@@ -128,7 +130,7 @@ enum SDKCredentialVault {
             if cameraOrigin != nil { stopAllCameras() }
             cameraOrigin = client.baseURL
         }
-        guard !switchingCamera, !switchingWorkspace, officialDemoController == nil, canDiscover else { return }
+        guard !downloadingRecording, !switchingCamera, !switchingWorkspace, officialDemoController == nil, canDiscover else { return }
         if devices.isEmpty && !checking && Date().timeIntervalSince(lastDiscovery) >= 15 {
             lastDiscovery = Date(); discoverConfigured(client: client)
         }
@@ -137,7 +139,7 @@ enum SDKCredentialVault {
         let demands = (try? await client.cameraDemands()) ?? []
         let requested = demands.first ?? preferredCamera ?? selectedID
         guard let camera = cameras.first(where: { IOSToolExecutor.deviceID($0.sn) == requested }) ?? cameras.first,
-              !switchingWorkspace, officialDemoController == nil, !Task.isCancelled else { return }
+              !downloadingRecording, !switchingWorkspace, officialDemoController == nil, !Task.isCancelled else { return }
         let value = controller(for: IOSToolExecutor.deviceID(camera.sn))
         if !value.running && !value.opening && !value.closing,
            Date().timeIntervalSince(value.lastAttempt) >= 10 {
@@ -153,6 +155,8 @@ enum SDKCredentialVault {
     @Published private(set) var pictureSource: String?
     @Published private(set) var inspectionMessage = "选择日期查询真实事件，或读取设备缩略图。"
     @Published private(set) var syncing = false
+    @Published private(set) var downloadingRecording = false
+    private var recordingRequestID: String?
     @Published private(set) var syncMessage = "尚未同步官方事件"
     @Published private(set) var eventSyncOrigin = UserDefaults.standard.string(forKey: "sdkEventSyncOrigin")
     private var relayContinuation: CheckedContinuation<String, Error>?
@@ -206,7 +210,7 @@ enum SDKCredentialVault {
         message = "配置已保存到本机 Keychain，设备尚未验证"
     }
     func discover(_ credentials: SDKCredentials, client: APIClient? = nil) {
-        guard officialDemoController == nil, !switchingWorkspace, !checking && !inspecting && !syncing else { return }
+        guard officialDemoController == nil, !switchingWorkspace, !downloadingRecording, !checking && !inspecting && !syncing else { return }
         do { try save(credentials) } catch { message = error.localizedDescription; return }
         guard canDiscover else { message = buildStatus; return }
         requestGeneration += 1
@@ -303,7 +307,7 @@ enum SDKCredentialVault {
         #endif
     }
     private func beginInspection(_ camera: SDKDiscoveredCamera) -> Bool {
-        guard canDiscover, !checking, !inspecting, !syncing,
+        guard canDiscover, !checking, !inspecting, !syncing, !downloadingRecording,
               devices.contains(where: { $0.sn == camera.sn && $0.isCompetitionCamera }) else {
             inspectionMessage = "请先完成官方设备查询，再检查赛事摄像头。"
             return false
@@ -363,7 +367,7 @@ enum SDKCredentialVault {
         }
     }
     func enterOfficialWorkspace() async {
-        guard canDiscover, officialDemoController == nil, !switchingWorkspace else { return }
+        guard canDiscover, officialDemoController == nil, !switchingWorkspace, !downloadingRecording else { return }
         // Compose 1.7.1 checks the host plist asynchronously and aborts on a
         // missing flag. Check before stopping the current camera/session;
         // Swift error handling cannot catch that Kotlin background failure.
@@ -444,7 +448,7 @@ enum SDKCredentialVault {
     }
 
     func executeHardware(camera: SDKDiscoveredCamera, command: HardwareValue) async throws -> HardwareValue {
-        guard officialDemoController == nil, !switchingWorkspace, devices.contains(where: { $0.sn == camera.sn }) else {
+        guard officialDemoController == nil, !switchingWorkspace, !downloadingRecording, devices.contains(where: { $0.sn == camera.sn }) else {
             throw APIProblem(message: "设备执行会话已结束")
         }
         #if canImport(SampleCore) && !targetEnvironment(simulator)
@@ -474,16 +478,19 @@ enum SDKCredentialVault {
         continuation?.resume(with: result)
     }
 
-    private func relayRequest(_ begin: (@escaping (String) -> Void) -> Void) async throws -> String {
+    private func relayRequest(timeoutSeconds: Int = 35, _ begin: (@escaping (String) -> Void) -> Void) async throws -> String {
         try Task.checkCancellation()
         let id = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 relayRequestID = id; relayContinuation = continuation
                 relayTimeout = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(35)) } catch { return }
+                    do { try await Task.sleep(for: .seconds(timeoutSeconds)) } catch { return }
                     guard let self, self.relayRequestID == id else { return }
                     self.finishRelay(.failure(APIProblem(message: "设备事件读取超时，请重试。")))
+                    #if canImport(SampleCore) && !targetEnvironment(simulator)
+                    if let request = self.recordingRequestID { self.bridge.cancelEventVideo(requestId: request) }
+                    #endif
                 }
                 begin { [weak self] json in
                     Task { @MainActor in
@@ -501,7 +508,7 @@ enum SDKCredentialVault {
     }
 
     func syncEvents(camera: SDKDiscoveredCamera, date: Date, client: APIClient, recentOnly: Bool = false) async {
-        guard canDiscover, !syncing, !checking, !inspecting,
+        guard canDiscover, !syncing, !checking, !inspecting, !downloadingRecording,
               devices.contains(where: { $0.sn == camera.sn && $0.isCompetitionCamera }) else {
             syncMessage = "请先完成官方设备查询"; return
         }
@@ -558,6 +565,49 @@ enum SDKCredentialVault {
         }
         #else
         syncMessage = buildStatus
+        #endif
+    }
+
+    func downloadEventRecording(camera: SDKDiscoveredCamera, event: SDKInspectionEvent) async throws -> URL {
+        guard canDiscover, !downloadingRecording, !syncing, !checking, !inspecting, !switchingCamera,
+              !switchingWorkspace, officialDemoController == nil, event.deviceSn == camera.sn, event.hasVideo,
+              events.contains(where: { $0.id == event.id && $0.deviceSn == camera.sn }),
+              devices.contains(where: { $0.sn == camera.sn }) else {
+            throw APIProblem(message: "请先查询该设备事件，等当前操作完成后再下载有录像的事件。")
+        }
+        downloadingRecording = true
+        let generation = requestGeneration
+        let requestID = UUID().uuidString
+        recordingRequestID = requestID
+        defer { downloadingRecording = false; recordingRequestID = nil }
+        let root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("evidenceguard-recordings", isDirectory: true).resolvingSymlinksInPath()
+        let expected = root.appendingPathComponent(requestID + ".mp4")
+        var returned = false
+        defer { if !returned { try? FileManager.default.removeItem(at: expected) } }
+        // The native decoder is single-player: suspend live playback before download.
+        await toolExecutor.shutdown()
+        for value in liveControllers.values { await value.stopForCameraSwitch() }
+        try Task.checkCancellation()
+        guard generation == requestGeneration else { throw CancellationError() }
+        #if canImport(SampleCore) && !targetEnvironment(simulator)
+        struct Receipt: Decodable { var status: String; var path: String?; var eventId: String?; var deviceSn: String? }
+        let json = try await relayRequest(timeoutSeconds: 135) { completion in
+            bridge.downloadEventVideo(sn: camera.sn, eventId: event.id, requestId: requestID, completion: completion)
+        }
+        let receipt = try JSONDecoder().decode(Receipt.self, from: Data(json.utf8))
+        guard generation == requestGeneration else { throw CancellationError() }
+        guard receipt.status == "success", receipt.eventId == event.id, receipt.deviceSn == camera.sn,
+              let path = receipt.path else { throw APIProblem(message: "事件录像未能完整下载，请检查设备与网络后重试。") }
+        let file = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        guard file.deletingLastPathComponent() == root, file.lastPathComponent == requestID + ".mp4",
+              let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0, size <= 150_000_000 else {
+            throw APIProblem(message: "SDK 返回的录像文件无效，未上传。")
+        }
+        returned = true
+        return file
+        #else
+        throw APIProblem(message: "事件录像下载需要包含官方 SDK 的 iPhone 真机版本。")
         #endif
     }
 }

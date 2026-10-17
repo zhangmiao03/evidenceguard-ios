@@ -16,6 +16,7 @@ from pathlib import Path
 import time
 from types import SimpleNamespace
 import uuid
+from . import content, transport, codex_adapter
 
 
 def load_ops():
@@ -47,12 +48,19 @@ def summary(value):
 
 
 def instrument(ops, native):
+    try:
+        from .trace_retention import install as install_retention
+    except ImportError:
+        from evidenceguard.trace_retention import install as install_retention
+    install_retention(ops)
     runtime = importlib.import_module('evidenceguard.harness.runtime')
     providers = importlib.import_module('evidenceguard.harness.providers')
     tools = importlib.import_module('evidenceguard.harness.tools')
     store_module = importlib.import_module('evidenceguard.store')
     if getattr(runtime.AgentRuntime, '_dashboard_instrumented', False):
         return
+    transport.install(ops)
+    codex_adapter.install(ops)
 
     original_execute = runtime.AgentRuntime._execute
     @functools.wraps(original_execute)
@@ -66,7 +74,8 @@ def instrument(ops, native):
                     trace={'traceId':run['id']} if native else None,
                     data={'executionMode': run.get('executionMode'),
                           'answer': summary(run.get('text')), 'toolReceipts': summary(run.get('toolReceipts', [])),
-                          'errorPresent': bool(run.get('error'))})
+                          'errorPresent': bool(run.get('error')),
+                          **({} if run.get('referenceImageId') or run.get('privateContent') or run.get('endpointAnalyses') else content.details(answer=run.get('text'), toolReceipts=run.get('toolReceipts', []), error=run.get('error')))})
     runtime.AgentRuntime._execute = execute if native else ops.traced('agent')(execute)
 
     original_tool = tools.ToolRegistry.call
@@ -82,19 +91,25 @@ def instrument(ops, native):
         start = time.monotonic()
         status = 'failed'
         result_info = {}
-        recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs)})
+        private_search=name in {'search_recordings','analyze_visual_endpoints','sample_camera_vision','aim_camera_at_guard_target','read_visual_control'}
+        captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:])
+        recorder.emit('tool.started', data={'tool': name, 'arguments': summary(kwargs), **captured})
         try:
             result = await original_tool(self, *args, **kwargs)
             result_info = summary(result)
+            captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:], result=result)
             status = 'failed' if isinstance(result, dict) and (result.get('error') or result.get('status') in {'failed', 'error', 'unsupported'}) else 'completed'
             return result
         except asyncio.CancelledError:
             status = 'cancelled'
             raise
+        except Exception as error:
+            captured = {} if private_search else content.details(arguments=kwargs, positionalArguments=args[1:], error=str(error))
+            raise
         finally:
             recorder.emit('tool.finished', status=status,
                 duration=round((time.monotonic()-start)*1000, 2),
-                data={'tool': name, 'result': result_info})
+                data={'tool': name, 'result': result_info, **captured})
             ops.CTX.reset(token)
     tools.ToolRegistry.call = tool_call
 
@@ -105,13 +120,15 @@ def instrument(ops, native):
         if recorder:
             recorder.emit('context.prepared', data={
                 'messages': [{'role': m.get('role'), 'content': summary(m.get('content'))} for m in messages],
-                'tools': [s.get('function', {}).get('name') for s in tools]})
+                'tools': [s.get('function', {}).get('name') for s in tools],
+                **content.details(messages=messages, tools=tools)})
         result = await original_complete(self, messages, tools)
         if recorder:
             recorder.emit('model.output', data={'answer': summary(result.get('content')),
                 'toolCalls': [{'name': c.get('function', {}).get('name'),
                                'arguments': summary(c.get('function', {}).get('arguments'))}
-                              for c in result.get('tool_calls', []) or []]})
+                              for c in result.get('tool_calls', []) or []],
+                **content.details(output=result)})
         return result
     providers.OpenAICompatibleProvider.complete = complete if native else ops.traced('chat')(complete)
 
@@ -123,7 +140,9 @@ def instrument(ops, native):
             recorder = getattr(self, 'ops', None)
             if recorder:
                 fields = {'step','name','tool','status','cameraId','deviceId','requestId','sourceType',
-                          'sampledAt','receivedAt','timestampMeaning','mediaId','inputKind','code','reasonCode'}
+                          'sampledAt','receivedAt','timestampMeaning','mediaId','inputKind','code','reasonCode',
+                          'executor','version','threadId','turnId','inputTokens','cachedInputTokens',
+                          'outputTokens','reasoningOutputTokens','totalTokens'}
                 data = {k:v for k,v in payload.items() if k in fields} if isinstance(payload,dict) else {}
                 data.update(legacySubjectId=run_id, sequence=value.get('sequence'))
                 recorder.emit(event_type, status=data.get('status') or ('failed' if event_type.endswith('failed') else 'observed'),
@@ -174,6 +193,11 @@ def attach(app, ops, native):
     recorder = getattr(store, 'ops', None)
     if not recorder:
         raise RuntimeError('Observer enabled without recorder')
+    try:
+        from .display_receipts import install as install_receipts
+    except ImportError:
+        from evidenceguard.display_receipts import install as install_receipts
+    install_receipts(app, store)
     for name in ('evidenceguard.harness.providers', 'evidenceguard.video.providers'):
         module = importlib.import_module(name)
         for item in vars(module).values():
@@ -182,17 +206,47 @@ def attach(app, ops, native):
     runtime = importlib.import_module('evidenceguard.harness.runtime')
     source = Path(runtime.__file__).resolve().parents[1]
     video_service = getattr(app.state, 'videos', None)
+    if video_service and content.enabled():
+        from .retrieval import observe_search
+        observe_search(video_service, ops, recorder)
     configured_models = {
         'chat': getattr(app.state.agent.model_provider, 'model', None) or os.getenv('EG_MODEL_ID') or None,
         'image': getattr(getattr(video_service, 'vision', None), 'model', None) or os.getenv('EG_VIDEO_MODEL_ID') or os.getenv('EG_MODEL_ID') or None,
         'embedding': getattr(getattr(video_service, 'embedding', None), 'model', None) or os.getenv('EG_EMBED_MODEL_ID') or None,
     }
+    endpoint_vision = getattr(app.state,'endpoint_vision',None)
+    if endpoint_vision:
+        configured_models['endpoint_vision'] = endpoint_vision.configuration().get('model')
+    prompt_catalog = [ops.safe(endpoint_vision.prompt_catalog())] if endpoint_vision else []
+    if getattr(app.state,'visual_control',None):
+        from evidenceguard.vision.control import GROUNDING_PROMPT, GROUNDING_HASH
+        prompt_catalog.append(dict(operation='vision.ground_target',version='visual-step-v1',sha256=GROUNDING_HASH,
+                                   systemPrompt=GROUNDING_PROMPT,status='loaded_read_only_grounding'))
+    guard_tracking = None
+    try:
+        from evidenceguard.visual_skills.audit import GuardRun
+        from evidenceguard.visual_skills.harness import OBSERVER_PROMPT
+        guard_tracking = 'per_run_v1'
+        prompt_catalog.append(dict(operation='guard.observe', version=guard_tracking,
+            sha256=hashlib.sha256(OBSERVER_PROMPT.encode()).hexdigest(), systemPrompt=OBSERVER_PROMPT,
+            status='loaded_read_only_guard'))
+    except ImportError:
+        pass  # Older environments truthfully keep their previous coverage.
     state = {'startedAt': time.time(), 'pid': os.getpid(), 'appVersion': app.version,
              'environment': os.getenv('EG_DASHBOARD_ENVIRONMENT','local'),
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
              'nativeOps': native, 'files': source_files(source),
+             'contentCapture': content.enabled(),
+             'guardTracking': guard_tracking,
+             'mediaCapture': os.getenv('EG_DASHBOARD_CAPTURE_MEDIA') == '1',
+             'localVision': endpoint_vision.local.configuration() if endpoint_vision else None,
+             'guardAuxEnabled': bool(endpoint_vision and endpoint_vision.local.guard_enabled),
+             'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
+             'embeddingSignature': getattr(video_service, 'index_signature', getattr(getattr(video_service, 'embedding', None), 'signature', None)),
+             'videoRoot': str(getattr(video_service, 'root', '')),
              'systemPrompt': ops.safe(getattr(runtime,'SYSTEM','')),
+             'promptCatalog': prompt_catalog,
              'tools': ops.safe(app.state.tools.schemas)}
     target = Path(recorder.path).with_name('observer-state.json')
     target.write_text(json.dumps(state, ensure_ascii=False),encoding='utf-8')
@@ -208,3 +262,4 @@ def attach(app, ops, native):
             await asyncio.to_thread(recorder.close)
     app.router.lifespan_context = observed_lifespan
     return app
+

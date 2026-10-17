@@ -105,3 +105,34 @@ def test_demo_import_keeps_ui_and_ignores_env_and_credentials(tmp_path):
     (source/'src/config.ts').write_text(config.replace("clientSecret: ''", "clientSecret: 'do-not-import'"))
     with pytest.raises(ValueError, match='empty defaults'):
         module.restore(source, target)
+
+
+def test_demo_1016_import_masks_token_and_removes_preset_accounts(tmp_path):
+    script = Path(__file__).resolve().parents[3]/'scripts/import_official_web_demo.py'
+    spec = importlib.util.spec_from_file_location('import_official_demo_token', script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    source, target = tmp_path/'source', tmp_path/'restored'
+    for relative in ['src/App.tsx', 'src/components/LivePanel.tsx', 'src/components/AIRawFramePanel.tsx', 'src/utils/load-sdk.ts']:
+        file = source/relative
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text('// original source\n')
+    config = ("export const DEFAULT_AUTH_CONFIG: AuthConfig = {\n" +
+              ''.join(f"  {key}: '',\n" for key in ['appName', 'clientId', 'clientSecret', 'presetKey', 'stationSn', 'eufyUserId', 'accountUuid', 'token']) +
+              "};\nconst STORAGE_KEY = 'eufy-web-sdk-demo-auth-config';\nlocalStorage.setItem('secret', 'value');")
+    (source/'src/config.ts').write_text(config)
+    (source/'src/components/AuthForm.tsx').write_text('<input\n value={form.token} />\n<button disabled={connecting}>preset</button>')
+    (source/'src/preset-teams.ts').write_text("export const PRESET_TEAMS = [{token:'synthetic-private-preset'}];")
+    (source/'src/services').mkdir()
+    (source/'src/services/connect.ts').write_text('onLog(`Token acquired: ${accessToken}`);\n// original login flow')
+    manifest = module.restore(source, target)
+    assert manifest['supportsDirectToken'] is True
+    assert 'synthetic-private-preset' not in (target/'src/preset-teams.ts').read_text(encoding='utf-8')
+    assert 'type="password"' in (target/'src/components/AuthForm.tsx').read_text(encoding='utf-8')
+    assert '!selectedTeam.token' in (target/'src/components/AuthForm.tsx').read_text(encoding='utf-8')
+    assert '${accessToken}' not in (target/'src/services/connect.ts').read_text(encoding='utf-8')
+    assert '// original login flow' in (target/'src/services/connect.ts').read_text(encoding='utf-8')
+    assert 'localStorage' not in (target/'src/config.ts').read_text(encoding='utf-8')
+    (source/'src/config.ts').write_text(config.replace("token: ''", "token: 'synthetic-private-default'"))
+    with pytest.raises(ValueError, match='empty defaults: token'):
+        module.restore(source, target)

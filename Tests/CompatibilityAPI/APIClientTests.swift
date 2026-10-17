@@ -43,6 +43,7 @@ private final class Requests {
 
 final class APIClientTests: XCTestCase {
     private var transports: [URLSession] = []
+    private var deliveries: [OpsDelivery] = []
     private let origin = URL(string: "https://eg-api-tests.invalid")!
 
     private func session(observations: Bool = false) -> URLSession {
@@ -53,7 +54,75 @@ final class APIClientTests: XCTestCase {
         return value
     }
     private func client() -> APIClient {
-        APIClient(baseURL: origin, transport: session(), observations: OpsDelivery(session: session(observations: true)), installationProof: { _ in "synthetic-installation-proof" })
+        let delivery = OpsDelivery(session: session(observations: true))
+        deliveries.append(delivery)
+        return APIClient(baseURL: origin, transport: session(), observations: delivery, installationProof: { _ in "synthetic-installation-proof" })
+    }
+
+    func testEventRecordingUploadKeepsDeviceScopeAndUnknownFileStart() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        try Data("synthetic API transport fixture".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        StubProtocol.install { item in
+            XCTAssertEqual(item.request.httpMethod, "POST")
+            XCTAssertEqual(item.request.url!.path, "/api/recordings")
+            let query = URLComponents(url: item.request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+            XCTAssertEqual(query.first { $0.name == "cameraId" }?.value, "sdk-camera-test")
+            XCTAssertEqual(query.first { $0.name == "title" }?.value, "设备事件录像 · 测试")
+            XCTAssertFalse(query.contains { $0.name == "recordedAt" }, "Event time is not automatically file start time")
+            XCTAssertEqual(item.request.value(forHTTPHeaderField: "Content-Type"), "application/octet-stream")
+            XCTAssertEqual(item.request.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+            item.reply(#"{"id":"video-test","cameraId":"sdk-camera-test","title":"设备事件录像 · 测试","sourceType":"uploaded","status":"queued","segmentCount":0,"playbackUrl":"/api/recordings/video-test/video"}"#, status: 202)
+        }
+        let result = try await client().uploadRecording(file, camera: "sdk-camera-test", recordedAt: nil, title: "设备事件录像 · 测试")
+        XCTAssertEqual(result.status, "queued")
+        XCTAssertNil(result.recordedAt)
+    }
+
+    func testEvidenceSearchImageRejectsAnotherOriginBeforeTransport() async {
+        StubProtocol.install { _ in XCTFail("Cross-origin evidence must not receive credentials") }
+        do { _ = try await client().videoSearchImage("https://other-origin.invalid/evidence.jpg"); XCTFail("Expected rejection") }
+        catch {}
+    }
+
+    func testLatestGuardVersionAndHistoryReferenceTravelTogether() async throws {
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            var bytes = item.request.httpBody ?? Data()
+            if bytes.isEmpty, let stream = item.request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 4096)
+                while true {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count <= 0 { break }
+                    bytes.append(contentsOf: buffer.prefix(count))
+                }
+            }
+            guard let body = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any] else {
+                XCTFail("Expected a JSON Agent request"); item.reply("{}", status: 400); return
+            }
+            XCTAssertEqual(item.request.url!.path, "/api/agent/runs")
+            XCTAssertEqual(body["clientPlatform"] as? String, "ios")
+            XCTAssertEqual(body["guardFlowVersion"] as? Int, 1)
+            if body["executionMode"] as? String == "history" {
+                XCTAssertEqual(body["referenceImageId"] as? String, "query-image-11111111111111111111111111111111")
+                XCTAssertEqual((body["historyFilter"] as? [String: Any])?["period"] as? String, "all")
+                item.reply(#"{"id":"history-run","conversationId":"history","message":"找这个物体","status":"completed","createdAt":1,"toolReceipts":[],"executionMode":"history","referenceImageId":"query-image-11111111111111111111111111111111"}"#)
+            } else {
+                XCTAssertNil(body["referenceImageId"])
+                item.reply(#"{"id":"live-run","conversationId":"live","message":"帮我看着包裹","status":"completed","createdAt":1,"toolReceipts":[],"guardDraftId":"scene-test"}"#)
+            }
+        }
+        let api = client()
+        let history = try await api.start(message: "找这个物体", conversation: "history", skill: nil,
+            camera: nil, requestID: "history-run", executionMode: "history", historyFilter: HistoryFilter(period: "all"),
+            referenceImageID: "query-image-11111111111111111111111111111111")
+        XCTAssertNotNil(history.referenceImageId)
+        XCTAssertNil(history.guardDraftId)
+        let live = try await api.start(message: "帮我看着包裹", conversation: "live", skill: nil,
+            camera: "sdk-test", requestID: "live-run")
+        XCTAssertEqual(live.guardDraftId, "scene-test")
+        XCTAssertNil(live.referenceImageId)
     }
 
     func testHardwareEnvelopeUsesBoundExecutorAndKeepsJSONTypes() async throws {
@@ -76,6 +145,28 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(IOSToolExecutor.deviceID("T8171TESTTOOLS1"), "sdk-e41d9c3701a5f085f9ea")
     }
 
+    func testEndpointAnalysisDecodesUnknownAndPreservesPrivateHeaders() async throws {
+        let requests = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            requests.append(item.request)
+            XCTAssertEqual(item.request.url!.path, "/api/visual-scenes/scene-test/analyze")
+            XCTAssertEqual(item.request.timeoutInterval, 90)
+            item.reply(#"{"status":"unknown","code":"NEEDS_SECOND_FRAME","reason":"只有一张画面","readOnly":true,"controlEligible":false,"limitation":"只读分析"}"#)
+        }
+        // Decode a legacy response: optional new fields must not break older services.
+        let body = #"{"id":"scene-test","cameraId":"sdk-test","prompt":"看住包裹","revision":2,"status":"active","stage":"review","question":"","unsupportedReason":"","reason":"等待采样","summary":"包裹看护","limitation":"前台观察","canActivate":false,"observation":{"state":"unknown","reason":"等待采样"},"evidenceIds":[]}"#
+        let scene = try JSONDecoder().decode(VisualScene.self, from: Data(body.utf8))
+        XCTAssertNil(scene.endpointVision)
+        let result = try await client().analyzeScene(scene)
+        XCTAssertEqual(result.status, "unknown")
+        XCTAssertNil(result.analysis)
+        XCTAssertNil(result.sources)
+        XCTAssertEqual(result.reason, "只有一张画面")
+        XCTAssertEqual(requests.all.first?.httpMethod, "POST")
+        XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+    }
+
     func testUnavailableInstallationProofDoesNotSendRequest() async throws {
         let requests = Requests()
         StubProtocol.install { item in requests.append(item.request); item.reply("{}") }
@@ -92,10 +183,15 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(requests.all.isEmpty)
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        // API completion deliberately does not await diagnostics. Close their
+        // owner first so a queued Task cannot use an invalidated URLSession in
+        // the next test or deliver an old receipt to its URLProtocol handler.
+        for delivery in deliveries { await delivery.close() }
+        deliveries.removeAll()
         transports.forEach { $0.invalidateAndCancel() }
         transports.removeAll()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     func testLegacyCaptureFlowCompletesWhileObservationsAreStalled() async throws {
@@ -144,6 +240,40 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(captured.dropFirst().allSatisfy { $0.value(forHTTPHeaderField: "X-EG-Media-Session") == "synthetic-media-token" })
         XCTAssertEqual(captured.first { $0.url!.lastPathComponent == "frames" }?.value(forHTTPHeaderField: "X-EG-Trace-ID"), "capture-test")
         XCTAssertTrue(diagnostics.all.allSatisfy { $0.value(forHTTPHeaderField: "X-EG-Media-Session") == nil })
+    }
+
+    func testDisplayReceiptUsesSeparateTransportAndHashesOnly() async throws {
+        let received = expectation(description: "display hashes delivered")
+        let diagnostics = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path == "/api/ops/display-receipts" {
+                diagnostics.append(item.request)
+                item.reply("{}", status: 404) // Older servers may not support the optional receipt.
+                received.fulfill()
+            } else if item.request.url!.path == "/api/ops/client-events" { item.reply("{}") }
+            else { item.reply(#"{"id":"live-test","deviceId":"sdk-test","token":"synthetic-media-token"}"#) }
+        }
+        let api = client()
+        api.observeDisplay(runID: "run-test", status: "completed", backendHash: String(repeating: "a", count: 64), displayHash: String(repeating: "b", count: 64))
+        await fulfillment(of: [received], timeout: 2)
+        let live = try await api.startMedia("sdk-test")
+        XCTAssertEqual(live.id, "live-test")
+        let request = try XCTUnwrap(diagnostics.all.first)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertNotNil(request.value(forHTTPHeaderField: "X-EG-Installation-ID"))
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-EG-Media-Session"))
+        var data = request.httpBody ?? Data()
+        if let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable { let count = stream.read(&buffer, maxLength: buffer.count); if count <= 0 { break }; data.append(contentsOf: buffer.prefix(count)) }
+        }
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(body["backendTextHash"] as? String, String(repeating: "a", count: 64))
+        XCTAssertEqual(body["displayTextHash"] as? String, String(repeating: "b", count: 64))
+        XCTAssertEqual(body["presentationVersion"] as? String, ChatPresentation.version)
+        XCTAssertNil(body["text"]); XCTAssertNil(body["answer"])
     }
 
     func testUnavailableCollectorDoesNotReplaceBusinessErrors() async throws {
@@ -236,5 +366,8 @@ final class APIClientTests: XCTestCase {
         StubProtocol.install { item in requests.append(item.request); item.reply("{}", status: 503) }
         await delivery.send(request)
         XCTAssertEqual(requests.all.count, 3, "Failure must release a diagnostic slot")
+        await delivery.close()
+        await delivery.send(request)
+        XCTAssertEqual(requests.all.count, 3, "Closed delivery must discard late diagnostic tasks")
     }
 }

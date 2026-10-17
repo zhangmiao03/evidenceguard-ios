@@ -4,6 +4,7 @@ Uses a simulated HTTP model transport, never production credentials or hardware.
 Does not copy the deployed source, mutate production data, or start workers.
 """
 import asyncio
+import argparse
 from contextlib import ExitStack
 import json
 import os
@@ -13,6 +14,8 @@ import tempfile
 
 
 def main():
+    parser=argparse.ArgumentParser();parser.add_argument('--capture-content',action='store_true')
+    capture=parser.parse_args().capture_content
     with tempfile.TemporaryDirectory(prefix='eg-observer-test-') as temp, ExitStack() as cleanup:
         for key in list(os.environ):
             if key.startswith('EG_'):del os.environ[key]
@@ -21,17 +24,18 @@ def main():
             EG_ACCESS_TOKEN='compatibility-only-'+('x'*40),EG_MODEL_BASE_URL='https://model.invalid/v1',
             EG_MODEL_ID='compatibility-transport',EG_MODEL_API_KEY='compatibility-placeholder',
             EG_MEDIA_ROOT=temp+'/media')
+        os.environ['EG_DASHBOARD_CAPTURE_CONTENT']='1' if capture else '0'
         import httpx
-        requests=[]
+        requests=[];final_run={}
         original_post=httpx.AsyncClient.post
         async def simulated_post(self,url,*args,**kwargs):
             if str(url)=='https://sdk.invalid/device':
                 return httpx.Response(200,json={'status':'sdk-response'},request=httpx.Request('POST',url))
             assert str(url)=='https://model.invalid/v1/chat/completions','Unexpected external request in compatibility test'
-            body=kwargs['json'];requests.append(body)
+            body=kwargs['json'];requests.append(json.loads(json.dumps(body)))
             message={'role':'assistant','content':'Compatibility check complete.'} if len(requests)>1 else {
                 'role':'assistant','content':None,'tool_calls':[{'id':'call-test','type':'function','function':{'name':'list_camera_capabilities','arguments':'{}'}}]}
-            return httpx.Response(200,json={'choices':[{'message':message}],'usage':{'prompt_tokens':8,'completion_tokens':4,'total_tokens':12}},request=httpx.Request('POST',url))
+            return httpx.Response(200,json={'choices':[{'message':message}],'usage':{'prompt_tokens':8,'completion_tokens':4,'total_tokens':12}},headers={'x-request-id':'compat-request-'+str(len(requests))},request=httpx.Request('POST',url))
         httpx.AsyncClient.post=simulated_post
         from eg_dashboard.bridge import load_ops, instrument, attach
         ops,native=load_ops();instrument(ops,native)
@@ -69,6 +73,7 @@ def main():
                 assert current['status']=='completed', 'Agent loop did not complete'
                 assert len(requests)==2,'Expected model -> tool -> model'
                 assert any(m.get('role')=='tool' for m in requests[1]['messages'])
+                final_run.update(current)
             finally:
                 ops.CTX.reset(ctx);ops.RECORDER.reset(token)
                 await app.state.agent.shutdown()
@@ -79,6 +84,14 @@ def main():
         bootstrap=client.get('/api/bootstrap',headers={'Authorization':'Bearer '+os.environ['EG_ACCESS_TOKEN']})
         assert bootstrap.status_code==200
         assert isinstance(bootstrap.json()['cameras'],list)
+        display_path='/api/ops/display-receipts'
+        receipt=dict(id='display-check',runId='compatibility-run',backendTextHash='a'*64,displayTextHash='b'*64,
+                     presentationVersion='test-v1',appVersion='compatibility',platform='ios',status='completed')
+        assert client.post(display_path,json=receipt).status_code==401, 'Display receipt lost App authentication'
+        headers={'Authorization':'Bearer '+os.environ['EG_ACCESS_TOKEN'],'X-EG-Installation-ID':'compatibility-client'}
+        assert client.post(display_path,json={**receipt,'body':'forbidden'},headers=headers).status_code==422
+        receipt['runId']='display-only-test'
+        assert client.post(display_path,json=receipt,headers=headers).json()['accepted']==1
         asyncio.run(checks());app.state.store.ops.flush()
         rows=app.state.store.ops.bundle()['records']
         linked=[r for r in rows if r['traceId']=='compatibility-run']
@@ -89,8 +102,27 @@ def main():
         assert any(r['name']=='agent.result' for r in linked)
         assert any(r['name']=='agent.finished' and r['status']=='completed' for r in linked)
         assert 'compatibility-placeholder' not in json.dumps(rows)
+        with app.state.store.ops.lock:
+            critical=app.state.store.ops.db.execute('SELECT count(*) FROM critical_records').fetchone()[0]
+        assert critical>0, 'Separate Agent retention unavailable'
+        if capture:
+            from eg_dashboard.collector import public_record
+            public=[public_record(r) for r in linked]
+            prompts=[r['data'] for r in public if r['kind']=='prompt']
+            models=[r['data'] for r in public if r['kind']=='model']
+            assert all(p['capture']['mode']=='full_redacted' for p in prompts)
+            assert prompts[0]['request']['messages'][0]['content']==requests[0]['messages'][0]['content']
+            assert any(m.get('tool_call_id')=='call-test' for m in prompts[1]['request']['messages'])
+            assert models[1]['content']['response']['choices'][0]['message']['content']=='Compatibility check complete.'
+            assert all(m['providerRequestId'].startswith('compat-request-') for m in models)
+            assert all(m['usage']['total_tokens']==12 for m in models)
+            tools=[r['data']['content'] for r in public if r['name']=='tool.finished']
+            assert tools and all('arguments' in t and 'result' in t for t in tools)
+            result=next(r['data']['content'] for r in public if r['name']=='agent.result')
+            assert result['answer']==final_run['text'], 'Final App answer differs from captured result'
+            assert 'compatibility-placeholder' not in json.dumps(public)
         print(json.dumps({'ok':True,'nativeOps':native,'appVersion':app.version,'simulatedModelRequests':len(requests),
-                          'linkedRecords':len(linked),'assertions':['health','API authentication','camera listing','tool name argument','unauthorized tool rejection','model-tool-model loop','prompt linkage','no duplicate HTTP observations']}))
+                          'linkedRecords':len(linked),'fullContent':capture,'assertions':['health','API authentication','camera listing','tool name argument','unauthorized tool rejection','model-tool-model loop','prompt linkage','no duplicate HTTP observations','full body linkage when enabled']}))
         httpx.AsyncClient.post=original_post
 
 

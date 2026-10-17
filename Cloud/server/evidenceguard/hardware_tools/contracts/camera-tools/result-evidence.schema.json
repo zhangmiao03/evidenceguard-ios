@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvidenceGuard 0.3.0 result evidence fields (subset of Operation)",
+  "type": "object",
+  "required": ["sdkAccepted", "observedEffect", "artifactValidated", "humanVerified", "validationScope"],
+  "properties": {
+    "sdkAccepted": {"type": ["boolean", "null"], "description": "Only the reported SDK route outcome; null for simulation or unknown."},
+    "observedEffect": {"enum": ["unconfirmed", "confirmed", "not_observed", "failed", "not_applicable"]},
+    "artifactValidated": {"enum": ["unvalidated", "integrity_checked", "decoded", "not_applicable"]},
+    "humanVerified": {"type": "boolean", "description": "Human reviewed this operation; this boolean alone is not a passed capability or physical success."},
+    "validationScope": {
+      "type": "object", "required": ["component", "platform", "deviceId", "model", "sdkVersion", "sdkArtifactHash", "firmwareVersion", "capabilityRevision"],
+      "properties": {
+        "component": {"const": "evidenceguard_adapter"}, "platform": {"enum": ["Android", "iOS", "Web"]},
+        "deviceId": {"type": "string"}, "model": {"enum": ["T8171", "T8214"]}, "sdkVersion": {"type": "string"},
+        "sdkArtifactHash": {"type": "string"}, "firmwareVersion": {"type": "string"}, "capabilityRevision": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "decodedFrame": {
+      "type": "object",
+      "required": ["sourceKind", "deviceId", "sessionId", "sequence", "previousSequence", "lastFrameAt", "capturedAt", "playState", "progressSource", "dimensions"],
+      "properties": {
+        "sourceKind": {"const": "decoded_live_frame"}, "deviceId": {"type": "string", "minLength": 1},
+        "sessionId": {"type": "string", "minLength": 1, "maxLength": 128},
+        "sequence": {"type": "integer", "minimum": 1}, "previousSequence": {"type": "integer", "minimum": 0},
+        "lastFrameAt": {"type": "number", "description": "Executor local UTC milliseconds at actual decoder callback; not camera sensor clock."},
+        "capturedAt": {"type": "number", "description": "Executor local UTC milliseconds at capture."},
+        "playState": {"const": "playing"}, "progressSource": {"enum": ["decoder_callback", "video_frame_timestamp"]},
+        "dimensions": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 1, "maximum": 16384}}
+      },
+      "description": "Runtime also verifies same device, sequence > previousSequence, <=2000 ms decoder age, matching image dimensions, owned media bytes, and non-future clock. Schema alone does not prove freshness."
+    }
+  }
+}

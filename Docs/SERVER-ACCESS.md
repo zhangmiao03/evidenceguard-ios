@@ -1,6 +1,8 @@
 # EvidenceGuard 服务器与访问
 
-2026-10-15 最新状态：手机 `evidenceguard-demo` 已启用官方 **Codex App Server 0.162.1**，使用原豆包模型。实际业务目录为 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`，由 `60-codex-runtime.conf` 指定；入口继续为 `eg_dashboard.bootstrap:app`，保留现有 Dashboard。该发布从当时实际运行的 `tools-6336a97c95c4bc5a` 复制，更新 `b4b2c16` 的 harness/runtime.py、harness/contract.py、harness/codex.py、assistant_identity.py 四个文件，保留同事硬件确认和操作回执。**不要再把 `/opt/evidenceguard-demo/Cloud/server` 当作当前运行目录；后续先核对 systemd ExecStart。** 线上三轮对话的 Codex 执行回执、三环境 HTTPS/令牌隔离、库完整性和源码哈希均通过。未分发新 App。详见 [执行器说明](CODEX-CLOUD.md) 和 [上线验证](verification/codex-cloud-2026-10-15.txt)。
+2026-10-16 源码整合说明：最近的部署记录使用 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`，由 `70-briefing-runtime.conf` 选择。本文下方保留各次发布历史；实际维护必须重新读取 systemd ExecStart / DropInPaths。本次合并没有发布服务，不能用仓库 HEAD 代替线上版本。最新来源比对见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。
+
+2026-10-15 Codex 发布记录：手机 `evidenceguard-demo` 启用官方 **Codex App Server 0.162.1**，使用原豆包模型。当时业务目录为 `/opt/evidenceguard-demo/releases/codex-20261015/Cloud/server`，由 `60-codex-runtime.conf` 指定；入口继续为 `eg_dashboard.bootstrap:app`，保留现有 Dashboard。该发布从当时实际运行的 `tools-6336a97c95c4bc5a` 复制，更新 `b4b2c16` 的 harness/runtime.py、harness/contract.py、harness/codex.py、assistant_identity.py 四个文件，保留硬件确认和操作回执。线上三轮对话的 Codex 执行回执、三环境 HTTPS/令牌隔离、库完整性和源码哈希均通过。当次未分发新 App。详见 [执行器说明](CODEX-CLOUD.md) 和 [上线验证](verification/codex-cloud-2026-10-15.txt)。
 
 2026-10-14：手机、团队联调和 Apple 审核服务已迁入新加坡。三套服务保留原来的独立账号、数据库、录像和访问令牌，每套只有一个应用进程。美国实例 `i-06744490347d73778` 已删除，AWS 已确认 `terminated`。旧地址不再提供服务，手机须在 TestFlight 更新到 `1.0 (5)`。
 
@@ -26,11 +28,31 @@
 | 团队联调 | `https://team.47.131.21.137.sslip.io` | `evidenceguard` / `/var/lib/evidenceguard` |
 | Apple 审核 | `https://review.47.131.21.137.sslip.io` | `evidenceguard-review` / `/var/lib/evidenceguard-review` |
 
-手机当前源码在 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`；团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
+手机原始源码在 `/opt/evidenceguard-demo/Cloud/server`，后续 demo 使用独立 release 目录，不能再把原始目录当作运行版本。维护前用 `systemctl show evidenceguard-demo -p ExecStart -p DropInPaths` 核对实际路径；10 月 15～16 日的发布与差异见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。团队和审核共用 `/opt/evidenceguard/Cloud/server`，只共用源码，不共用数据和凭证。模型密钥留在服务器的 `/etc/<服务名>/cloud.env`，不提交到 Git 或聊天。
 
 三个 HTTPS 入口使用受信任证书，每六小时检查续期；三个证书的续期演练均已成功。地址依赖当前 Elastic IP，不能释放或更换它后仍期望旧地址有效。换笔记本 Wi-Fi 不会改变服务器地址。
 
 ## 管理连接
+
+2026-10-16（新加坡时间）重新通过 Codex 内置浏览器授权 AWS CLI 后，AWS 查询确认实例仍为 `i-010907ed19e2cc23a`，公网 IP 仍是 **47.131.21.137**，状态 `running` / SSM `Online`；五个应用与监控服务均 `active`。更换笔记本网络不需要改服务器 IP 或开放新的 SSH 来源。SSM 按实例 ID 连接。
+
+Windows 快捷脚本现在会读取已启用的系统 HTTP/HTTPS 代理，仅用于本次进程；不会更改系统代理或关闭证书验证。显式的 `HTTP_PROXY` / `HTTPS_PROXY` 优先；可用 `-NoSystemProxy`（PowerShell）或 `--no-system-proxy`（Python）禁止自动继承。当前机器的系统代理在 `127.0.0.1:7890`，脚本不写死这个地址。PAC/需交互认证的代理不自动解析，需要设置可用的代理环境变量。
+
+本轮续期后也已验证 AWS 直连可用。当前代理曾偶发 `UNEXPECTED_EOF_WHILE_READING`，出现该错误时可使用上述直连参数；上传脚本也支持 `python Cloud/dashboard/upload_release.py ARCHIVE --no-system-proxy`。若输出已有 SSM command ID，先用 `cloud_command.py --resume ID --no-system-proxy` 查询原命令结果，再决定是否重试，避免重复执行部署。
+
+```powershell
+# 在仓库根目录执行；status 同时查询 AWS 当前公网 IP 与 SSM 状态。
+.\scripts\cloud_session.ps1 -Action status
+.\scripts\cloud_session.ps1
+
+# 执行只读检查；运行失败时先看 SSM command ID，使用 --resume 查询，避免重复执行。
+python scripts/cloud_command.py --command 'systemctl is-active evidenceguard-demo'
+
+# 仅当 AWS 临时登录过期时重新授权；不需要每次打开 Web 控制台。
+.\scripts\cloud_session.ps1 -Action login
+```
+
+AWS 控制台密码不作为 SSH 密码，也不存进脚本。CLI 临时凭证由 AWS CLI 管理；不要把登录缓存、验证码或密钥发送给其他会话或提交仓库。
 
 2026-10-15：Windows 本机已用 `evidenceguard-prod15` profile 完成临时 AWS CLI 登录，并实际打开 SSM shell、执行 `whoami` 后正常退出。PowerShell 快捷入口为 `.\scripts\cloud_session.ps1`；`-Action status` 查看状态，`-Action login` 更新过期登录。比赛只读监控入口为 **http://47.131.21.137/dashboard**。部署和权限边界见 [云端 Dashboard](CLOUD-DASHBOARD.md)。
 

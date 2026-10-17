@@ -47,6 +47,10 @@ if [[ "$status" != connected ]]; then
   exit 1
 fi
 echo "SSM Connected: $instance_id (ap-southeast-1). This check is not a successful shell session."
+if [[ "$mode" == check ]]; then
+  "${aws_cmd[@]}" ec2 describe-instances --instance-ids "$instance_id" \
+    --query 'Reservations[].Instances[].{Instance:InstanceId,State:State.Name,PublicIp:PublicIpAddress,PrivateIp:PrivateIpAddress}' --output table
+fi
 if [[ "$mode" == connect ]]; then
   if ! command -v session-manager-plugin >/dev/null 2>&1; then
     echo 'Session Manager plugin is missing. See https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html' >&2

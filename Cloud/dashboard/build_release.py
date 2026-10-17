@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import subprocess
 import tarfile
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -28,10 +29,30 @@ def build(output, revision=None):
     def put(archive,name,data):
         info=tarfile.TarInfo(name);info.size=len(data);info.mode=0o644
         archive.addfile(info,io.BytesIO(data))
+    website=io.BytesIO()
+    with zipfile.ZipFile(website,'w',zipfile.ZIP_DEFLATED) as package:
+        for p in sorted((ROOT/'Web/dist').rglob('*')):
+            if p.is_file() and (p==index or p.parent.name=='assets'):
+                package.writestr('dashboard/'+p.relative_to(ROOT/'Web/dist').as_posix(),p.read_bytes())
+        package.writestr('index.html','<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=dashboard/index.html?view=showcase"><title>EvidenceGuard</title><a href="dashboard/index.html?view=showcase">打开 EvidenceGuard 作品</a></html>')
+        package.writestr('README.txt',('EvidenceGuard competition website\nReference: '+revision+'\n\n'+
+            'Upload the entire extracted folder to your static website root. Entry: /dashboard/index.html?view=showcase\n'+
+            'Local preview: python -m http.server 8080 ; open http://127.0.0.1:8080/\n'+
+            'The iOS preview is a browser interaction demo with synthetic, local-only state. It does not run native iOS or connect hardware.\n'+
+            'Live monitoring needs the existing same-origin /dashboard/api proxy and the read-only collector.\n'+
+            'On a static host, use the iOS demo or import a sanitized offline JSON export. No backend data or credentials are bundled.\n'+
+            'Live URL: https://demo.47.131.21.137.sslip.io/dashboard?view=showcase\n'+
+            'Backend deployment source and instructions: https://github.com/zhangmiao03/evidenceguard-ios/tree/dongrunze/Cloud/dashboard\n'))
+    (output.parent/'evidenceguard-website.zip').write_bytes(website.getvalue())
     with tarfile.open(output,'w:gz') as archive:
         for p in sorted((ROOT/'Cloud/dashboard/eg_dashboard').glob('*.py')):
             put(archive,'eg_dashboard/'+p.name,p.read_bytes())
         put(archive,'eg_dashboard/_ops_runtime.py',(ROOT/'Cloud/server/evidenceguard/ops.py').read_bytes())
+        put(archive,'capture_briefing.py',(ROOT/'Cloud/dashboard/capture_briefing.py').read_bytes())
+        put(archive,'verify_guard_replay.py',(ROOT/'Cloud/dashboard/verify_guard_replay.py').read_bytes())
+        for name in ('trace_retention', 'display_receipts'):
+            put(archive,'eg_dashboard/'+name+'.py',(ROOT/'Cloud/server/evidenceguard'/ (name+'.py')).read_bytes())
+        put(archive,'web/downloads/evidenceguard-website.zip',website.getvalue())
         for p in sorted((ROOT/'Web/dist').rglob('*')):
             # Deliberately exclude official SDK binaries, user files and media.
             if p.is_file() and (p==index or p.parent.name=='assets'):

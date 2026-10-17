@@ -1,1 +1,1 @@
-"""Product integration of the team's audited AgentTools v0.2.0 runtime."""
+"""Product integration of the team's audited AgentTools v0.3.0 runtime."""

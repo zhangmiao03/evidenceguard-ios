@@ -155,12 +155,12 @@ export function reportPreferences(p: Preferences): Preferences {
     morningHour: p.morningHour ?? 8, eveningHour: p.eveningHour ?? p.summaryHour };
 }
 export type Memory = {
-  source?: string;
-  sourceQuote?: string;
   id: string;
   content: string;
   createdAt: number;
   expiresAt?: number | null;
+  source?: string;
+  sourceQuote?: string;
 };
 export type Notice = {
   id: string;
@@ -186,7 +186,7 @@ export type AssistantMessage = Notice & {
   }[];
 };
 export type Personal = {
-  automaticMemory?: { enabled: boolean; pending: number; status: string; reason: string };
+  automaticMemory?: { enabled: boolean; pending: number; status: string; reason: string } | null;
   revision: number;
   preferences: Preferences;
   memories: Memory[];

@@ -1,0 +1,404 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-16",
+  "notProductionAuthorization": true,
+  "scope": {
+    "component": "official_android_demo",
+    "platform": "Android",
+    "sdkVersion": "2.2.7",
+    "sdkArtifactHash": "27916001d9f973361910e2a59da3a870f540f3038816dfc6141b3d33c633f87a",
+    "appVersion": "2.2.7 (44)",
+    "environment": "vivo V2408A / Android 16 / arm64-v8a",
+    "firmwareVersion": "not_recorded",
+    "deviceInstances": "local_report_only",
+    "identity": "already_bound_test_account"
+  },
+  "sourceHashes": {
+    "ANDROID-HARDWARE-VALIDATION-2026-10-16.md": "e05dd875d3d75c32bc6a682329438995d4211cdd9fe5e9d005700140e05bd1e8",
+    "hardware-test-summary.json": "17803909b684e206b0d89c25f21e7390dce6708aa11d2db1966403f5a60be42b",
+    "media-validation.json": "71a8a8905d34366dc16faa79ccccbc146b7e6e7f64c61d9a2d397b0eb17941b2"
+  },
+  "runtimeDoorbellModesObserved": [
+    {
+      "value": 5,
+      "label": "Picture-in-Picture — Sub Bottom-Right"
+    },
+    {
+      "value": 9,
+      "label": "Picture-in-Picture — Main Bottom-Right"
+    },
+    {
+      "value": 12,
+      "label": "Split View"
+    }
+  ],
+  "cases": [
+    {
+      "id": "ANDROID-DEMO-20261016-01",
+      "models": [
+        "T8171",
+        "T8214"
+      ],
+      "capability": "account.bound_device_list",
+      "status": "passed",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Existing token login; two bound devices Online. Provisioning and account sharing not tested.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-02",
+      "models": [
+        "T8171"
+      ],
+      "capability": "live.open_and_reopen",
+      "status": "passed",
+      "sdkAccepted": true,
+      "observedEffect": "confirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Real fresh frames; reopen reached Playing. Not iOS or Cloud acceptance.",
+      "localEvidenceNames": [
+        "t8171-reopen-live.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-03",
+      "models": [
+        "T8171"
+      ],
+      "capability": "ptz.step",
+      "status": "passed",
+      "sdkAccepted": true,
+      "observedEffect": "confirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": true,
+      "detail": "Four directions observed; initial UP no clear motion, DOWN then UP produced motion. No angle precision claim.",
+      "localEvidenceNames": [
+        "t8171-right-tap.json",
+        "t8171-up-tap.json",
+        "t8171-down-tap.json",
+        "t8171-up-after-down.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-04",
+      "models": [
+        "T8171"
+      ],
+      "capability": "ptz.hold_stop",
+      "status": "passed_bounded_case",
+      "sdkAccepted": true,
+      "observedEffect": "confirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": true,
+      "detail": "LEFT hold 1100 ms; start and stop(direction=LEFT) ACK code 0; user confirmed moved and stopped. Physical stop latency not measured.",
+      "localEvidenceNames": [
+        "t8171-left-hold-release.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-05",
+      "models": [
+        "T8171"
+      ],
+      "capability": "ptz.angle_trajectory",
+      "status": "unverified_not_promised",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "No closed-loop pose, absolute-angle or trajectory acceptance.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-06",
+      "models": [
+        "T8214"
+      ],
+      "capability": "ptz",
+      "status": "documented_not_applicable",
+      "sdkAccepted": null,
+      "observedEffect": "not_applicable",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Doorbell dual camera is not mechanical PTZ.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-07",
+      "models": [
+        "T8214"
+      ],
+      "capability": "live.open",
+      "status": "passed_initial_session",
+      "sdkAccepted": true,
+      "observedEffect": "confirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Initial real frames verified; later stalled.",
+      "localEvidenceNames": [
+        "t8214-live-ready.png"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-08",
+      "models": [
+        "T8214"
+      ],
+      "capability": "dual.mode",
+      "status": "sdk_only_effect_unconfirmed",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Runtime modes 5,9,12; changes 9->12->5->9 ACK success. PIP/split visual layout not confirmed. No two independent stream URLs.",
+      "localEvidenceNames": [
+        "t8214-split-view.json",
+        "t8214-pip-sub.json",
+        "t8214-pip-main-restore.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-09",
+      "models": [
+        "T8214"
+      ],
+      "capability": "live.reconnect",
+      "status": "failed_attempt",
+      "sdkAccepted": null,
+      "observedEffect": "failed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Reopen Loading; later still old frame. Cause and duration limit not established.",
+      "localEvidenceNames": [
+        "t8214-reopen-live.json",
+        "t8214-reconnect-check.png"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-10",
+      "models": [
+        "T8171"
+      ],
+      "capability": "media.frame_capture",
+      "status": "passed_artifact",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "metadata_checked",
+      "humanVerified": false,
+      "detail": "Decoded live frame JPEG 1920x1080. Not device-native still shutter.",
+      "localEvidenceNames": [
+        "t8171-sdk-screenshot.json",
+        "t8171-sdk-captured.jpg"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-11",
+      "models": [
+        "T8214"
+      ],
+      "capability": "media.frame_capture",
+      "status": "passed_artifact",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "metadata_checked",
+      "humanVerified": false,
+      "detail": "Decoded live frame JPEG 1024x768. Lens mapping not confirmed.",
+      "localEvidenceNames": [
+        "t8214-sdk-screenshot.json",
+        "t8214-sdk-captured.jpg"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-12",
+      "models": [
+        "T8171"
+      ],
+      "capability": "media.client_record",
+      "status": "passed_artifact",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "decoded",
+      "humanVerified": false,
+      "detail": "Client MP4 H264+AAC, 4.526 sec, full decode passed. Not on-device storage or cloud sync.",
+      "localEvidenceNames": [
+        "t8171-short-record.json",
+        "t8171-sdk-recorded.mp4"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-13",
+      "models": [
+        "T8214"
+      ],
+      "capability": "media.client_record",
+      "status": "failed_attempt",
+      "sdkAccepted": null,
+      "observedEffect": "failed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Blocked by resolution not ready; no file. Does not prove recording unsupported.",
+      "localEvidenceNames": [
+        "t8214-short-record.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-14",
+      "models": [
+        "T8171"
+      ],
+      "capability": "audio.talk",
+      "status": "sdk_state_only",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Loading->Talking->Idle. Manual hearing, duplex and quality pending.",
+      "localEvidenceNames": [
+        "t8171-talk-start-stop.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-15",
+      "models": [
+        "T8214"
+      ],
+      "capability": "audio.talk",
+      "status": "not_tested",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Manual hearing and start/stop pending.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-16",
+      "models": [
+        "T8171"
+      ],
+      "capability": "audio.player_mute",
+      "status": "sdk_call_only",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "setMute true then false; device microphone and speaker configuration not tested.",
+      "localEvidenceNames": [
+        "t8171-sound-toggle-restore.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-17",
+      "models": [
+        "T8214"
+      ],
+      "capability": "audio.player_mute",
+      "status": "sdk_call_only",
+      "sdkAccepted": true,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "setMute true then false while stream invalid; hearing not verified.",
+      "localEvidenceNames": [
+        "t8214-sound-toggle-restore.json"
+      ]
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-18",
+      "models": [
+        "T8171",
+        "T8214"
+      ],
+      "capability": "network.provisioning_ble_sharing",
+      "status": "manual_required",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Already paired baseline only; LAN/WAN/hotspot/concurrency/sharing not verified.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-19",
+      "models": [
+        "T8171",
+        "T8214"
+      ],
+      "capability": "storage.events_playback_sync",
+      "status": "manual_required",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Card/offline recording, event delivery, history download and upload not tested.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-20",
+      "models": [
+        "T8171",
+        "T8214"
+      ],
+      "capability": "configuration.advanced",
+      "status": "manual_required",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "PTZ speed/preset/calibration/panorama, image, detection, privacy, light, night and alarms pending per-device.",
+      "localEvidenceNames": []
+    },
+    {
+      "id": "ANDROID-DEMO-20261016-21",
+      "models": [
+        "T8171",
+        "T8214"
+      ],
+      "capability": "ios_cloud.end_to_end",
+      "status": "not_tested",
+      "sdkAccepted": null,
+      "observedEffect": "unconfirmed",
+      "artifactValidated": "unvalidated",
+      "humanVerified": false,
+      "detail": "Official Android test does not promote iOS/Web/Agent verification.",
+      "localEvidenceNames": []
+    }
+  ],
+  "mediaMetadata": {
+    "video": {
+      "sha256": "67f06c464c20b1f77dd2e9ac3e6d258717d49087394703cd83bec1c09cab4314",
+      "containerSeconds": 4.526,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "width": 1920,
+      "height": 1080,
+      "videoFrames": 67,
+      "bytes": 246583,
+      "audibilityVerified": false
+    },
+    "images": [
+      {
+        "sha256": "7690a47fa4a67bda0237c131a44968f730295363d55e3cba9b60fe44dec0f9f1",
+        "width": 1920,
+        "height": 1080,
+        "bytes": 765789
+      },
+      {
+        "sha256": "b777b7719be7ac7c098330a4f81ac66b9e57d81b5981c0fc1e4b57e4a3612c06",
+        "width": 1024,
+        "height": 768,
+        "bytes": 220985
+      }
+    ]
+  },
+  "limitations": [
+    "Reference-only: no EvidenceGuard adapter, iOS, Web or cloud validation",
+    "No device instance or firmware equivalence implied",
+    "A single bounded PTZ case is not a speed/angle/trajectory guarantee",
+    "No local media bytes, device SNs, credentials or network topology included"
+  ]
+}

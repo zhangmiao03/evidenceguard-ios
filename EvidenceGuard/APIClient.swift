@@ -61,6 +61,10 @@ struct APIClient {
         self.installationProof = installationProof
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
+    func analyzeScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
+        // Covers the server's bounded queue + model deadline, without retrying.
+        try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision":scene.revision], timeout: 90)
+    }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
     func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }
     func disconnectConnector(_ provider: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)", method: "DELETE", body: Optional<String>.none) }
@@ -159,14 +163,40 @@ struct APIClient {
     func acknowledgeReplay(_ id: String) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-acknowledge", body: [String: String]()) }
     func replayTransport(_ id: String, online: Bool) async throws -> VisualSkill { try await send("/api/skills/\(id)/replay-transport", body: ["online": online]) }
     func indexRecording(_ id: String) async throws -> VideoRecording { try await send("/api/recordings/\(id)/index", body: [String: String]()) }
-    func uploadRecording(_ file: URL, camera: String, recordedAt: Double?) async throws -> VideoRecording {
+    func deleteRecording(_ id: String) async throws {
+        struct Result: Decodable { var status: String }
+        let _: Result = try await send("/api/recordings/\(id)", method: "DELETE", body: Optional<String>.none)
+    }
+    func searchVideos(_ input: VideoSearchInput) async throws -> VideoSearchResult { try await send("/api/video-search", body: input) }
+    func videoSearch(_ id: String) async throws -> VideoSearchResult { try await get("/api/video-search/\(id)") }
+    func videoSearchImage(_ path: String) async throws -> Data {
+        guard let url = absoluteURL(path) else { throw APIProblem(message: "图片地址无效") }
+        var request = URLRequest(url: url); try authorize(&request)
+        let (data, response) = try await transport.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { throw APIProblem(message: "图片暂不可用") }
+        return data
+    }
+    func uploadSearchImage(_ data: Data) async throws -> VideoSearchImage {
+        guard !data.isEmpty && data.count <= 5_000_000 else { throw APIProblem(message: "参考图片不能超过 5 MB") }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/video-search-images"))
+        request.httpMethod = "POST"; request.timeoutInterval = 60; try authorize(&request)
+        request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let (value, response) = try await transport.upload(for: request, from: data)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let json = (try? JSONSerialization.jsonObject(with: value)) as? [String: Any]
+            throw APIProblem(message: json?["detail"] as? String ?? "参考图片上传失败，请重试")
+        }
+        return try JSONDecoder().decode(VideoSearchImage.self, from: value)
+    }
+    func uploadRecording(_ file: URL, camera: String, recordedAt: Double?, title: String? = nil) async throws -> VideoRecording {
         let resource = file.startAccessingSecurityScopedResource()
         defer { if resource { file.stopAccessingSecurityScopedResource() } }
         let size = (try file.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0
         guard size > 0 && size <= 150_000_000 else { throw APIProblem(message: "请选择不超过 150 MB 的录像") }
         var url = URLComponents(url: baseURL.appendingPathComponent("api/recordings"), resolvingAgainstBaseURL: true)!
-        url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: file.deletingPathExtension().lastPathComponent)]
+        url.queryItems = [URLQueryItem(name: "cameraId", value: camera), URLQueryItem(name: "title", value: title ?? file.deletingPathExtension().lastPathComponent)]
         if let recordedAt { url.queryItems?.append(URLQueryItem(name: "recordedAt", value: String(recordedAt))) }
+        url.queryItems?.append(URLQueryItem(name: "recordedTimezone", value: TimeZone.current.identifier))
         var request = URLRequest(url: url.url!); request.httpMethod = "POST"; request.timeoutInterval = 120
         try authorize(&request)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
@@ -177,9 +207,9 @@ struct APIClient {
         }
         return try JSONDecoder().decode(VideoRecording.self, from: data)
     }
-    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil) async throws -> AgentRun {
-        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var clientPlatform = "ios"; var guardFlowVersion = 1 }
-        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID), traceID: requestID)
+    func start(message: String, conversation: String, skill: String?, camera: String?, requestID: String, executionMode: String = "live", historyFilter: HistoryFilter? = nil, replyToMessageID: String? = nil, referenceImageID: String? = nil) async throws -> AgentRun {
+        struct Body: Encodable { var message: String; var conversationId: String; var requestId: String; var skillId: String?; var cameraId: String?; var executionMode: String; var historyFilter: HistoryFilter?; var replyToMessageId: String?; var referenceImageId: String?; var clientPlatform = "ios"; var guardFlowVersion = 1 }
+        return try await send("/api/agent/runs", body: Body(message: message, conversationId: conversation, requestId: requestID, skillId: skill, cameraId: camera, executionMode: executionMode, historyFilter: historyFilter, replyToMessageId: replyToMessageID, referenceImageId: referenceImageID), traceID: requestID)
     }
     func cancel(_ id: String) async throws -> AgentRun { try await send("/api/runs/\(id)/cancel", body: [String: String]()) }
     func createDraft(camera: String, conversation: String, prompt: String, replacesID: String?) async throws -> VisualSkill {
@@ -257,7 +287,7 @@ struct APIClient {
     func hardware(_ path: String, body: HardwareValue? = nil, executor: HardwareExecutorSession? = nil) async throws -> HardwareValue {
         try await send("/api/hardware/" + path, method: body == nil ? "GET" : "POST", body: body, executor: executor)
     }
-    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil) async throws -> T {
+    private func send<T: Decodable, B: Encodable>(_ path: String, method: String = "POST", body: B?, mediaSession: LiveSession? = nil, push: Bool = false, traceID: String? = nil, executor: HardwareExecutorSession? = nil, timeout: TimeInterval = 30) async throws -> T {
         var req = URLRequest(url: URL(string: path, relativeTo: baseURL)!.absoluteURL)
         try authorize(&req)
         let trace = traceID ?? mediaSession?.traceId ?? UUID().uuidString
@@ -278,7 +308,7 @@ struct APIClient {
             guard baseURL.scheme == "https" || ["localhost", "127.0.0.1", "::1"].contains(baseURL.host ?? "") else { throw APIProblem(message: "手机通知需要安全的服务连接。") }
             req.setValue(try PushBinding.secret(for: baseURL), forHTTPHeaderField: "X-EG-Push-Key")
         }
-        req.httpMethod = method; req.timeoutInterval = 30
+        req.httpMethod = method; req.timeoutInterval = timeout
         req.cachePolicy = .reloadIgnoringLocalCacheData
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let body { req.httpBody = try JSONEncoder().encode(body) }
@@ -322,6 +352,26 @@ struct APIClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
+    func observeDisplay(runID: String, status: String, backendHash: String, displayHash: String) {
+        struct Receipt: Encodable {
+            var id = UUID().uuidString
+            var runId: String; var status: String; var backendTextHash: String; var displayTextHash: String
+            var presentationVersion = ChatPresentation.version
+            var platform = "ios"
+            var appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown") + "/" + (Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown")
+        }
+        var request = URLRequest(url: baseURL.appendingPathComponent("api/ops/display-receipts"))
+        guard (try? authorize(&request)) != nil else { return }
+        request.httpMethod = "POST"; request.timeoutInterval = 2.5
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(Receipt(runId: runID, status: status, backendTextHash: backendHash, displayTextHash: displayHash))
+        guard request.httpBody != nil else { return }
+        // Optional diagnostics still have a short foreground delivery deadline.
+        // Utility priority avoids deferring them behind background scheduling;
+        // the independent session and two-slot bound keep business calls free.
+        Task(priority: .utility) { await observations.send(request) }
+    }
+
     // The dashboard secret never enters the mobile app. This narrow endpoint
     // accepts only client-reported metadata and cannot write model/prompt data.
     func observe(name: String, traceID: String, parentSpanID: String? = nil, status: String = "observed", durationMS: Double? = nil, deviceID: String? = nil, requestID: String? = nil, route: String? = nil) {
@@ -338,6 +388,6 @@ struct APIClient {
         request.httpBody = try? JSONEncoder().encode([Event(name: name, traceId: traceID, parentSpanId: parentSpanID, status: status,
             durationMs: durationMS, deviceId: deviceID, requestId: requestID, route: route)])
         guard request.httpBody != nil else { return }
-        Task(priority: .background) { await observations.send(request) }
+        Task(priority: .utility) { await observations.send(request) }
     }
 }

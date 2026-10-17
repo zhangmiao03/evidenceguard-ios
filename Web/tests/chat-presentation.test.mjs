@@ -15,6 +15,8 @@ test('operation phases do not claim movement before execution or physical succes
   assert.match(operationStatus({...op,executionState:'future_state'}),/尚未确认/);
   assert.match(operationDetails(op,'客厅'),/设备：客厅 · 方向：向左移动一步/);
   assert.match(operationDetails({tool:'camera_record_clip',arguments:{duration:10,audioPolicy:'forbidden'}}),/持续 10 秒 · 不录入声音/);
+  assert.match(operationDetails({...op,arguments:{direction:'LEFT',durationMs:350}}),/移动 0.35 秒后停止/);
+  assert.equal(action('sample_camera_vision'),'取新画面并分析');
   assert.equal(progress('camera_ptz_step'),'正在准备移动摄像头');
   assert.doesNotMatch(receipt('future_tool','future_state'),/future/);
   assert.doesNotMatch(chatError('TimeoutError requestHash=secret'),/secret|TimeoutError/);

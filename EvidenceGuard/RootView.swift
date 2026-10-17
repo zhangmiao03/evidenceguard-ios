@@ -190,6 +190,7 @@ struct OfficialSDKDeveloperView: View {
                     Label("检测、画质、夜视、隐私区、电源与存储", systemImage: "slider.horizontal.3")
                 }
                 Section("T8214 · 门铃") {
+                    Text("双摄视角：前向广角主摄面向门口，下视摄像头朝向门槛与包裹。官方 Web 接收设备合成画面；App 可调整拼接方式，具体布局与独立镜头操作须实测。")
                     Label("添加设备：门铃型号的官方配网和绑定", systemImage: "wifi")
                     Label("直播、镜头布局、门铃呼叫、对讲与快捷回复", systemImage: "bell")
                     Label("铃声、室内响铃、包裹/移动检测与通知", systemImage: "shippingbox")

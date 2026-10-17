@@ -24,6 +24,11 @@ class PublicDashboardTests(unittest.TestCase):
 
     def test_anonymous_read_only_routes(self):
         self.assertEqual(self.client.get('/dashboard').status_code,200)
+        self.assertEqual(self.client.get('/dashboard/index.html').status_code,200)
+        self.assertEqual(self.client.get('/dashboard/downloads/evidenceguard-website.zip').status_code,404)
+        (self.root/'downloads').mkdir()
+        (self.root/'downloads/evidenceguard-website.zip').write_bytes(b'PK-test-archive')
+        self.assertEqual(self.client.get('/dashboard/downloads/evidenceguard-website.zip').headers['content-type'],'application/zip')
         self.assertEqual(self.client.head('/dashboard').status_code,200)
         self.assertTrue(self.client.get('/dashboard/api/info').json()['readOnly'])
         self.assertEqual(self.client.get('/dashboard/api/snapshot').status_code,200)

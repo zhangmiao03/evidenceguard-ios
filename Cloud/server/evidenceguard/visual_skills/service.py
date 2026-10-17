@@ -12,6 +12,7 @@ import time
 import uuid
 from PIL import Image
 from .schema import LIMITATION, summary, Interpretation, Judgment
+from .audit import GuardRun, event, frame_reference
 
 
 class SceneUnavailable(ValueError):
@@ -27,6 +28,7 @@ class VisualScenes:
     def __init__(self, store, captures, harness, proactive):
         self.store, self.captures, self.harness, self.proactive = store, captures, harness, proactive
         self.compiling = {}
+        self.endpoint_vision = None
         self.worker_lock = asyncio.Lock()
         with store.transaction():
             store.db.execute('CREATE TABLE IF NOT EXISTS visual_scenes (id TEXT PRIMARY KEY, client TEXT NOT NULL, due REAL NOT NULL, payload TEXT NOT NULL)')
@@ -65,7 +67,86 @@ class VisualScenes:
                                    and not scene['question'] and not scene['unsupportedReason'] and self.harness.ready)
         value['result'] = self.result(scene)
         value['triggerCategory'] = 'event'
+        value['endpointVision'] = self.endpoint_vision.configuration() if self.endpoint_vision else {'ready':False}
         return value
+
+    async def analyze_endpoints(self, key, client, revision, *, include_depth=False, run=None):
+        """Only this guard's stored reference and last accepted sample are eligible.
+
+        Never lets a model nominate an arbitrary media ID, path, device or ROI.
+        It also never captures implicitly when evidence is missing.
+        """
+        from ..vision.endpoints import unavailable
+        original=self.get(key,client)
+        if original['revision'] != revision: raise ValueError('守护已更新，请刷新后重试')
+        if not self.endpoint_vision: return unavailable('NOT_CONFIGURED','首尾图分析未就绪')
+        if run and run.get('cameraId') and run['cameraId'] != original['cameraId']:
+            raise ValueError('这项守护不属于本轮摄像头范围')
+        current=original.get('lastCapture')
+        def valid():
+            if getattr(self.captures,'hardware_busy',lambda _:False)(original['cameraId']): return False
+            latest=self.get(key,client)
+            if latest['revision'] != revision or latest['status'] != original['status']: return False
+            if latest.get('box') != original.get('box') or latest.get('frame') != original.get('frame'): return False
+            if run:
+                saved=self.store.run(run['id'])
+                if saved and saved.get('status') == 'cancelled': return False
+            live=getattr(self.captures.cameras,'live',None)
+            session=live.current(original['cameraId']) if live else None
+            if session and current and current.get('viewRevision') != session['id']+':'+str(session.get('viewVersion',0)):
+                return False
+            return True
+        live=getattr(self.captures.cameras,'live',None)
+        pair=live.recent_pair(original['cameraId'],current['frameId']) if live and current else None
+        result=await self.endpoint_vision.analyze(original,current,valid,include_depth=include_depth,flow_pair=pair)
+        if not valid(): return unavailable('STALE_CONTEXT','守护或视角已变化，结果已丢弃')
+        # Keep private experiment results in the protected cache/run, not the
+        # legacy scene listing, and never reschedule observation via save().
+        return result
+
+    async def sample_endpoints(self, key, client, revision, *, run=None):
+        """Two explicit bounded capture challenges using the existing iOS API.
+
+        Requests cannot make the native decoder run faster. If their real sample
+        interval is too wide, DIS is skipped, never resampled/interpolated.
+        """
+        from ..vision.endpoints import unavailable
+        original=self.get(key,client)
+        if original['revision']!=revision: raise ValueError('守护已更新')
+        if run and run.get('cameraId')!=original['cameraId']: raise ValueError('设备超出本轮范围')
+        if not self.endpoint_vision or not self.endpoint_vision.configuration()['ready']:
+            return unavailable('NOT_CONFIGURED','图像模型未配置，未请求新画面')
+        live=self.captures.cameras.live
+        session=live.current(original['cameraId'])
+        if not session or session.get('client')!=client:
+            return unavailable('LIVE_SESSION_REQUIRED','请在本客户端打开该设备的画面')
+        view=(session['id'],session.get('viewVersion',0))
+        def valid():
+            latest=self.get(key,client)
+            saved=self.store.run(run['id']) if run else None
+            current=live.current(original['cameraId'])
+            return (latest['revision']==revision and latest['status']==original['status']
+                    and latest.get('box')==original.get('box') and latest.get('frame')==original.get('frame')
+                    and current and current.get('client')==client
+                    and (current['id'],current.get('viewVersion',0))==view
+                    and not (saved and saved.get('status')=='cancelled')
+                    and not getattr(self.captures,'hardware_busy',lambda _:False)(original['cameraId']))
+        try:
+            captures=[]
+            async with asyncio.timeout(12):
+                for _ in range(2):
+                    if not valid(): return unavailable('STALE_CONTEXT','任务或设备状态已变化')
+                    capture=await self.captures.capture(original['cameraId'],purpose='用户请求深度与短间隔画面分析')
+                    if capture.get('status')!='completed': return unavailable('CAPTURE_UNAVAILABLE','前台客户端未提供新画面')
+                    captures.append(capture)
+            pair=live.recent_pair(original['cameraId'],captures[-1]['frameId'])
+            # Endpoint comparison still uses the user's target/reference; flow
+            # uses the newly captured adjacent pair, with separate source IDs.
+            result=await self.endpoint_vision.analyze(original,captures[-1],valid,
+                include_depth=True,flow_pair=pair)
+            return result if valid() else unavailable('STALE_CONTEXT','分析期间会话或视角已变化，结果已丢弃')
+        except asyncio.CancelledError: raise
+        except TimeoutError: return unavailable('CAPTURE_TIMEOUT','短时采样超时；没有生成或插值帧')
 
     def result(self, scene, now=None):
         now = time.time() if now is None else now
@@ -212,6 +293,8 @@ class VisualScenes:
         self.store.capture_context(scene['cameraId'])  # Preserve legacy camera leases.
         with self.store.transaction():
             scene = self.editable(key, client, revision)
+            if getattr(self.captures,'hardware_busy',lambda _:False)(scene['cameraId']):
+                raise ValueError('设备控制尚未结束或停止结果未知，请先核对后再开启守护。')
             if any(s['status'] == 'active' and s['cameraId'] == scene['cameraId'] for s in self.list_all()):
                 raise ValueError('这台摄像头已有运行中的自定义场景，请先暂停它。')
             scene.update(status='active', revision=revision+1, confirmedRevision=revision,
@@ -228,6 +311,7 @@ class VisualScenes:
             if scene['status'] not in {'active', 'paused'}: raise ValueError('这项场景没有运行。')
             scene.update(status='draft', revision=revision+1, stage='select', frame=None, box=None,
                          reason='已暂停；再次开启前需要重新取图和框选', observation=self.empty_observation('已暂停'))
+            scene.pop('lastCapture',None); scene.pop('endpointAnalysis',None)
             self.save(scene)
         return scene
 
@@ -247,32 +331,61 @@ class VisualScenes:
                 row = self.store.db.execute("SELECT payload FROM visual_scenes WHERE due<=? AND json_extract(payload,'$.status')='active' ORDER BY due LIMIT 1", (now,)).fetchone()
                 if not row: return False
                 original = json.loads(row[0]); self.save(original, now + self.PERIOD)
-            receipt = None; reconnected = False
-            try:
-                receipt = await self.captures.capture(original['cameraId'], purpose='用户开启的自定义场景观察')
-                self.validate_frame(receipt)
-                previous = original.get('validatedViewRevision') or original['frame'].get('viewRevision')
-                current = receipt.get('viewRevision')
-                reconnected = self.is_reconnection(previous, current)
-                if current != previous and not reconnected:
-                    raise SceneUnavailable('摄像头视角已变化，请暂停并重新框选。')
-                result = Judgment.model_validate(await self.harness.observe(original, receipt, self.store)).model_dump()
-                if reconnected and not result['viewMatchesReference']:
-                    raise SceneUnavailable('重连后无法确认选框仍对应原区域，请检查画面并重新框选。')
-                if not result['regionClear'] or (result['state']=='inside' and not result['identityClear']): result['state']='unknown'
-            except asyncio.CancelledError: raise
-            except Exception as error:
-                result = dict(state='unknown', reason=str(error) if isinstance(error, SceneUnavailable) else '观察暂未完成，等待新画面')
-            with self.store.transaction():
-                scene = self.get(original['id'], original['clientId'])
-                if scene['revision'] != original['revision'] or scene['status'] != 'active': return True
-                if reconnected and result.get('viewMatchesReference'):
-                    scene.update(validatedViewRevision=receipt['viewRevision'], observation=self.empty_observation('重连后已核对视角，重新建立观察基线'))
-                alert = self.advance(scene, result, receipt, time.time())
-                if alert: self.publish(scene, receipt)
-                self.check_health(scene, time.time())
-                self.save(scene, time.time() + self.PERIOD)
-            return True
+            with GuardRun(self.store, original) as audit:
+                return await self._observe_once(original, audit)
+
+    async def _observe_once(self, original, audit):
+        # Keep observation and commit gates unchanged; telemetry only reads
+        # the values already produced by this one scheduled check.
+        receipt = None; reconnected = False; observation_started = False
+        capture_started = time.monotonic()
+        event('capture', status='started')
+        try:
+            receipt = await self.captures.capture(original['cameraId'], purpose='用户开启的自定义场景观察')
+            event('capture', status='completed' if receipt.get('status')=='completed' else 'unavailable',
+                  duration=round((time.monotonic()-capture_started)*1000, 2),
+                  frame=frame_reference(receipt))
+            self.validate_frame(receipt)
+            previous = original.get('validatedViewRevision') or original['frame'].get('viewRevision')
+            current = receipt.get('viewRevision')
+            reconnected = self.is_reconnection(previous, current)
+            if current != previous and not reconnected:
+                raise SceneUnavailable('摄像头视角已变化，请暂停并重新框选。')
+            observation_started = True
+            result = Judgment.model_validate(await self.harness.observe(original, receipt, self.store)).model_dump()
+            if reconnected and not result['viewMatchesReference']:
+                raise SceneUnavailable('重连后无法确认选框仍对应原区域，请检查画面并重新框选。')
+            if not result['regionClear'] or (result['state']=='inside' and not result['identityClear']): result['state']='unknown'
+        except asyncio.CancelledError:
+            if receipt is None: event('capture', status='cancelled')
+            raise
+        except Exception as error:
+            if receipt is None: event('capture', status='failed', errorType=type(error).__name__)
+            if not observation_started:
+                event('preprocessing', status='skipped', code='CAPTURE_UNAVAILABLE' if receipt is None else 'FRAME_REJECTED',
+                      depth={'status':'skipped'}, flow={'status':'skipped'})
+            event('unavailable', status='failed', errorType=type(error).__name__,
+                  frame=frame_reference(receipt), stage='capture' if receipt is None else 'validation_or_observation')
+            result = dict(state='unknown', reason=str(error) if isinstance(error, SceneUnavailable) else '观察暂未完成，等待新画面')
+        with self.store.transaction():
+            scene = self.get(original['id'], original['clientId'])
+            if scene['revision'] != original['revision'] or scene['status'] != 'active':
+                audit.finish(disposition='discarded', code='SCENE_CHANGED', judgment=result,
+                             currentRevision=scene['revision'], sceneStatus=scene['status'])
+                return True
+            if receipt and receipt.get('status') == 'completed':
+                scene['lastCapture'] = receipt
+            if reconnected and result.get('viewMatchesReference'):
+                scene.update(validatedViewRevision=receipt['viewRevision'], observation=self.empty_observation('重连后已核对视角，重新建立观察基线'))
+            alert = self.advance(scene, result, receipt, time.time())
+            scene['lastGuardRunId'] = audit.id
+            if alert: self.publish(scene, receipt)
+            self.check_health(scene, time.time())
+            self.save(scene, time.time() + self.PERIOD)
+        audit.finish(disposition='committed', judgment=result, observation=scene['observation'],
+                     resultState=self.result(scene, time.time())['state'], alertPublished=bool(alert),
+                     evidenceId=scene['evidenceIds'][-1] if alert else None)
+        return True
 
     def advance(self, scene, result, receipt, now):
         state = result['state']; old = scene['observation']; plan = scene['plan']
@@ -330,7 +443,8 @@ class VisualScenes:
         evidence = dict(id=key, skillId='', cameraId=scene['cameraId'], capturedAt=at,
                         relation=scene['observation']['state'], reason=scene['observation']['reason'],
                         imageUrl=receipt['imageUrl'], revision=scene['revision'], sourceType=receipt['sourceType'],
-                        sceneId=scene['id'], frameId=receipt['frameId'], timestampMeaning=receipt['timestampMeaning'])
+                        sceneId=scene['id'], frameId=receipt['frameId'], timestampMeaning=receipt['timestampMeaning'],
+                        guardRunId=scene.get('lastGuardRunId'))
         self.store.db.execute('INSERT INTO evidence VALUES (?,?,?,?)', (key, '', at, json.dumps(evidence, ensure_ascii=False)))
         scene['evidenceIds'] = [*scene['evidenceIds'], key][-30:]
         body = f"{scene['plan']['title']}：{scene['observation']['reason']}。已满足你设置的采样确认条件，点开查看画面。"

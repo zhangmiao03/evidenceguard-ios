@@ -166,6 +166,7 @@ async function live(page: Page) {
   await page.getByRole("button", { name: /测试客厅.*T8171/ }).click();
   await page.getByRole("button", { name: "＋ 接入设备", exact: true }).click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("官方账号接入方式").selectOption("exchange");
   for (const input of await dialog.locator("input").all()) {
     const type = await input.getAttribute("type");
     if (type !== "checkbox") await input.fill("synthetic");
@@ -281,10 +282,11 @@ test("plain LAN HTTP renders guidance without sending credentials", async ({
     await route.fulfill({ response });
   });
   await page.goto("http://192.0.2.1/");
-  await page
-    .getByLabel("团队访问令牌", { exact: true })
-    .fill("synthetic-token");
-  await page.getByRole("button", { name: "进入工作台 →" }).click();
+  const input = page.getByLabel("团队访问令牌", { exact: true });
+  await input.fill("synthetic-token");
+  // Submit the real form without a pointer click that Firefox's native
+  // insecure-password popup may consume before it reaches the page.
+  await input.press("Enter");
   await expect(page.getByRole("alert")).toContainText("HTTPS");
   expect(sent).toBe(false);
 });

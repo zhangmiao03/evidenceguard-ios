@@ -1,4 +1,5 @@
 import { chatText, chatError, receipt, eventProgress } from "./chat-presentation.mjs";
+import ankerAvatar from "./dashboard/assets/AnkerAvatar.png";
 import { HardwareOperationCard } from "./HardwareTools";
 import {
   forwardRef,
@@ -576,7 +577,7 @@ export const Assistant = forwardRef<
           ) : (
             !timeline.length && (
               <div className="assistant-welcome">
-                <img src="/assets/anker-avatar.png" alt="anker" width="64" height="64" />
+                <img src={ankerAvatar} alt="anker" width="64" height="64" />
                 <h3>我是 {assistantName}，你的安防小助手。</h3>
                 <p>
                   {mode === "history"

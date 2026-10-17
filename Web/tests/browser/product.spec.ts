@@ -63,12 +63,15 @@ async function setup(
     conflict?: boolean;
     proactive?: boolean;
     replay?: boolean;
+    automaticMemory?: boolean;
+    memories?: any[];
     sendGate?: Promise<void>;
     restoreGate?: Promise<void>;
   } = {},
 ) {
   const state = {
     personal: {
+      automaticMemory: options.automaticMemory ? { enabled: true, pending: 0, status: "idle", reason: "聊天后整理用户自述" } : undefined,
       revision: 0,
       preferences: {
         enabled: false,
@@ -79,7 +82,7 @@ async function setup(
         quietEnd: 8,
         timezone: "Asia/Shanghai",
       },
-      memories: [] as any[],
+      memories: options.memories ?? [] as any[],
       inbox: [],
       messages: options.proactive
         ? ([
@@ -177,6 +180,9 @@ async function setup(
         state.personal.revision++;
         json = state.personal;
       }
+    } else if (path === "/api/personal/memory-options") {
+      state.personal.automaticMemory!.enabled = new URL(route.request().url()).searchParams.get("enabled") === "true";
+      json = state.personal;
     } else if (path === "/api/personal/memories") {
       state.personal.memories.unshift({
         id: "memory-1",
@@ -376,6 +382,7 @@ test("temporary memory persists on reload and deletion requires confirmation", a
 }) => {
   const { state, errors } = await setup(page);
   await nav(page, "记忆");
+  await expect(page.getByLabel("聊天后自动整理记忆")).toHaveCount(0);
   await page.getByRole("button", { name: "添加记忆", exact: true }).click();
   await page.getByLabel("希望助手记住什么").fill("今天只关注客厅");
   await page.getByLabel("仅保留 24 小时").check();
@@ -783,6 +790,42 @@ test("recording import keeps unknown capture dates and playback failures are vis
       receiver.close((error) => (error ? reject(error) : resolve())),
     );
   }
+});
+
+
+test("cloud automatic memory is optional and disabling preserves saved memories", async ({ page }) => {
+  const { state, errors } = await setup(page, { automaticMemory: true,
+    memories: [{ id: "auto-1", content: "回复简洁一些", source: "conversation", sourceQuote: "我希望回复简洁一些", createdAt: 1, expiresAt: null }] });
+  await nav(page, "记忆");
+  const toggle = page.getByLabel("聊天后自动整理记忆");
+  await expect(toggle).toBeChecked();
+  await expect(page.getByText("来源：对话自动整理")).toBeVisible();
+  await page.getByText("查看用户原话", { exact: true }).click();
+  await expect(page.getByText("我希望回复简洁一些", { exact: true })).toBeVisible();
+  // The controlled field changes after the server acknowledges the write.
+  await toggle.click();
+  await expect(toggle).not.toBeChecked();
+  expect(state.personal.automaticMemory!.enabled).toBe(false);
+  expect(state.personal.memories).toHaveLength(1);
+  expect(state.calls.filter(c => c.path === "/api/personal/memory-options").map(c => c.method)).toEqual(["PUT"]);
+  expect(errors).toEqual([]);
+});
+
+test("old servers receive only supported daily-summary fields", async ({ page }) => {
+  const { state } = await setup(page);
+  Object.assign(state.personal.preferences, { dailySummary: true });
+  for (const key of ["morningReport", "eveningReport", "morningHour", "eveningHour"]) delete (state.personal.preferences as any)[key];
+  await page.reload(); await enter(page); await nav(page, "设置");
+  await expect(page.getByLabel("早安报告", { exact: true })).toBeDisabled();
+  await page.getByLabel("晚间报告", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "保存提醒设置" }).click();
+  await expect(page.getByRole("status")).toContainText("提醒设置已保存");
+  const request = state.calls.findLast(c => c.path === "/api/personal/preferences")!;
+  expect(request.body.dailySummary).toBe(false);
+  expect(request.body).not.toHaveProperty("morningReport");
+  expect(request.body).not.toHaveProperty("eveningReport");
+  expect(request.body).not.toHaveProperty("morningHour");
+  expect(request.body).not.toHaveProperty("eveningHour");
 });
 
 test("assistant presents action progress and hides legacy code without altering user messages", async ({page}) => {

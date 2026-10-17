@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import socket
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -78,6 +79,7 @@ def test_cli_read_commands_cannot_choose_shell_or_write():
     assert '--query=$(echo secret) --yes' in args and '--yes' not in args
 
 
+@pytest.mark.skipif(os.name=='nt',reason='POSIX executable fixture; validate the real subprocess contract under WSL/Linux')
 def test_cli_per_user_credentials_output_contract_and_limits(tmp_path,monkeypatch):
     from cryptography.fernet import Fernet
     import time

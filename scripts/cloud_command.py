@@ -14,10 +14,26 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.request
 
 ACCOUNT = "083151142234"
 REGION = "ap-southeast-1"
 INSTANCE = "i-010907ed19e2cc23a"
+
+
+def aws_environment(*, system_proxy=True):
+    """Use an explicitly configured proxy first, otherwise Windows' existing proxy.
+
+    Only the child process environment changes. No global proxy or TLS changes.
+    """
+    env = dict(os.environ, AWS_PAGER="", AWS_CLI_AUTO_PROMPT="off", PYTHONIOENCODING="utf-8")
+    if system_proxy and os.name == "nt" and not any(env.get(k) for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")):
+        proxies = urllib.request.getproxies()
+        for scheme in ("http", "https"):
+            if proxies.get(scheme, "").startswith(("http://", "https://")):
+                env[scheme.upper() + "_PROXY"] = proxies[scheme]
+        env.setdefault("NO_PROXY", "127.0.0.1,localhost,::1")
+    return env
 
 
 def aws_executable():
@@ -41,12 +57,13 @@ def main():
     group.add_argument("--resume", help="Read an existing command outcome without sending it again")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--no-system-proxy", action="store_true", help="Do not inherit the Windows proxy; explicit proxy environment variables still apply")
     args = parser.parse_args()
     script = args.file.read_text(encoding="utf-8") if args.file else args.command
     if not 1 <= args.timeout <= 3600:
         parser.error("timeout must be 1..3600 seconds")
     cmd = [aws_executable(), "--profile", args.profile, "--region", REGION, "--no-cli-pager", "--output", "json"]
-    env = dict(os.environ, AWS_PAGER="", AWS_CLI_AUTO_PROMPT="off", PYTHONIOENCODING="utf-8")
+    env = aws_environment(system_proxy=not args.no_system_proxy)
 
     def aws(*parts, allow_missing=False):
         result = subprocess.run(cmd + list(parts), capture_output=True, env=env)

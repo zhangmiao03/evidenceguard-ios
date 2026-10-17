@@ -121,6 +121,35 @@ def test_stop_dispatch_bypasses_capture_gate_and_late_execution_cannot_undo_stop
         assert finish(c,h,headers,dispatched,'stopped',command='stop').json()['executionState']=='cancelled'
 
 
+@pytest.mark.parametrize('stop_status', ['failed', 'unknown'])
+@pytest.mark.parametrize('stop_first', [True, False])
+def test_unverified_control_stop_retains_unknown_lock_until_manual_reconciliation(env, stop_status, stop_first):
+    app, c = env
+    d, _, h, headers = host(c)
+    args = dict(deviceId=d['id'], field='statusLED', value=True, expectedSettingsRevision=0)
+    op = call(c, d, 'device_settings_set', args).json()
+    assert c.post('/api/hardware/confirmations', json=dict(
+        operationId=op['id'], requestHash=op['requestHash'], decision='approve')).status_code == 200
+    dispatched = claim(c, h, headers)['operation']
+    assert call(c, d, 'camera_stop', {'operationId': op['id']}).status_code == 200
+    assert claim(c, h, headers)['command'] == 'stop'
+    if not stop_first:
+        assert finish(c, h, headers, dispatched, command='execute').json()['executionState'] == 'verifying'
+    failed_stop = finish(c, h, headers, dispatched, stop_status, command='stop',
+        error=dict(code='STOP_UNVERIFIED', message='No verified interrupt route')).json()
+    assert failed_stop['executionState'] == 'unknown'
+    assert failed_stop['stopResult'] == dict(state='failed', physicalEffect='unverified')
+    # A delayed execute acknowledgement cannot turn an unverified stop into success.
+    late = finish(c, h, headers, dispatched, command='execute').json()
+    assert late['executionState'] == 'unknown' and late['physicalResult'] == 'unverified'
+    assert app.state.hardware.busy(d['id'])
+    assert c.post('/api/hardware/devices/'+d['id']+'/release', json={}).json()['code'] == 'RESOURCE_BUSY'
+    result = c.post('/api/hardware/reconcile', json=dict(operationId=op['id'],
+        requestHash=op['requestHash'], decision='release_after_manual_check',
+        evidence='测试人员已核对硬件停止；此用例使用执行器替身')).json()
+    assert result['executionState'] == 'unknown' and not app.state.hardware.busy(d['id'])
+
+
 def test_live_challenge_becomes_product_evidence_and_scoped_observation(env):
     app,c=env; d,_,h,headers=host(c); media,mh=start_live(c,d)
     op=call(c,d,'camera_observe').json(); dispatched=claim(c,h,headers)['operation']
@@ -136,7 +165,11 @@ def test_live_challenge_becomes_product_evidence_and_scoped_observation(env):
         time.sleep(.01)
     assert len(commands)==1
     c.post('/api/media-sessions/'+media['id']+'/heartbeat',json=dict(state='streaming',sequence=2,frameAgeMs=0),headers=mh)
-    r=c.post('/api/media-sessions/'+media['id']+'/frames',json=picture(commands[0]['requestId']),headers=mh)
+    sample=picture(commands[0]['requestId'])
+    sample['decoderFrame']=dict(sourceKind='decoded_live_frame',deviceId=d['id'],sessionId=media['id'],
+        sequence=10,previousSequence=9,playState='playing',progressSource='decoder_callback',
+        dimensions=[sample['width'],sample['height']],lastFrameAt=time.time()*1000-10,capturedAt=time.time()*1000)
+    r=c.post('/api/media-sessions/'+media['id']+'/frames',json=sample,headers=mh)
     assert r.status_code==200,r.text
     result=future.result(timeout=4); assert duplicate.result(timeout=4)==result
     assert result['executionState']=='completed',result
@@ -236,7 +269,7 @@ def test_agent_control_waits_for_human_then_updates_the_same_run(env):
     from test_harness import ScriptedProvider, tool, settle
     app,c=env; d,_,h,headers=host(c)
     revision=c.get('/api/hardware/snapshot').json()['devices'][0]['capabilityRevision']
-    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',capabilityRevision=revision,
+    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',variant='statusLED',capabilityRevision=revision,
         status='passed',evidence='测试替身检查接口；不代表真实设备验收'))
     app.state.agent.model_provider=ScriptedProvider([tool('device_settings_set',dict(deviceId=d['id'],field='statusLED',value=True,expectedSettingsRevision=0))])
     async def start():
@@ -258,7 +291,7 @@ def test_cancel_agent_run_cancels_its_pending_hardware_without_granting_other_ta
     from test_harness import ScriptedProvider, tool, settle
     app,c=env; d,_,h,headers=host(c)
     revision=c.get('/api/hardware/snapshot').json()['devices'][0]['capabilityRevision']
-    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',capabilityRevision=revision,
+    c.post('/api/hardware/validations',json=dict(deviceId=d['id'],tool='device_settings_set',variant='statusLED',capabilityRevision=revision,
         status='passed',evidence='测试替身检查接口；不代表真实设备验收'))
     app.state.agent.model_provider=ScriptedProvider([tool('device_settings_set',dict(deviceId=d['id'],field='statusLED',value=True,expectedSettingsRevision=0))])
     async def start(): return await settle(app.state.agent,app.state.agent.start('打开指示灯','cancel-chat',camera_id=d['id']))

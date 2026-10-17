@@ -89,6 +89,9 @@ class CameraService:
                             receipt.update(status='completed', frameId=f.frame_id, capturedAt=f.captured_at,
                                            imageUrl=media['imageUrl'], mediaId=media['id'], sourceType=f.source_type,
                                            viewRevision=f.view_revision, sampledAt=f.sampled_at, receivedAt=f.received_at,
+                                           channelId=f.channel_id, sessionId=f.session_id, executionEpoch=f.execution_epoch,
+                                           freshness=f.freshness,
+                                           decoderProgressVerified=f.decoder_frame is not None,
                                            timestampMeaning='device_capture' if f.captured_at is not None else 'client_live_sample')
             except asyncio.CancelledError:
                 receipt.update(status='cancelled', reason='已取消本次画面请求')

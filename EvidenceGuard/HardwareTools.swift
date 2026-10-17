@@ -40,7 +40,7 @@ struct HardwareExecutorSession: Sendable { var id: String; var token: String; va
                         guard !manifest["routes"].object.isEmpty else { throw APIProblem(message: "SDK 能力尚未就绪") }
                         let body: HardwareValue = .object([
                             "deviceId": .string(Self.deviceID(camera.sn)), "model": .string(camera.model), "platform": .string("ios"),
-                            "adapterVersion": .string("ios-tools-1"), "sdkArtifactHash": .string(hash), "firmwareVersion": .string("unknown"),
+                            "adapterVersion": .string("ios-tools-0.3.0"), "sdkVersion": .string("2.2.7"), "sdkArtifactHash": .string(hash), "firmwareVersion": .string("unknown"),
                             "officialIdentityReady": .bool(true), "privacy": manifest["privacy"], "routes": manifest["routes"], "fields": manifest["fields"]])
                         let receipt = try await client.hardware("executors", body: body)
                         let session = HardwareExecutorSession(id: receipt["executorId"].string, token: receipt["token"].string, deviceID: Self.deviceID(camera.sn))
@@ -134,11 +134,11 @@ struct HardwareExecutorWorker: View {
     let active: Bool
     private var scopeKey: String {
         let credentialHash = SHA256.hash(data: Data(client.accessToken.utf8)).map { String(format: "%02x", $0) }.joined()
-        return "\(active):\(client.baseURL):\(credentialHash):\(connection.devices.map(\.sn).joined(separator: ","))"
+        return "\(active):\(connection.downloadingRecording):\(client.baseURL):\(credentialHash):\(connection.devices.map(\.sn).joined(separator: ","))"
     }
     var body: some View {
         Color.clear.frame(width:0,height:0).task(id: scopeKey) {
-            if active && connection.canDiscover { await connection.toolExecutor.run(connection:connection,client:client.scoped()) }
+            if active && connection.canDiscover && !connection.downloadingRecording { await connection.toolExecutor.run(connection:connection,client:client.scoped()) }
             else { await connection.toolExecutor.shutdown() }
         }
     }
@@ -151,12 +151,17 @@ struct HardwareOperationCard: View {
     @State private var references: [HardwareValue] = []
     @State private var error: String?
     @State private var reviewNote = ""
+    @State private var observedEffect = "unconfirmed"
     private var value: HardwareValue { current ?? operation }
     var body: some View {
         VStack(alignment:.leading,spacing:10) {
             Text(ChatPresentation.action(value["tool"].string)).font(.headline)
             Text(ChatPresentation.operationDetails(value, deviceName: store.camera(value["deviceId"].string)?.name, references: references)).font(.subheadline)
             Text(ChatPresentation.operationStatus(value)).font(.caption).accessibilityIdentifier("chat.operation.status")
+            if !value["validationScope"].object.isEmpty {
+                Text("SDK 接受：\(value["sdkAccepted"] == .bool(true) ? "是" : value["sdkAccepted"] == .bool(false) ? "否" : "未知") · 实际效果：\(value["observedEffect"].string == "confirmed" ? "人工已确认" : "未确认")").font(.caption)
+                Text("文件校验：\(value["artifactValidated"].string) · 人工复核：\(value["humanVerified"].boolean ? "已记录" : "未记录")").font(.caption)
+            }
             if value["executionState"].string == "awaitingApproval" {
                 HStack {
                     Button("确认这次操作") { decide("approve") }.buttonStyle(.borderedProminent)
@@ -169,6 +174,23 @@ struct HardwareOperationCard: View {
                 } catch { self.error=error.localizedDescription } } }
             }
             if !value["error"]["message"].string.isEmpty { Text(ChatPresentation.error(value["error"]["message"].string)).font(.caption) }
+            if value["dispatchState"].string == "returned", !value["validationScope"].object.isEmpty {
+                DisclosureGroup("记录本次实际效果") {
+                    Picker("现场观察", selection: $observedEffect) {
+                        Text("尚未确认").tag("unconfirmed")
+                        Text("已看到预期效果").tag("confirmed")
+                        Text("未看到效果").tag("not_observed")
+                        Text("效果异常").tag("failed")
+                    }
+                    TextField("复核依据（至少 10 字）", text: $reviewNote)
+                    Button("保存本次复核") { Task { do {
+                        current = try await store.client.hardware("review", body: .object([
+                            "operationId":value["id"], "requestHash":value["requestHash"],
+                            "observedEffect":.string(observedEffect), "evidence":.string(reviewNote)]))
+                    } catch { self.error = error.localizedDescription } } }.disabled(reviewNote.count < 10)
+                    Text("复核不解除未知操作的占用，也不会授权以后的操作。").font(.caption)
+                }
+            }
             if value["executionState"].string == "unknown", value["leaseReleasedByHuman"].string.isEmpty {
                 TextField("人工核对记录（至少 10 字）", text: $reviewNote)
                 Button("已核对设备，解除操作占用") { Task { do {
@@ -205,6 +227,12 @@ struct HardwareToolsView: View {
     @State private var note=""
     @State private var error: String?
     private var device: HardwareValue { snapshot["devices"].array.first(where:{$0["id"].string==deviceID}) ?? .null }
+    private var validationVariant: String {
+        let args = (try? HardwareValue.parse(arguments)) ?? .null
+        if selected == "camera_ptz_step" { return args["motionMode"].string.isEmpty ? "step" : args["motionMode"].string }
+        if selected == "device_settings_set" { return args["field"].string }
+        return "default"
+    }
     var body: some View {
         Form {
             Section("设备工具检查") {
@@ -221,12 +249,13 @@ struct HardwareToolsView: View {
                 } catch { self.error=error.localizedDescription } } }
                     .disabled(!device["executorOnline"].boolean || !device["routes"][selected]["ready"].boolean)
                 TextField("真机检查记录（至少 10 字）",text:$note)
+                Text("验收范围：\(validationVariant.isEmpty ? "请先填写设置字段" : validationVariant)").font(.caption)
                 Button("记录此工具真机通过") { Task { do {
-                    _ = try await store.client.hardware("validations",body:.object(["deviceId":.string(deviceID),"tool":.string(selected),"capabilityRevision":device["capabilityRevision"],"status":.string("passed"),"evidence":.string(note)]))
+                    _ = try await store.client.hardware("validations",body:.object(["deviceId":.string(deviceID),"tool":.string(selected),"variant":.string(validationVariant),"capabilityRevision":device["capabilityRevision"],"status":.string("passed"),"evidence":.string(note)]))
                     await refresh()
-                } catch { self.error=error.localizedDescription } } }.disabled(note.count<10)
+                } catch { self.error=error.localizedDescription } } }.disabled(note.count<10 || validationVariant.isEmpty)
                 Button("记录此工具未通过") { Task { do {
-                    _ = try await store.client.hardware("validations", body: .object(["deviceId":.string(deviceID),"tool":.string(selected),"capabilityRevision":device["capabilityRevision"],"status":.string("failed"),"evidence":.string(note)]))
+                    _ = try await store.client.hardware("validations", body: .object(["deviceId":.string(deviceID),"tool":.string(selected),"variant":.string(validationVariant),"capabilityRevision":device["capabilityRevision"],"status":.string("failed"),"evidence":.string(note)]))
                     await refresh()
                 } catch { self.error=error.localizedDescription } } }.disabled(note.count<10)
                 Button("已停止直播，释放执行端") { Task { do {

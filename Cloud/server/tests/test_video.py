@@ -112,7 +112,24 @@ def test_history_video_tool_does_not_reach_any_camera(env):
     asyncio.run(check())
 
 
-def test_range_playback_and_path_traversal(tmp_path):
+@pytest.mark.parametrize('status',['queued','indexing','failed','interrupted'])
+def test_recording_status_does_not_require_finished_playback(tmp_path,monkeypatch,status):
+    monkeypatch.setenv('EG_CAMERA_SOURCE','fixture_lab')
+    app=create_app(tmp_path/'db.sqlite',start_worker=False)
+    with TestClient(app) as client:
+        app.state.videos.db.save_recording(dict(id='video-pending',cameraId='cam-a',title='上传录像',
+            status=status,sourceType='uploaded',recordedAt=None,createdAt=1,duration=None,
+            segmentCount=0,error='preprocessing failed' if status=='failed' else None))
+        response=client.get('/api/recordings/video-pending')
+        assert response.status_code==200
+        assert response.json()['status']==status
+        assert response.json()['recordedAt'] is None
+        assert client.get('/api/recordings/video-pending/video').status_code==404
+        assert client.get('/api/recordings/missing').status_code==404
+
+
+def test_range_playback_and_path_traversal(tmp_path,monkeypatch):
+    monkeypatch.setenv("EG_CAMERA_SOURCE","fixture_lab")
     app=create_app(tmp_path/'db.sqlite',start_worker=False,provider=type('Off',(),{'ready':False,'name':'off'})())
     with TestClient(app) as client:
         recording(app.state.videos,'video-range')

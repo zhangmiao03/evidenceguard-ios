@@ -882,3 +882,15 @@
   .eg-ops-cycle-phases { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .eg-ops-cloud-controls select { min-width: 120px; }
 }
+.eg-ops-record-content { margin-top: 22px; min-width: 0; }
+.eg-ops-content-status { padding: 12px 14px; border: 1px solid #294e61; border-radius: 10px; background: #102733; color: #a2dfec; }
+.eg-ops-content-status.limited { border-color: #7d612b; color: #e5c77b; }
+.eg-ops-content-block { margin: 16px 0; min-width: 0; }
+.eg-ops-content-block summary { cursor: pointer; padding: 12px 0; color: #b7cedd; }
+.eg-ops-message { border: 1px solid #2b3a4c; border-radius: 12px; padding: 12px 16px; margin: 12px 0; }
+.eg-ops-message h4 { margin: 0 0 10px; color: #9ad8ed; }
+.eg-ops-message h4 small { overflow-wrap: anywhere; font-weight: 400; }
+.eg-ops-message h4 > span { display: inline-block; min-width: 24px; color: #768ea7; }
+.eg-ops-record-content pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-height: none; }
+.eg-ops-final-result { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; text-align: left; padding: 16px; margin: 14px 0; }
+.eg-ops-final-result span { color: #b6c7d7; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }

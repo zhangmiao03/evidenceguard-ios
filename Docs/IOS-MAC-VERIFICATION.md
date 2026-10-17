@@ -1,5 +1,9 @@
 # Mac 验证交接：iOS 埋点与摄像头接口回归
 
+2026-10-17 更新：本轮新增 `ChatPresentation` 文字摘要和 `/api/ops/display-receipts` 可选回执，已同步最新守护场景代码。请在独立副本拉取当前 `dongrunze`，记录实际 `git rev-parse HEAD`，执行 `bash scripts/test_ios_compatibility.sh`；不要按下方历史步骤退回 `6ed031b` 验收本轮代码。验收还需安装新版 App，完成真实助手任务，核对手机屏幕、后端最终正文及 Dashboard 的显示摘要回执。详细语义和边界见 [台账与显示校验](DASHBOARD-ARCHIVE.md)；本轮尚未取得 Mac 编译/真机通过结果。
+
+2026-10-16 更新：当前 `dongrunze` 已整合新版 iOS 与 SDK 宿主修复，最新验证范围和 Mac/真机步骤见 [本轮整合记录](verification/ios-branch-integration-2026-10-16.txt)。下文固定 `6ed031b` 的指令用于复现旧埋点问题，不能代替本次合并后的构建与验收。
+
 本轮待验收源码为 `dongrunze` 的 **`6ed031b08ff7bc3838a73b3b3eaf1e5e6e1a3996`**。该提交调整了两项原生故障测试的等待逻辑，尚待 Mac 实际运行确认。GitHub Actions 因账户付款/额度限制未启动这一提交的作业，不能把它记为测试通过。
 
 此前 `4b26b7f` 的 App 编译、3 项原有 UI 测试、3 项新增 API 测试通过，另外 2 项 API 测试超时。`6ed031b` 只调整测试等待与隔离，App 源码与 `4b26b7f` 相同。后端 207 项回归已通过，涵盖关闭/开启埋点、追踪写库失败/队列满时的采集链路，以及 Agent 直接读图和独立视觉分析。

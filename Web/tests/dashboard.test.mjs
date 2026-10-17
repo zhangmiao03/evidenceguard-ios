@@ -86,3 +86,46 @@ test("imported snapshots remove credential fields and embedded image payloads", 
   assert.ok(!JSON.stringify(clean).includes("private-session-value"));
   assert.equal(clean.records[0].data.usage.total_tokens, 16);
 });
+
+test("full content survives export and import with nested credentials removed", () => {
+  const bundle = sampleBundle();
+  const answer = "完整正文".repeat(8000) + "END-OF-ANSWER";
+  bundle.records[0].data = {
+    capture: { version: 1, mode: "full_redacted", truncated: false },
+    content: { answer, arguments: '{"Cookie":"nested-private","query":"ordinary"}', result: [],
+      reasoning_content: "private-model-reasoning" },
+    usage: { total_tokens: 9, completion_tokens_details: { reasoning_tokens: 2 } },
+  };
+  const clean = sanitizeBundle(validateBundle(bundle));
+  assert.equal(clean.records[0].data.content.answer, answer);
+  assert.deepEqual(clean.records[0].data.content.result, []);
+  assert.equal(clean.records[0].data.usage.completion_tokens_details.reasoning_tokens, 2);
+  assert.ok(!JSON.stringify(clean).includes("nested-private"));
+  assert.ok(!JSON.stringify(clean).includes("private-model-reasoning"));
+  const exported = exportBundle(clean, clean.records, {});
+  const again = sanitizeBundle(validateBundle(JSON.parse(JSON.stringify(exported))));
+  assert.equal(again.records[0].data.content.answer, answer);
+  assert.equal(again.records[0].data.capture.truncated, false);
+});
+
+test("over-limit full content is explicitly marked as truncated", () => {
+  const bundle = sampleBundle();
+  bundle.records[0].data = { capture: { version: 1, mode: "full_redacted" }, content: { answer: "x".repeat(260000) } };
+  const clean = sanitizeBundle(validateBundle(bundle));
+  assert.equal(clean.records[0].data.capture.mode, "truncated");
+  assert.equal(clean.records[0].data.capture.truncated, true);
+  assert.ok(clean.records[0].data.content.answer.endsWith("[truncated: capture limit]"));
+});
+
+test("Codex boundaries and repeated usage snapshots do not inflate HTTP or token metrics", () => {
+  const bundle = sampleBundle();
+  const original = metrics(bundle.records);
+  const base = bundle.records[0];
+  bundle.records.push({ ...base, id: "codex-1", kind: "model", status: "executor_ok", durationMs: 500000,
+    data: { transport: "codex_app_server", usage: { total_tokens: 9999 } } });
+  bundle.records.push({ ...base, id: "codex-usage", kind: "event", name: "codex.usage",
+    data: { transport: "codex_app_server", content: { tokenUsage: { totalTokens: 9999 } } } });
+  const current = metrics(bundle.records);
+  assert.equal(current.codexSteps, 1);
+  for (const key of ["calls", "usageCalls", "tokens", "httpSuccess", "p95"]) assert.equal(current[key], original[key]);
+});

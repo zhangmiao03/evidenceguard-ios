@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 enum CameraQuestion {
     static func needsLiveFrame(_ message: String) -> Bool {
@@ -45,6 +46,12 @@ enum AssistantIdentity {
 
 // Presentation only. Raw requests and receipts remain intact for diagnostics.
 enum ChatPresentation {
+    // Bump when the display transformation below changes. Hash UTF-8 exactly;
+    // the receipt contains neither the private body nor any credentials.
+    static let version = "chat-presentation-v1"
+    static func textHash(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
     static let actions = [
         "devices_list":"查看摄像头列表", "device_inspect":"查看摄像头能力", "camera_observe":"查看摄像头新画面",
         "camera_events_query":"查看摄像头事件", "camera_ptz_step":"移动摄像头", "camera_goto_preset":"转到选定位置",
@@ -91,7 +98,12 @@ enum ChatPresentation {
     static func operationDetails(_ operation: HardwareValue, deviceName: String?, references: [HardwareValue] = []) -> String {
         let args = operation["arguments"], tool = operation["tool"].string
         var parts = ["设备：" + text(deviceName ?? "所选摄像头", fallback: "所选摄像头")]
-        if let direction = ["LEFT":"向左", "RIGHT":"向右", "UP":"向上", "DOWN":"向下"][args["direction"].string] { parts.append("方向：" + direction + "移动一步") }
+        if let direction = ["LEFT":"向左", "RIGHT":"向右", "UP":"向上", "DOWN":"向下"][args["direction"].string] {
+            if args["motionMode"].string == "continuous" {
+                parts.append("方向：" + direction + "有界连续转动")
+                if case .number(let ms) = args["durationMs"] { parts.append("请求窗口 \(Int(ms)) 毫秒（含 SDK 等待），结束后配对停止") }
+            } else { parts.append("方向：" + direction + "移动一步") }
+        }
         if case .number(let seconds) = args["duration"], seconds.isFinite, (1...300).contains(seconds) { parts.append("持续 \(Int(seconds)) 秒") }
         if ["camera_light_set", "doorbell_light_set"].contains(tool), case .bool(let enabled) = args["enabled"] { parts.append(enabled ? "开启灯光" : "关闭灯光") }
         if tool == "device_settings_set" {
@@ -249,8 +261,9 @@ struct PendingChatRequest: Codable {
     var id: String; var message: String; var conversation: String
     var skill: String?; var camera: String?; var mode: String
     var filter: HistoryFilter?; var replyID: String?
-    func matches(message: String, camera: String?, mode: String, filter: HistoryFilter?, replyID: String?) -> Bool {
-        self.message == message && self.camera == camera && self.mode == mode && self.filter == filter && self.replyID == replyID
+    var referenceImageID: String? = nil
+    func matches(message: String, camera: String?, mode: String, filter: HistoryFilter?, replyID: String?, referenceImageID: String? = nil) -> Bool {
+        self.message == message && self.camera == camera && self.mode == mode && self.filter == filter && self.replyID == replyID && self.referenceImageID == referenceImageID
     }
 }
 struct LocalChatState: Codable {
@@ -271,6 +284,7 @@ struct AgentRun: Codable, Identifiable, Equatable {
     var historyFilter: HistoryFilter?
     var historyScope: HistoryFilter?
     var completedAt: Double?
+    var referenceImageId: String?
     var isRunning: Bool { status == "queued" || status == "running" }
 }
 
@@ -362,6 +376,7 @@ struct DemoScene: Decodable, Identifiable {
 struct DemoSceneSample: Decodable, Identifiable { var id: String; var imageUrl: String; var relativeSeconds: Int }
 struct VideoModelInfo: Codable, Equatable {
     var visionModel: String; var embeddingModel: String; var embeddingReady: Bool
+    var retrievalVersion: Int?
 }
 struct VideoRecording: Codable, Identifiable, Equatable {
     var id: String; var cameraId: String; var title: String; var recordedAt: Double?; var sourceType: String
@@ -375,8 +390,46 @@ struct VideoHit: Codable, Identifiable, Equatable {
     var segmentStart: Double; var segmentEnd: Double; var seekSeconds: Double; var recordedAt: Double?
     var sourceType: String; var verdict: String; var summary: String; var limitation: String
     var verificationStatus: String?
-    var verdictLabel: String { if verificationStatus == "failed" { return "视频复核失败 · 可重试" }; return ["matched":"模型判断匹配 · 请核验", "not_matched":"模型未发现所问动作", "uncertain":"候选片段 · 无法确认"][verdict] ?? "待核验" }
+    var thumbnailUrl: String?
+    var verdictLabel: String { if verificationStatus == "failed" { return "视频复核失败 · 可重试" }; if verificationStatus == "verifying" { return "正在核对原录像" }; return ["candidate":"相关候选 · 尚未核验", "verification_failed":"复核失败 · 可重试", "matched":"模型判断匹配 · 请核验", "not_matched":"模型未发现所问动作", "uncertain":"候选片段 · 无法确认"][verdict] ?? "待核验" }
 }
+
+struct VideoSearchInput: Codable, Equatable {
+    var text: String?
+    var image_ref: String?
+    var camera_ids: [String]
+    var time_range: HistoryFilter
+    var timezone: String = TimeZone.current.identifier
+    var limit = 10
+    var verify_limit = 3
+}
+struct VideoSearchScope: Decodable {
+    var cameraIds: [String]
+    var period: String
+    var startAt: Double?
+    var endAt: Double?
+    var timezone: String
+    var coverage: String
+}
+struct VideoSearchResult: Decodable, Identifiable {
+    var id: String
+    var status: String
+    var query: VideoSearchInput
+    var scope: VideoSearchScope
+    var videos: [VideoHit]
+    var reason: String
+    var candidateCount: Int
+    var verifiedCount: Int
+    var indexChanged: Bool
+    var removedCandidates: Int
+    var isRunning: Bool { status == "searching" || status == "verifying" }
+    var stateLabel: String {
+        ["searching":"正在检索相关片段", "verifying":"找到相关片段，正在核对", "completed":"本次检索已完成",
+         "no_recordings":"还没有导入录像", "no_indexed_recordings":"当前范围没有可检索录像",
+         "no_candidates":"没有找到可用候选", "failed":"检索未完成", "interrupted":"检索已中断"][status] ?? "检索状态更新中"
+    }
+}
+struct VideoSearchImage: Decodable { var id: String; var image_ref: String; var url: String }
 func videoTime(_ seconds: Double) -> String {
     let t = max(0, Int(seconds)); return String(format: "%02d:%02d", t / 60, t % 60)
 }

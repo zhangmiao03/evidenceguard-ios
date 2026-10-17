@@ -13,8 +13,11 @@ jobs:
       - run: python scripts/check_repository.py
       - run: python scripts/check_sdk_host.py
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: python -m pip install -r Cloud/server/requirements.txt
+      - run: python -m pip install -r Cloud/server/requirements.txt -r Cloud/server/requirements-vision.txt
+      - run: git lfs pull --include=Cloud/vision-resource-lab/models/depthart448.onnx
       - run: python -m pytest -q
+      - run: python -m pytest -q Cloud/demo_release
+      - run: PYTHONPATH=Cloud/dashboard python -m unittest discover -s Cloud/dashboard/tests
   ios-simulator:
     runs-on: macos-latest
     steps:

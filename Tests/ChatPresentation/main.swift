@@ -1,4 +1,8 @@
 import Foundation
+precondition(ChatPresentation.textHash("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+precondition(ChatPresentation.textHash("回复") != ChatPresentation.textHash("回复 "))
+let rendered = try AttributedString(markdown: "**回复**", options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))
+precondition(ChatPresentation.textHash(String(rendered.characters)) == ChatPresentation.textHash("回复"))
 struct Example: Decodable { let input: String; let expected: String }
 let examples = try JSONDecoder().decode([Example].self, from: Data(contentsOf: URL(fileURLWithPath: "Tests/ChatPresentation/cases.json")))
 for example in examples { precondition(ChatPresentation.text(example.input) == example.expected, "Unexpected presentation: \(ChatPresentation.text(example.input))") }

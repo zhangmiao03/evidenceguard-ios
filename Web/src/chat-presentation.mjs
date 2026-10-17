@@ -47,6 +47,10 @@ export const actions = {
   "gmail_read": "读取邮件",
   "lark_chats": "查看会话列表",
   "lark_messages": "读取会话消息",
+  "analyze_visual_endpoints": "对照守护参考图",
+  "sample_camera_vision": "取新画面并分析",
+  "aim_camera_at_guard_target": "准备将守护目标移到画面中央",
+  "read_visual_control": "核对摄像头调整结果",
   "read_phone_context": "查看已共享的手机信息"
 };
 const controls = new Set(["camera_ptz_step", "camera_goto_preset", "camera_set_night_vision", "doorbell_light_set", "doorbell_reply_play", "camera_record_clip", "device_settings_set", "camera_events_subscribe", "camera_events_unsubscribe", "camera_talk_start", "camera_talk_stop", "camera_light_set", "camera_dual_mode_set", "camera_ptz_mode_set", "camera_panorama_generate", "camera_stop", "operation_cancel"]);
@@ -63,6 +67,7 @@ export function operationDetails(op, deviceName = '所选摄像头', references 
   const a = op.arguments || {}, parts = ['设备：'+chatText(deviceName, '所选摄像头')];
   const direction = {LEFT:'向左',RIGHT:'向右',UP:'向上',DOWN:'向下'}[String(a.direction)];
   if (direction) parts.push('方向：'+direction+'移动一步');
+  if (op.tool === 'camera_ptz_step' && typeof a.durationMs === 'number' && a.durationMs >= 100 && a.durationMs <= 1100) parts.push('移动 '+(a.durationMs / 1000)+' 秒后停止');
   if (typeof a.duration === 'number' && Number.isFinite(a.duration) && a.duration >= 1 && a.duration <= 300) parts.push('持续 '+Math.trunc(a.duration)+' 秒');
   if (['camera_light_set','doorbell_light_set'].includes(op.tool) && typeof a.enabled === 'boolean') parts.push(a.enabled ? '开启灯光' : '关闭灯光');
   if (op.tool === 'device_settings_set') {

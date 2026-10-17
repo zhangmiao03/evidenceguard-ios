@@ -1,0 +1,110 @@
+2026-10-16 · dongrunze / feat/anker-assistant 整合记录
+
+一、源码范围
+
+起点 dongrunze@38302980c9aca10eee125a6ef6ecd78ccf961f87，合入
+feat/anker-assistant@ce8204d2809a758eb65a286abb860ab54b7efbc7。
+main@cc16c985b2686efb520f375247993fd63c80c7e7 已在历史中。
+本轮不发布云端服务、不构建或上传 TestFlight。
+已提交 iOS 整合 2e509b4；并发 Dashboard 整合 e8cd0a5，推送至 PR #5。
+
+推送前远端新增 dongrunze@0993957，已另行合并其 Dashboard 实际模型输入图、
+检索证据与图片展示改动。保留新版展示样式，同时保留 iOS 为硬件演示端的
+说明；这些观察页面不扩展已停止开发的 Web 硬件产品。
+
+iOS 合入助手时间线、来源消息定位、聊天记忆管理、早晚报告、连接应用、
+摄像头观察设置、SDK 托管账号与宿主安装包检查。保持原有五栏和工具执行器。
+保留 dongrunze 的诊断会话隔离、Token 复用、门铃双摄描述、服务兼容测试、
+云端部署/回滚记录和 Dashboard。Web 产品保持 3830298 的已有界面；只更新
+范围说明和 Dashboard 中的 SDK 入口描述，不要求它继续与新版 iOS 对齐。
+
+冲突处理：保留一个 automaticMemory 字段和一个聊天记忆开关；保留可选
+updatedAt 兼容字段，使用新版 memoryOptions API；保留记忆失败重试的
+断网/忙碌禁用。云端部署路径继续按实测记录，不因合并而声称已更新线上。
+
+二、硬件与模型链路修正
+
+SDK/Bridge/Tools/OfficialSdkBridge.kt：
+- T8214 使用 changeVideoMode(mode, 0)，与官方 MegaLiveStreamViewModel
+  的双摄门铃分支一致；设备原位切换，不主动重新开流。回执同时保留
+  previousMode、mode、sdkStreamRestartRequired、requiresNewMediaSession=false
+  及 physicalEffect=unverified。布局变化使旧视角引用失效，必须重新取图。
+- T8171 单步停止使用原命令的 PTZDirection。预置位跳转没有原方向，
+  不使用已弃用的无参数 stopPTZMovement；返回 STOP_UNVERIFIED。
+
+Cloud/server/evidenceguard/hardware_tools/vendor/camera_tools/runtime.py：
+- 停止失败/未知后保持 unknown。迟到的 execute 回执不能改回 verifying；
+  设备仍被占用，只有显式人工核对才释放，不把历史结果改成成功。
+- test_hardware_tools.py 增加四种组合：失败/未知 × 停止回执先到/后到。
+  都使用执行器替身；没有驱动实际硬件。
+
+Cloud/server/evidenceguard/harness/runtime.py：
+- 明确 iOS 为当前硬件演示端，说明新版 SDK 入口和早晚报告；现有 Web
+  仍是单次每日概况。保留 Token 刷新、前台采集、对讲与 SD 导出边界。
+- T8214 双摄事实放入共用产品指引，普通对话与主动评估均可获得；
+  不假定合成布局，不将重叠目标重复计数。
+- test_prompt_contracts.py 验证实际发出的模型请求，不仅检查源码常量。
+
+三、本轮验证
+
+1. Ubuntu 24.04 / WSL，Python 3.12、仓库固定 requirements、系统 ffmpeg：
+   python -m pytest -q -p no:cacheprovider
+   323 passed，无跳过。仅有依赖中的 BlockingPortal 弃用提示。
+   包含 Codex stdio 子进程、SDK 包检查、时间线、旧客户端兼容、工具租约、
+   提示词和画面到 Agent 的替身测试；不代表真实模型质量或真机验收。
+2. Windows Python，发布/回滚检查：24 passed。
+   python -m pytest -q -p no:cacheprovider Cloud/demo_release
+3. Dashboard Python unittest：初次整合 23 passed，合入 0993957 后 27 passed。
+   PYTHONPATH=Cloud/dashboard python -m unittest discover -s Cloud/dashboard/tests -q
+4. Git 跟踪的 Web Node 单元测试：16 passed；未纳入本地未提交 hardware-lab。
+5. Web TypeScript / Vite 生产构建通过。原生 iOS 的编译不包含在这一结果内。
+6. Playwright：Chromium、Firefox、WebKit、mobile-webkit 各三项，共 12 passed：
+   iOS 网站交互展示、自动记忆兼容、单次概况不回写隐藏早晚报告字段。
+   npx playwright test tests/browser/showcase.spec.ts tests/browser/product.spec.ts \
+     --grep 'iOS tour|cloud automatic memory|legacy summary'
+   合入 0993957 后重新构建通过，并对 dashboard.spec.ts、showcase.spec.ts、
+   media-preview.spec.ts 进行四浏览器回归：36 passed，覆盖新图片与检索展示。
+7. SDK/typecheck_tools.py：三个共享 Kotlin facade 文件对官方 Android AAR
+   类型检查通过。AAR SHA-256 为
+   27916001d9f973361910e2a59da3a870f540f3038816dfc6141b3d33c633f87a。
+   不覆盖 EvidenceGuardSDKBridge.kt 的 iOS 专用导出、SwiftUI 或 arm64 链接。
+8. scripts/check_sdk_host.py 的源 plist 检查通过；合入最新 Dashboard 后
+   scripts/check_repository.py 检查 518 个跟踪文件，未发现其能识别的凭证
+   或禁止提交的本地产物；这不是完整安全审计。
+
+四、Mac 与真机交接
+
+Mac 在独立副本拉取本次 dongrunze / PR #5，记录 git rev-parse HEAD。
+不要用此前 build 10 或其他旧 IPA 替代本轮验证。
+
+未恢复专有 SDK 时先验证普通 iOS：
+  python3 scripts/check_sdk_host.py
+  bash scripts/check_mobile_contracts.sh
+  xcodebuild -project EvidenceGuard.xcodeproj -scheme EvidenceGuard \
+    -configuration Debug -destination 'generic/platform=iOS Simulator' \
+    CODE_SIGNING_ALLOWED=NO build
+  bash scripts/test_ios_compatibility.sh
+
+再按 Docs/LIVE-DEVICE-INTEGRATION.md 第 5 节恢复官方资料，重新运行 SDK/prepare.py；构建
+EvidenceGuard.xcworkspace 的 EvidenceGuardSDK 真机方案，核对 SDK 指纹，
+运行 archive/export 中的完整 App 包检查。私有账号值不提交 Git；托管账号
+编译后存在 App 包内，仅用于受控内部联调，不用于公开分发。
+
+依次验收：
+1. 我的 → 设置 → 摄像头调试 → 打开官方设备调试页；Compose 能打开和返回，
+   托管/手填账号各自行为正确，返回后重新查询并同步设备。
+2. 先 T8171 后 T8214，单设备前台取流、停止、重连；现有 Token 不被重新生成。
+3. Agent 请求新画面，现场改变目标验证不是旧缩略图；拒绝/超时/离页保留未知。
+4. T8171 单步方向与按原方向停止；预置位停止失败时不显示已停止，必须核对。
+5. T8214 主摄/下摄的合成布局切换，检查首帧恢复与新画面引用；不假定两路独立流。
+6. 锁屏、切后台、断网和切官方工作区不会宣称继续采集或已完成物理控制。
+7. 新版早晚报告、旧服务单时段降级、记忆开关/重试、通知打开历史助手消息。
+
+五、仍未实现或未验收
+
+本机没有 Xcode，未执行本次 Swift 契约/Simulator/arm64 构建或真机测试。
+GitHub Checks 此前因付款/额度限制有未启动记录；以本次 PR 的实际结果为准，
+不能把排队、0 步运行或旧版本成功记为这次编译通过。
+原生对讲、SD/官方云录像下载到手机后上传本项目云端、自动录像同步仍未闭环；
+官方 Demo 能操作这些项目不代表产品 Agent 已有对应执行路线。
+已运行的发布/回滚测试验证脚本逻辑，本轮没有实施部署或回滚。

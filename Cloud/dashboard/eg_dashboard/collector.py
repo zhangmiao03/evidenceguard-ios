@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import time
 from urllib.parse import quote
+from . import content
 
 SCHEMA = 'evidenceguard.ops/v1'
 MAX_RECORDS = 3000
@@ -53,7 +54,14 @@ def content_ref(value):
 def public_record(record):
     result={key:record.get(key) for key in ('id','kind','name','at','traceId','spanId','parentSpanId',
                                           'source','platform','status','durationMs','data')}
-    result['data']=public_value(result.get('data') or {})
+    data=result.get('data') or {}
+    capture=data.get('capture') if isinstance(data,dict) else None
+    full=isinstance(capture,dict) and capture.get('version')==1 and capture.get('mode') in {'full_redacted','truncated'}
+    if full:
+        result['data']=content.safe_record(data)
+        result['data']['publicProjection']=True
+        return result
+    result['data']=public_value(data)
     if result['kind']=='prompt':
         body=result['data'].get('request',{})
         for index,message in enumerate(body.get('messages',[])):
@@ -184,11 +192,15 @@ class Collector:
     def bundle(self, label, environment, server):
         now=time.time();records=[];coverage={'readOnly':True,'publicProjection':True,'contentCapture':False,
             'environment':label,'sampledAt':now,'clock':'server receive wall clock; durations use monotonic clocks',
-            'limitations':['No historical model backfill','Dynamic messages are metadata-only on the public dashboard',
-                'No model private reasoning, credentials, camera images or video URLs','No inference that missing events mean success']}
+            'limitations':['No historical model backfill','Full text only for explicitly captured records; older records remain metadata-only',
+                'No model private reasoning or credentials; public media limited to referenced bounded copies','No inference that missing events mean success']}
+        from .media_assets import PublicMedia
+        assets=PublicMedia(self.output,label,Path(environment['observations']).parent/'observer-media')
         try:
             state=json.loads(Path(environment['state']).read_text())
         except (OSError,ValueError):state={}
+        coverage['contentCapture']=bool(state.get('contentCapture'))
+        coverage['executor']=state.get('executor','unknown')
         if not self.disk_cache or time.monotonic()-self.scan_at>30:
             self.disk_cache={}
             for env in self.config['environments'].values():
@@ -209,9 +221,17 @@ class Collector:
         try:
             with readonly(environment['observations']) as db:
                 coverage['totalStored']=db.execute('SELECT COUNT(*) FROM records').fetchone()[0]
+                read_bytes=0
                 for row in db.execute('SELECT payload FROM records ORDER BY at DESC LIMIT ?', (MAX_RECORDS,)):
+                    read_bytes+=len(row[0].encode())
+                    if read_bytes>MAX_BYTES:break
                     records.append(public_record(json.loads(row[0])))
                 records.reverse()
+                from .media import visual_traces
+                extra,supplement=visual_traces(db)
+                ids={r['id'] for r in records}
+                records.extend(public_record(r) for r in extra if r['id'] not in ids)
+                coverage['visualTraceSupplement']=supplement
             coverage['observability']='connected' if same_process else 'stale_process'
         except (OSError,ValueError,sqlite3.Error) as exc:
             coverage.update(observability='unavailable',errorType=type(exc).__name__,totalStored=None)
@@ -221,19 +241,50 @@ class Collector:
             coverage.update(resourceCounts=counts,resourceLimitPerTable=60,resourceSnapshotsAt=now,
                             resourcesTruncated=any(n>60 for n in counts.values()))
         except (OSError,ValueError,sqlite3.Error) as exc:coverage['resourceErrorType']=type(exc).__name__
+        try:
+            from .media import read_media
+            video_root=state.get('videoRoot') or str(Path(environment['database']).parent/'recordings')
+            media,media_coverage=read_media(environment['database'],now,state.get('embeddingSignature') if same_process else None,assets,video_root)
+            records.extend(media)
+            coverage['mediaIndex']=media_coverage
+            from .briefing import project as project_briefing
+            try:records.extend(project_briefing(self.output,label,assets,media,state if same_process else {},environment,now))
+            except (OSError,ValueError,TypeError,KeyError,sqlite3.Error) as exc:
+                coverage['briefingErrorType']=type(exc).__name__
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['mediaIndex']={'status':'unavailable','errorType':type(exc).__name__}
+        try:
+            from .briefing import processing_status
+            records.append(processing_status(state if same_process else {},environment,now))
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['processingStatusErrorType']=type(exc).__name__
         for name,model in state.get('models',{}).items():
             records.append(resource('model_configuration',{'operation':name,'model':model,
                 'status':'configured' if model else 'not_configured'},now))
         if state.get('systemPrompt'):
             records.append(resource('deployed_prompt',{'systemPrompt':state['systemPrompt'],
                 'tools':state.get('tools',[]),'status':'loaded_at_startup'},state.get('startedAt',now)))
+        for prompt in state.get('promptCatalog',[]):
+            records.append(resource('deployed_prompt',prompt,state.get('startedAt',now)))
         size=0;selected=[]
         for row in reversed(records):
             size+=len(json.dumps(row,ensure_ascii=False).encode())
             if size>MAX_BYTES:break
             selected.append(row)
         selected.reverse()
+        selected.sort(key=lambda r:r['at'])
+        for row in selected:
+            inputs=row.get('data',{}).get('inputMedia')
+            if isinstance(inputs,list):row['data']['inputMedia']=[assets.reference(m) for m in inputs[:8]]
+        try:
+            from .archive import project, load_secrets
+            coverage['archive']=project(environment['database'],environment['observations'],self.output,label,now,assets,
+                secrets=load_secrets(environment,state.get('pid') if same_process else None),capture=coverage['contentCapture'] and same_process)
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['archive']={'status':'unavailable','errorType':type(exc).__name__}
+        assets.finish()
         count=sum(r['kind']!='resource' for r in selected)
+        coverage['contentRecords']=sum(r['data'].get('capture',{}).get('mode') in {'full_redacted','truncated'} for r in selected)
         coverage.update(returned=len(selected),truncated=coverage.get('totalStored',0) is not None and coverage.get('totalStored',0)>count,
                         recordLimit=MAX_RECORDS,server=server)
         return dict(schemaVersion=SCHEMA,dataset={'id':'cloud-'+label,'title':environment['title']+' · 云端实时追踪',
@@ -258,3 +309,4 @@ def main():
         time.sleep(5)
 
 if __name__=='__main__':main()
+

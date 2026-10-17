@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DA2026101600000000000001 /* VideoSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2026101600000000000003 /* VideoSearchView.swift */; };
+		DA2026101600000000000002 /* VideoSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA2026101600000000000003 /* VideoSearchView.swift */; };
 		022F13600717E742FFB559FC /* OfficialSDKSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC4B64D4984664972FFF5007 /* OfficialSDKSettingsView.swift */; };
 		03AE49A9BBD66F7270098AAA /* DeviceQRCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */; };
 		145DF8C0457707043D197721 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000D /* Assets.xcassets */; };
@@ -92,6 +94,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		DA2026101600000000000003 /* VideoSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoSearchView.swift; sourceTree = "<group>"; };
 		017FE250C192B33D7F989B9E /* MobileServiceConfiguration.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MobileServiceConfiguration.swift; sourceTree = "<group>"; };
 		137724B271EE445FA568A4D9 /* ConnectionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionsView.swift; sourceTree = "<group>"; };
 		1778D32968D1EDC6A1B8D8BC /* DeviceQRCode.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeviceQRCode.swift; sourceTree = "<group>"; };
@@ -214,6 +217,7 @@
 				B61016200000000000000002 /* BluetoothDevicesView.swift */,
 				B61016190000000000000001 /* VisualSceneView.swift */,
 				B1000000000000000000000B /* EvidenceView.swift */,
+				DA2026101600000000000003 /* VideoSearchView.swift */,
 				137724B271EE445FA568A4D9 /* ConnectionsView.swift */,
 				B1000000000000000000000C /* ProfileView.swift */,
 				B20000000000000000000001 /* SpeechInput.swift */,
@@ -429,6 +433,7 @@
 				A61016200000000000000002 /* BluetoothDevicesView.swift in Sources */,
 				A61016190000000000000001 /* VisualSceneView.swift in Sources */,
 				A1000000000000000000000B /* EvidenceView.swift in Sources */,
+				DA2026101600000000000001 /* VideoSearchView.swift in Sources */,
 				5EC39AFD453E47A78F7D2C47 /* ConnectionsView.swift in Sources */,
 				A1000000000000000000000C /* ProfileView.swift in Sources */,
 				A20000000000000000000001 /* SpeechInput.swift in Sources */,
@@ -466,6 +471,7 @@
 				A61016200000000000000012 /* BluetoothDevicesView.swift in Sources */,
 				A61016190000000000000002 /* VisualSceneView.swift in Sources */,
 				84DCB6F0790367CACB8C854D /* EvidenceView.swift in Sources */,
+				DA2026101600000000000002 /* VideoSearchView.swift in Sources */,
 				AB7FAD8FCAF24A79AE8BED39 /* ConnectionsView.swift in Sources */,
 				243DA04C02F15F31D2E6FA23 /* ProfileView.swift in Sources */,
 				5DBA0647E4277563805CB1E3 /* SpeechInput.swift in Sources */,

@@ -38,7 +38,7 @@ python scripts/cloud_command.py --resume COMMAND_UUID
 
 | 页面 | 实际来源与口径 |
 | --- | --- |
-| 运行总览 / Agent 与模型 | 真实模型 HTTP 尝试、成功状态、耗时、供应商 Usage；没有 Usage 显示未知 |
+| 运行总览 / Agent 与模型 | 真实 HTTP 尝试与 Codex 执行步骤分开统计；HTTP 成功率/耗时分位/Token 只用 HTTP 回执 |
 | 对话与 Trace | 任务开始、上下文准备、模型请求、工具执行、再次判断与结束回执；可进入模型和提示词详情 |
 | 提示词与上下文 | 进程实际加载的固定系统提示词、工具 Schema、每次请求的角色和参数快照 |
 | 设备、Skill、任务、证据 | 业务数据库只读元数据快照，不回放或执行旧任务 |
@@ -50,7 +50,21 @@ python scripts/cloud_command.py --resume COMMAND_UUID
 
 Agent 不一定调用工具；缺失回执不等于成功。Trace 展示执行事实、工具选择、耗时、状态和结果摘要，不展示模型内部推理。`reasoning_tokens` 只是供应商用量计数。主动任务存在对应回执时也显示 `proactive_started/finished`。
 
-公开页面保留固定系统提示词和工具定义；动态发言、记忆、工具正文仅有长度、哈希和结构摘要。凭证、原始图片视频、签名媒体地址不进入公开快照。没有编辑提示词、执行工具、调用模型、改任务或删除数据的公开接口。
+正文采集由部署参数 `--capture-content` 显式开启，对应 `EG_DASHBOARD_CAPTURE_CONTENT=1`。新记录可以查看完整的脱敏系统/用户/工具消息、请求参数和工具 Schema、模型原始响应、工具参数与结果，以及运行时真正返回 App 的最终回复。模型结果与运行时回退回复分别呈现，不能互相冒充。每次 HTTP 请求与提示词通过 `promptId` 关联；第二轮消息保留 `tool_call_id`。
+
+记录详情提供分区正文和原始 JSON；Trace 的“查看最终回复”直接定位 `agent.result`。正文可随 JSON 导出/离线导入保留。未开启时仍使用元数据模式；历史记录无法恢复正文，页面明确标注。不是把已有的业务对话库整库公开。
+
+### Codex App Server 执行器
+
+2026-10-16 实际检查发现 demo 已使用 `codex-app-server-v1`。它通过独立子进程 stdio 调用 Responses 模型，并不调用原 `OpenAICompatibleProvider.complete` 或 HTTP 观察入口。仅拦截 HTTP 会漏掉这一条执行链路，不能把漏采解释为没有模型请求。
+
+增量观察器可选适配 `CodexTurn`，旧版没有该模块时正常工作。每个 `complete()` 步骤记录输入 messages/tools、关联 `promptId`、返回给运行时的文本或工具请求、耗时与状态；`transport=codex_app_server`、`wireHttpVisible=false` 明确边界。另外采集实际发送的 `thread/start`（含适配器追加后的 `baseInstructions` 和动态工具 Schema）、`thread/inject_items`、`turn/start`、工具回执，以及收到的工具请求、最终文本与 turn 完成状态。
+
+这些是主程序与执行器的真实输入输出。Codex 内部 HTTP 报文、内置提示词及内部推理没有开放给此观察器；不能声称拿到了供应商原始请求。步骤数不计入 HTTP 请求数/成功率/P95；`thread/tokenUsage/updated` 按执行器用量快照保留，重复快照不求和、不冒充每步骤消费。HTTP 分支仍记录其实际请求和响应。
+
+包装器不修改传入对象、工具选择、返回对象、权限、模型设置或重试策略。原错误和取消原样传播，写库/脱敏失败只损失观察数据。测试覆盖这两种执行器及正文开关；真实验证脚本同时校验公开投影与追踪数据库一致，最终回复与 API 原始运行结果经相同脱敏后相等。
+
+密钥字段、当前进程实际凭证值、Bearer/Basic/JWT、私钥、Cookie、签名地址和媒体二进制在写入追踪库前过滤，采集器及浏览器再次过滤；模型内部推理不展示，`reasoning_tokens` 用量计数保留。模型输入输出是脱敏快照，不承诺与网络原始字节一致。每次捕获正文预算 512,000 字符、单字符串 256,000 字符、单集合 2,000 项，超过时标注截断；不会把截断记录标为完整。全文模式队列限制为 64 条，写满仍丢弃埋点而不阻塞业务。没有编辑提示词、执行工具、调用模型、改任务或删除数据的公开接口。
 
 ## 部署结构与兼容
 
@@ -62,13 +76,17 @@ Agent 不一定调用工具；缺失回执不等于成功。Trace 展示执行�
  → 脱敏快照 → 非特权 HTTP 服务 → nginx /dashboard
 ```
 
-| 环境 | 原服务 / 内部端口 | 业务源码 | Python 环境 |
+以下是监控初次接入时的目录；demo 后续切换为独立 release。当前维护须以 `systemctl show evidenceguard-demo -p ExecStart -p DropInPaths` 为准，并让 collector 的 demo source 与实际加载目录对应。后续变更与逐文件核对见 [demo 联调记录](DEMO-TOOLCHAIN-DEPLOYMENT.md)。
+
+| 环境 | 原服务 / 内部端口 | 初始业务源码 | Python 环境 |
 | --- | --- | --- | --- |
 | team | evidenceguard / 8790 | /opt/evidenceguard/Cloud/server | /opt/evidenceguard/venv |
-| demo | evidenceguard-demo / 8792 | /opt/evidenceguard-demo/releases/codex-20261015/Cloud/server | /opt/evidenceguard-demo/venv-build10 |
+| demo | evidenceguard-demo / 8792 | /opt/evidenceguard-demo/Cloud/server | /opt/evidenceguard-demo/venv-build10 |
 | review | evidenceguard-review / 8791 | 同 team | 同 team |
 
 原服务增加 `40-dashboard-observer.conf` systemd drop-in，入口改为加载原应用的 `eg_dashboard.bootstrap:app`，保留原工作目录、venv、端口、环境文件、业务权限和沙箱。追踪写入各自 `/var/lib/<服务>/observability.sqlite3`。新版使用已有 `evidenceguard.ops`；旧版用打包时复制的同一实现作为兼容库，不维护两份 recorder 源码。
+
+激活时解析 systemd 实际 `ExecStart` 并验证项目目录、端口和绑定地址，保留当前 release 的 `--app-dir`、Python 环境及其余参数；不把 demo 回退到表格中的旧默认路径。兼容测试后再次检查配置，发现并发部署变更即停止。本轮部署前读取到 demo 的业务目录为 `/opt/evidenceguard-demo/releases/briefings-20261015/Cloud/server`。
 
 `evidenceguard-dashboard-collector` 在服务器内读取三套隔离数据库和系统资源，写入 `/var/lib/evidenceguard-dashboard/`。采集器需要 root 只读访问这些目录，但不监听网络，只允许 Unix 地址族。
 
@@ -82,7 +100,7 @@ GET/HEAD /dashboard/api/server
 GET/HEAD /dashboard/assets/<构建资源>
 ```
 
-业务快照每表最多 60 行，追踪最多 3,000 条、正文预算 6 MB，截断在 coverage 声明。recorder 默认保留 20,000 条、队列最多 2,048 条，写满/失败不阻塞业务。历史模型请求不从业务数据补造。公开快照未导出 recorder 内存丢弃计数，界面显示未知。数据源 `local` 在云端表示服务器本地采集。
+业务快照每表最多 60 行，追踪最多 3,000 条、快照预算 6 MB，截断在 coverage 声明。recorder 默认保留 20,000 条，元数据模式队列最多 2,048 条、全文模式 64 条，写满/失败不阻塞业务。历史模型请求不从业务数据补造。公开快照未导出 recorder 内存丢弃计数，界面显示未知。数据源 `local` 在云端表示服务器本地采集。
 
 代码核对覆盖 Python 文件，不覆盖 SDK 二进制、权重、配置秘密或运行中字节码。启动指纹与磁盘相同不能证明某个 Git commit 整体已部署。三套版本号都是 0.9.0，实际代码不同。本轮业务核对基准为 `98dd0b1b9b52359cae08a3c9383aa27f18cccb47`；手机演示首次发现 21 个文件差异，包含尚未部署的 `hardware_tools`。本轮没有覆盖部署的业务源码。
 
@@ -95,10 +113,12 @@ python Cloud/dashboard/build_release.py
 python Cloud/dashboard/upload_release.py Cloud/data/deploy/dashboard.tar.gz
 ```
 
+若当前 Windows 系统代理报 TLS EOF，而直连 AWS 正常，上传和 `cloud_command.py` 均可加 `--no-system-proxy`；不要关闭证书校验。命令已返回 SSM ID 后连接失败，先用 `--resume ID` 查询原命令，不重复执行发布。
+
 打包只包含 Dashboard/观察器、Web 产物、测试和仓库文件哈希，不包含 `.env`、AWS 凭证、官方 SDK、业务数据库或服务器源码副本。上传分块和最终包核对 SHA-256，按内容哈希创建 release；上传本身不启动服务。将输出中的实际 release 路径用于：
 
 ```powershell
-python scripts/cloud_command.py --command 'python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --release /opt/evidenceguard-dashboard/releases/RELEASE' --timeout 180
+python scripts/cloud_command.py --command 'python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --release /opt/evidenceguard-dashboard/releases/RELEASE --capture-content' --timeout 180
 ```
 
 激活先用临时数据库对两套实际代码做兼容测试，再备份配置、逐套重启并核验健康状态及 API 401；随后启动采集器和公开服务、校验 nginx。失败自动回滚，备份留在 `/var/backups/evidenceguard-dashboard/<时间>/manifest.json`。主动回滚使用对应的精确目录：
@@ -119,7 +139,7 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 真实测试仅创建标记测试会话，没有取图、云台、声音、通知或其他硬件动作。`smoke_live.py` 使用真实模型额度，只供显式一次验证，不能循环当健康检查。
 - 本轮未运行 iOS Simulator 或真机 SDK；摄像头协议回归不能代替实际播放、双向音频和弱网验收。Mac 交接见 [IOS-MAC-VERIFICATION.md](IOS-MAC-VERIFICATION.md)。
 
-## 最终部署回执
+## 2026-10-15 部署回执（历史）
 
 - 活跃 release：`/opt/evidenceguard-dashboard/releases/f212ce8abc27d477`；发布包 SHA-256：`f212ce8abc27d4774f2dd62944b905a7da7728109ce9eb3c2d34a54edd0ff738`。源码实现提交 `a7ef5bf`。
 - 对应回滚目录：`/var/backups/evidenceguard-dashboard/20261015T005440494935Z`。
@@ -128,4 +148,15 @@ python3 /opt/evidenceguard-dashboard/releases/RELEASE/activate.py --rollback /va
 - 仓库差异：demo 21 个 Python 文件；team/review 各 34 个，详情见页面。这里的“进程与启动指纹一致”与“仓库代码一致”是两个独立判断。
 - 浏览器检查了实际页面、环境切换、模型→提示词关联、持续自动刷新、390px 移动布局；页面无横向溢出。实际导出的 75 条记录 JSON 通过后端 schema 校验并包含服务器采样信息。
 
-2026-10-15 Codex 接入补充：手机保留观察器入口，但执行器已改为官方 Codex App Server。业务事件新增 executor_started / executor_usage / executor_completed；旧 Python HTTP 包装器不覆盖 Codex 子进程的请求，不能把缺失的 HTTP 明细补造成成功或失败。真实执行以运行契约及执行事件为准。当前路径和验证见 [CODEX-CLOUD.md](CODEX-CLOUD.md)。
+## 2026-10-16 正文采集与 Codex 真实验证
+
+- 实现提交 `29b87fbc5769e61aeb5501c9ccaf5f2abf307d6d` 已推送 `dongrunze`；活跃观察器 release `/opt/evidenceguard-dashboard/releases/b0629775779e3eeb`，包 SHA-256 `b0629775779e3eebc7034059cc3de7ee037a8abcbc64d1649a53f37d02e2d92d`。
+- 激活 SSM 命令 `552b67e0-2fe2-4530-b005-849183792f4e` 成功，回滚配置 `/var/backups/evidenceguard-dashboard/20261016T053129122679Z`。保留 demo 当前 `briefings-20261015` 业务 release，其余两套也保持原业务目录及参数。
+- 18 项 Dashboard 测试、14 项 Web 数据/协议测试、10 项 Chromium/移动 WebKit 页面测试通过。两套服务器业务代码分别以元数据/全文模式做兼容检查，共 4 次通过，验证 HTTP 模型→工具→模型、原鉴权与摄像头列表；没有替换服务器业务源码。
+- 先前 Trace `dashboard-smoke-96b1bcd78c5443b78f13560d01ab98cd` 暴露 Codex 漏采，不能用作完整正文验证。修复后仅发起一次新真实任务：`dashboard-smoke-c78f3c52fbb94696a0ecbe25bd81d00a`，2026-10-16 13:32:15–13:32:20（新加坡时间），状态 `completed`。
+- 当前配置模型 `doubao-seed-2-1-lite-260915`；3 个真实 Codex 执行步骤、3 份关联输入快照、2 个只读工具 `list_camera_capabilities` / `list_tasks`，42 条关联记录。底层 HTTP 不可见；0 个观测到的 HTTP 回执不能解释成没有模型请求。两次执行器用量更新按快照展示。
+- 真实验证 SSM 命令 `4e94b093-ebe6-4b73-b36d-28094183a1ff` 成功。公开记录逐项等于 SQLite 的脱敏投影，实际下发的 `baseInstructions`、`turn/start` 输入、工具返回协议和最终文本均存在；所有该服务配置中的密钥值均未出现在测试 Trace。
+- 最终回复与实际运行 API 的脱敏正文相等，61 个字符，SHA-256 `e37b9915e75923f83a98677948d1c050ce5ec16d53de0125641b7bc576f85b6a`。回执保存在服务器 `/var/tmp/dashboard-smoke-c78f3c52fbb94696a0ecbe25bd81d00a.json`，权限 0600。真实结果是没有已接入摄像头、没有已创建任务，因此没有验证实物视频、云台或音频。
+- Codex **内置浏览器**打开线上 `/dashboard`，实际进入上述 Trace、最后一步模型输入输出、`list_tasks` 参数 `{}` / 返回 `[]`、最终 App 回复，均显示正文且与回执一致。页面保留完整调用边界说明。
+- 公网 `/dashboard` GET/HEAD 200、写入 405、无效环境 422、管理路由 404；三套 HTTPS 健康检查 200、未授权业务 API 401。三套进程与启动指纹一致，观察器均为本次 release；相对参考仓库 demo 17 项 Python 差异、team/review 各 34 项，不能据此宣称业务代码与仓库完全一致。
+- 快捷连接已在内置浏览器完成 AWS CLI 重新授权并实测 SSM。当前实例与公网 IP 均未变；本机直连 AWS 可用，使用 `-NoSystemProxy` / `--no-system-proxy` 避免当前系统代理偶发 TLS EOF。连接方法和发布协调信息已发送到“代码开发”聊天。

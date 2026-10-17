@@ -15,7 +15,7 @@
 
 | 端 | 本项目工作区 | 官方工作区入口 | 实际加载内容 |
 | --- | --- | --- | --- |
-| iOS | SwiftUI、设备同步、直播取帧和 Agent | 顶部“切换官方 SDK”；我的 → 官方摄像头接入也有入口 | 官方 `SampleApp()`，与 `Main.kt/MainViewController()` 使用同一根界面；保留完整 Compose 导航 |
+| iOS | SwiftUI、设备同步、直播取帧和 Agent | 我的 → 设置 → 摄像头调试 → 打开官方设备调试页 | 官方 `SampleApp()`，与 `Main.kt/MainViewController()` 使用同一根界面；保留完整 Compose 导航 |
 | Web | React 设备工作台、直播、Agent、证据 | 页面顶部“切换至官方 SDK” | 独立 iframe 内的官方 `App/AuthForm/LivePanel/AIRawFramePanel`，原始 UI 文件不重写 |
 
 本轮不开发 Android App；官方 Common 导航中的功能可作为 Android 对照材料，不代表 Android 客户端已加入本仓库。
@@ -24,9 +24,11 @@
 
 1. 持有官方资料包的 Mac 执行 SDK 恢复和 **重新运行 `python3 SDK/prepare.py`**；本次修改了 Kotlin 桥接，旧 SampleCore 不能代替新产物。
 2. 打开 `EvidenceGuard.xcworkspace`，选择 `EvidenceGuardSDK` 真机方案构建。普通 `EvidenceGuard` / Simulator 会显示构建条件与指引，不假装已经加载官方页面。
-3. 点顶部“切换官方 SDK”，等待本项目直播、取帧和云端采集会话结束。
-4. 在官方 Business 登录表单核对账号、Token 与 PR/QA，再进入官方添加设备、设备列表、直播、事件、设置等页面。原版登录表单采用原版缓存；不会把本项目 Keychain 凭证静默复制进去。
-5. 官方模式顶部始终保留“返回本项目”和检查指引。返回时退出 Compose 内容、释放播放器/订阅、注销官方登录上下文，再打开本项目“官方摄像头接入”。**重新查询设备并同步，然后手动开流**。
+3. 从“我的 → 设置 → 摄像头调试”打开官方 SDK 工作区。先检查安装包的 Compose 配置、SampleCore/AnkerWebRTC 和资源目录，再结束本项目执行器、直播、取帧及云端采集会话。
+4. 普通构建进入官方 Business 登录表单，核对账号、Token 与 PR/QA；配置了私有 `EGSDKManagedAccount=YES` 的内部构建通过 `openOfficialDemoWithAccount` 使用包内联调账号进入官方导航，不再重复填写。Keychain 中的手动账号不会被静默复制到普通官方登录表单。已有赛事 Token 应复用，避免重新生成导致其他客户端失效。
+5. 官方模式保留“返回本项目”。返回时退出 Compose 内容、释放播放器/订阅、注销官方登录上下文，再打开本项目“连接摄像头”。**重新查询设备并同步，然后手动开流**。
+
+内部构建的联调账号来自被 Git 忽略的私有 xcconfig，编译后会进入 App 包，不是服务端密钥保险库；仅用于受控赛事安装，公开分发前移除预置账号。本仓库只提交占位符。打包与导出检查见 `scripts/check_sdk_host.py`，普通 Simulator 检查不覆盖原生 arm64 链接。
 
 原版的设备配置确实作用于硬件：绑定、解绑、Wi-Fi、画质、检测规则、通知、存储设置等不会随工作区切换撤销。产品模式保留自己的 Keychain 配置和云端数据，但不自动采用原版表单里另一个账号。新增相册权限说明、对讲麦克风说明及官方全屏方向的系统适配；手机仍需实际授权。
 

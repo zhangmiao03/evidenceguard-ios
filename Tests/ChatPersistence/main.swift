@@ -13,3 +13,15 @@ precondition(!restored.pending[pending.conversation]!.matches(message: "修改�
 precondition(!restored.pending[pending.conversation]!.matches(message: pending.message, camera: "cam-b", mode: "history", filter: nil, replyID: nil))
 precondition(defaults.data(forKey: "server-B") == nil)
 print("PASS: drafts and request IDs survive persistence; edits and server namespaces remain separate")
+
+// Optional cloud additions must decode both older deployments and the merged demo.
+let oldPersonal = #"{"preferences":{"enabled":false,"dailySummary":false,"summaryHour":18,"quietStart":22,"quietEnd":8,"timezone":"Asia/Shanghai"},"revision":1,"memories":[],"inbox":[],"delivery":"in_app"}"#
+let oldSnapshot = try JSONDecoder().decode(PersonalSnapshot.self, from: Data(oldPersonal.utf8))
+precondition(oldSnapshot.automaticMemory == nil)
+var newPayload = try JSONSerialization.jsonObject(with: Data(oldPersonal.utf8)) as! [String: Any]
+newPayload["automaticMemory"] = ["enabled": true, "pending": 1, "status": "pending", "reason": "等待整理"] as [String: Any]
+newPayload["memories"] = [["id": "test-memory", "content": "简洁回复", "source": "conversation", "sourceQuote": "我希望简洁回复", "createdAt": 1]] as [[String: Any]]
+let newSnapshot = try JSONDecoder().decode(PersonalSnapshot.self, from: JSONSerialization.data(withJSONObject: newPayload))
+precondition(newSnapshot.automaticMemory?.enabled == true)
+precondition(newSnapshot.memories.first?.sourceQuote == "我希望简洁回复")
+print("PASS: legacy and automatic-memory response contracts decode with source attribution")
