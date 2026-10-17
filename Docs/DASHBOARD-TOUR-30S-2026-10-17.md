@@ -19,3 +19,15 @@
 TypeScript 与 Vite 生产构建通过。浏览器覆盖 Chromium、Firefox、WebKit 与手机 WebKit：自动播放精确在第 30 秒结束、每场景十秒、暂停/重播、减少动态效果偏好、原有守护/选框/历史检索/设置流程与配对图片切换。36 个场景测试中的首轮 32 个通过；新增的冻结提醒断言起初错误地在聊天卡内找图片，改为按实际流程打开提醒画面后，四浏览器对应测试全部通过。未因此修改原有提醒行为。
 
 页面脚本不发送写请求，不调用模型、相册、麦克风、蓝牙或硬件接口。部署与最终截图结果在下方补录。
+
+## 已发布（2026-10-17 08:48，UTC+8）
+
+[作品入口](https://demo.47.131.21.137.sslip.io/dashboard?view=showcase)与[整站下载包](https://demo.47.131.21.137.sslip.io/dashboard/downloads/evidenceguard-website.zip)已更新。前端源码 `8e877f175562374d1f09416d09820c82aa4e5322`，实际静态目录 `/opt/evidenceguard-dashboard/releases/5a968a1809b13edc/web`。
+
+公网逐一核对首页、14 个构建资源（包含四张新 WebP）和 ZIP 的 SHA256，全部与本地发布文件一致。ZIP SHA256 为 `590bda8edc809f5c234946cd6a8ad9b7ce68f74f3da96ac3287a9471af2daad1`。线上 Chromium 和手机 WebKit 均实际打开三场景，核对前后不同图片、1586 像素原始宽度、选框和提醒原图；截图等待新页面图片解码与绘制完成后保存。无脚本异常、横向溢出或写请求。
+
+本次只改 Dashboard 服务 override 内的 `EG_DASHBOARD_WEB` 并重启网站进程。采集器、demo / team / review 业务服务 PID 保持，原 12 张索引关键帧、2 个公开检索案例和守护逐次追踪仍可读，认证与免登录只读边界保持。采集器与 Python 运行目录继续使用 `32f923f59f972c5c`，不以静态页面更新替换后端运行代码。
+
+回退文件在 `/var/backups/evidenceguard-dashboard/frontend-tour30-20261017T004803Z/99-sync-main.conf`，manifest 记录旧静态路径与本次路径；确认没有后续部署改动后恢复该 override，daemon-reload 并重启 Dashboard 即可。旧发布仍保留。上传临时目录已清理，释放 4,703,539 字节。
+
+原始验证与截图保存在本机忽略目录 `Cloud/data/audit-20261017-tour-30s/`，包括 `published-desktop-tour.png`、`published-mobile-tour.png` 以及两个室内场景前后截图。网页显示 AI 素材标注，真实后端图片、模型调用和录像检索位于独立监控入口。
