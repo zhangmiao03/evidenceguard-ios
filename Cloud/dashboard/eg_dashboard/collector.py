@@ -253,6 +253,11 @@ class Collector:
                 coverage['briefingErrorType']=type(exc).__name__
         except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
             coverage['mediaIndex']={'status':'unavailable','errorType':type(exc).__name__}
+        try:
+            from .briefing import processing_status
+            records.append(processing_status(state if same_process else {},environment,now))
+        except (OSError,ValueError,TypeError,sqlite3.Error) as exc:
+            coverage['processingStatusErrorType']=type(exc).__name__
         for name,model in state.get('models',{}).items():
             records.append(resource('model_configuration',{'operation':name,'model':model,
                 'status':'configured' if model else 'not_configured'},now))
@@ -270,7 +275,7 @@ class Collector:
         selected.sort(key=lambda r:r['at'])
         for row in selected:
             inputs=row.get('data',{}).get('inputMedia')
-            if isinstance(inputs,list):row['data']['inputMedia']=[assets.reference(m) for m in inputs[:6]]
+            if isinstance(inputs,list):row['data']['inputMedia']=[assets.reference(m) for m in inputs[:8]]
         try:
             from .archive import project, load_secrets
             coverage['archive']=project(environment['database'],environment['observations'],self.output,label,now,assets,

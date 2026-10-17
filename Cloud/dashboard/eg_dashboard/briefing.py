@@ -54,9 +54,17 @@ def project(output, label, assets, records, state, environment, now):
         value.update(source=source,publication='explicit_public_test',createdAt=item.get('createdAt',at))
         value['signatureCompatible']=recording.get('embeddingSignature')==value.get('indexSignature')
         rows.append(resource('media_retrieval_case',safe_record(value),value['createdAt']))
-    status=dict(id='local-vision',verifiedAt=at,sameProcess=case.get('servicePid')==state.get('pid'),
-                configuration=pick(case.get('localVision'),'enabled ready depthReady flowReady depthModel flowAlgorithm frameIntervalLimitMs version maxParallel execution metricDistance decoderProofGenerated'),
-                guardRunCoverage='not_recorded_by_deployed_observer')
+    return rows
+
+
+def processing_status(state, environment, now):
+    """Current process capability is independent of a public replay manifest."""
+    from .collector import readonly, resource
+    status=dict(id='local-vision', verifiedAt=state.get('startedAt'), sameProcess=bool(state.get('pid')),
+                configuration=pick(state.get('localVision'),'enabled ready depthReady flowReady depthModel flowAlgorithm frameIntervalLimitMs version maxParallel execution metricDistance decoderProofGenerated'),
+                guardAuxEnabled=state.get('guardAuxEnabled'),
+                guardRunCoverage=state.get('guardTracking') or 'not_recorded_by_deployed_observer',
+                mediaCapture=state.get('mediaCapture',False), contentCapture=state.get('contentCapture',False))
     with readonly(environment['database']) as db:
         tables={r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         for name in ('endpoint_analyses','visual_controls'):
@@ -70,5 +78,4 @@ def project(output, label, assets, records, state, environment, now):
                 aux=item.get('auxiliary') or {}
                 status['endpointDiagnostics'].append(pick(item,'status condition model createdAt latencyMs')|{
                     'depth':pick(aux.get('depth'),'status model code'),'flow':pick(aux.get('flow'),'status code quality intervalMs')})
-    rows.append(resource('vision_processing_status',safe_record(status),now))
-    return rows
+    return resource('vision_processing_status',safe_record(status),now)

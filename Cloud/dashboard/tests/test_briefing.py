@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from eg_dashboard.briefing import project
+from eg_dashboard.briefing import project, processing_status
 from eg_dashboard.media_assets import PublicMedia
 
 
@@ -35,12 +35,16 @@ class PublicBriefingTests(unittest.TestCase):
             rows=project(root,'demo',assets,[record],{'pid':3},{'database':str(db)},200)
             encoded=json.dumps(rows)
             for forbidden in ['PRIVATE','SECRET','secret.example','/etc/passwd']:self.assertNotIn(forbidden,encoded)
-            self.assertEqual(len(rows),3)
+            self.assertEqual(len(rows),2)
             self.assertEqual(len(rows[0]['data']['media']),1)
             self.assertEqual(rows[1]['data']['videos'][0]['summary'],'public result')
             self.assertTrue(rows[1]['data']['signatureCompatible'])
-            self.assertEqual(rows[2]['data']['endpoint_analysesCount'],1)
-            self.assertTrue(rows[2]['data']['sameProcess'])
+            status=processing_status({'pid':3,'startedAt':190,'guardTracking':'per_run_v1',
+                'localVision':{'depthReady':True}}, {'database':str(db)},200)
+            self.assertEqual(status['data']['endpoint_analysesCount'],1)
+            self.assertTrue(status['data']['sameProcess'])
+            self.assertEqual(status['data']['guardRunCoverage'],'per_run_v1')
+            self.assertNotIn('PRIVATE',json.dumps(status))
             record['data']['media'][0]['assetId']='changed'
             self.assertEqual(project(root,'demo',assets,[record],{'pid':3},{'database':str(db)},200),[])
 

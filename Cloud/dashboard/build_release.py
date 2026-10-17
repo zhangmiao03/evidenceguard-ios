@@ -49,6 +49,7 @@ def build(output, revision=None):
             put(archive,'eg_dashboard/'+p.name,p.read_bytes())
         put(archive,'eg_dashboard/_ops_runtime.py',(ROOT/'Cloud/server/evidenceguard/ops.py').read_bytes())
         put(archive,'capture_briefing.py',(ROOT/'Cloud/dashboard/capture_briefing.py').read_bytes())
+        put(archive,'verify_guard_replay.py',(ROOT/'Cloud/dashboard/verify_guard_replay.py').read_bytes())
         for name in ('trace_retention', 'display_receipts'):
             put(archive,'eg_dashboard/'+name+'.py',(ROOT/'Cloud/server/evidenceguard'/ (name+'.py')).read_bytes())
         put(archive,'web/downloads/evidenceguard-website.zip',website.getvalue())

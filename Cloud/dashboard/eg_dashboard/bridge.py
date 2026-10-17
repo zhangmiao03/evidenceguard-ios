@@ -222,11 +222,25 @@ def attach(app, ops, native):
         from evidenceguard.vision.control import GROUNDING_PROMPT, GROUNDING_HASH
         prompt_catalog.append(dict(operation='vision.ground_target',version='visual-step-v1',sha256=GROUNDING_HASH,
                                    systemPrompt=GROUNDING_PROMPT,status='loaded_read_only_grounding'))
+    guard_tracking = None
+    try:
+        from evidenceguard.visual_skills.audit import GuardRun
+        from evidenceguard.visual_skills.harness import OBSERVER_PROMPT
+        guard_tracking = 'per_run_v1'
+        prompt_catalog.append(dict(operation='guard.observe', version=guard_tracking,
+            sha256=hashlib.sha256(OBSERVER_PROMPT.encode()).hexdigest(), systemPrompt=OBSERVER_PROMPT,
+            status='loaded_read_only_guard'))
+    except ImportError:
+        pass  # Older environments truthfully keep their previous coverage.
     state = {'startedAt': time.time(), 'pid': os.getpid(), 'appVersion': app.version,
              'environment': os.getenv('EG_DASHBOARD_ENVIRONMENT','local'),
              'observerRevision': os.getenv('EG_DASHBOARD_REVISION','development'),
              'nativeOps': native, 'files': source_files(source),
              'contentCapture': content.enabled(),
+             'guardTracking': guard_tracking,
+             'mediaCapture': os.getenv('EG_DASHBOARD_CAPTURE_MEDIA') == '1',
+             'localVision': endpoint_vision.local.configuration() if endpoint_vision else None,
+             'guardAuxEnabled': bool(endpoint_vision and endpoint_vision.local.guard_enabled),
              'executor': getattr(app.state.agent, 'executor', 'bounded-chat-v1'),
              'models': configured_models,
              'embeddingSignature': getattr(video_service, 'index_signature', getattr(getattr(video_service, 'embedding', None), 'signature', None)),
