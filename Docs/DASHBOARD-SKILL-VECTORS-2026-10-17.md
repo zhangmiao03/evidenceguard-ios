@@ -31,4 +31,18 @@
 
 新测试覆盖版本差异、条件保留、无硬件写请求、候选复核状态、图文查询切换、事件及索引帧定位、移动端溢出；数据层覆盖录像 / 窗口 / 索引签名隔离、过期索引不配图、白名单与撤回。测试媒体为测试夹具，和公开真实案例分开。浏览器验证不替代 iOS 真机与硬件验收。
 
-部署仅切换独立 Dashboard 的前端、HTTP 模块和只读采集器，保留业务服务与当前环境映射；先备份并核对现有配置，验证失败回滚本次改动。部署实测结果在完成后追加。
+部署仅切换独立 Dashboard 的前端、HTTP 模块和只读采集器，保留业务服务与当前环境映射；先备份并核对现有配置，验证失败回滚本次改动。
+
+## 已完成的验证与发布
+
+2026-10-17 09:21（新加坡时间）发布代码 `342ca85`，核心实现 `c74fdd5`。线上 release 为 `/opt/evidenceguard-dashboard/releases/ebbf1d57639d3da6`。备份位于 `/var/backups/evidenceguard-dashboard/skill-vectors-20261017T012112Z`。
+
+- TypeScript 与生产构建通过；42 项 Dashboard 后端测试在本地和服务器均通过。图片关联单元检查通过。
+- Chromium、Firefox、WebKit、移动 WebKit 的 20 个导览 / Skill / 检索用例全部通过；另有 2 个 Chromium 原有评委阅读回归通过。Firefox 首次失败来自测试 PNG 不合法，换为可解码夹具后复测通过。移动端额外修复折叠导航被横向布局拉高，并验证导航高度。
+- 公网免登录实测：两版真实规则、两次真实查询、六张候选预览与十二张索引帧可见；正文与图片从真实公开记录读取。首次生成与继续修改、候选切换、事件 / 帧定位和图文查询切换通过，浏览器未发出业务写请求。
+- 桌面 Chromium 与已安装 Chrome 实际播放 65 秒 H.264 原片并定位命中时间。移动 WebKit 验证页面、图片与定位状态；没有宣称 Windows WebKit 的视频解码或 iOS 真机验收通过。
+- 公网首页、14 个静态资产、整站 ZIP 与本地构建逐一 SHA-256 匹配；Skill 配图也与记录的内容哈希匹配。ZIP SHA-256：`a01411ffdbdbf891a3ccf962590044eff1d57f063232b77c9a6e8622e3de4e39`。
+- demo / team / review 快照均非过期。三个原业务进程 PID 发布前后完全一致，健康检查正常，原 `/api` 鉴权保持；新采集器成功投影公开 Skill 案例。
+- 清理本次两个传输暂存目录及未启用的中间 release，释放 10,481,405 字节；当前完整 release、上一个前端与采集器版本及回滚备份保留。发布采用内容哈希验证的增量传输，最终 53 个文件（包含整站 ZIP）与完整本地发布包一致，不依赖已删除的中间 release。
+
+入口：[自定义 Skill](https://demo.47.131.21.137.sslip.io/dashboard?view=tasks&environment=demo) · [视频检索效果](https://demo.47.131.21.137.sslip.io/dashboard?view=vectors&environment=demo)。本次操作与截图留在未纳入 Git 的 `Cloud/data/audit-20261017-skill-vectors/`，不在仓库提交用户运行数据。
