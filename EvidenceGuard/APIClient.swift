@@ -61,9 +61,15 @@ struct APIClient {
         self.installationProof = installationProof
     }
     func connectedApps() async throws -> [ConnectedApp] { try await get("/api/connectors") }
-    func analyzeScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
+    func analyzeScene(_ scene: VisualScene, includeDepth: Bool = false) async throws -> EndpointAnalysis {
         // Covers the server's bounded queue + model deadline, without retrying.
-        try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision":scene.revision], timeout: 90)
+        struct Body: Encodable { var revision: Int; var includeDepth: Bool }
+        if includeDepth { return try await send("/api/visual-scenes/\(scene.id)/analyze", body: Body(revision: scene.revision, includeDepth: true), timeout: 90) }
+        return try await send("/api/visual-scenes/\(scene.id)/analyze", body: ["revision": scene.revision], timeout: 90)
+    }
+    func sampleScene(_ scene: VisualScene) async throws -> EndpointAnalysis {
+        // 12s capture + 10s queue + 70s analysis; never retry a fresh capture automatically.
+        try await send("/api/visual-scenes/\(scene.id)/sample-analysis", body: ["revision": scene.revision], timeout: 120)
     }
     func authorizeConnector(_ provider: String) async throws -> ConnectorAuthorization { try await send("/api/connectors/\(provider)/authorize", body: [String:String]()) }
     func completeConnector(_ provider: String, state: String, code: String) async throws -> [ConnectedApp] { try await send("/api/connectors/\(provider)/complete", body: ["state": state, "code": code]) }

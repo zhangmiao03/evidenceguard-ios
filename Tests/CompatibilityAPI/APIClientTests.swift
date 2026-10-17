@@ -167,6 +167,40 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(requests.all.first?.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
     }
 
+    func testDepthAndFreshAnalysisUseSeparateRequestsWithoutAutomaticRetry() async throws {
+        let requests = Requests()
+        StubProtocol.install { item in
+            if item.request.url!.path.hasPrefix("/api/ops/") { item.reply("{}"); return }
+            requests.append(item.request)
+            var bytes = item.request.httpBody ?? Data()
+            if bytes.isEmpty, let stream = item.request.httpBodyStream {
+                stream.open(); defer { stream.close() }
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while true { let n = stream.read(&buffer, maxLength: buffer.count); if n <= 0 { break }; bytes.append(contentsOf: buffer.prefix(n)) }
+            }
+            let body = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any]
+            XCTAssertEqual(body?["revision"] as? Int, 2)
+            XCTAssertEqual(item.request.value(forHTTPHeaderField: "X-EG-Private-Key"), "synthetic-installation-proof")
+            if item.request.url!.path.hasSuffix("/sample-analysis") {
+                XCTAssertEqual(item.request.timeoutInterval, 120)
+                XCTAssertNil(body?["includeDepth"])
+                item.reply(#"{"message":"等待新画面超时"}"#, status: 504)
+            } else {
+                XCTAssertEqual(item.request.url!.path, "/api/visual-scenes/scene-test/analyze")
+                XCTAssertEqual(body?["includeDepth"] as? Bool, true)
+                item.reply(#"{"status":"completed","condition":"C","limitation":"仅供核对","analysis":{"summary":"物体仍在桌上"},"auxiliary":{"depth":{"status":"completed"},"flow":{"status":"skipped","code":"FRAMES_NOT_ADJACENT"}}}"#)
+            }
+        }
+        let body = #"{"id":"scene-test","cameraId":"sdk-test","prompt":"看住包裹","revision":2,"status":"active","stage":"review","question":"","unsupportedReason":"","reason":"等待采样","summary":"包裹看护","limitation":"前台观察","canActivate":false,"observation":{"state":"unknown","reason":"等待采样"},"evidenceIds":[]}"#
+        let scene = try JSONDecoder().decode(VisualScene.self, from: Data(body.utf8))
+        let api = client()
+        let result = try await api.analyzeScene(scene, includeDepth: true)
+        XCTAssertTrue(result.depthSummary!.contains("不能测量实际距离"))
+        do { _ = try await api.sampleScene(scene); XCTFail("Expected failure") }
+        catch { /* A failed sampling request must not be sent a second time. */ }
+        XCTAssertEqual(requests.all.filter { $0.url!.path.hasSuffix("/sample-analysis") }.count, 1)
+    }
+
     func testUnavailableInstallationProofDoesNotSendRequest() async throws {
         let requests = Requests()
         StubProtocol.install { item in requests.append(item.request); item.reply("{}") }

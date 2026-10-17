@@ -40,6 +40,48 @@ enum HardwareValue: Codable, Equatable, Sendable {
     static func parse(_ json: String) throws -> HardwareValue { try JSONDecoder().decode(Self.self,from:Data(json.utf8)) }
 }
 
+struct EndpointVisionConfiguration: Codable, Equatable {
+    var ready: Bool
+    var supportedConditions: [String]?
+    var depthEnabled: Bool?
+    var flowEnabled: Bool?
+    var freshSamplingSupported: Bool?
+    var canUseDepth: Bool { ready && depthEnabled == true && supportedConditions?.contains("C") == true }
+    var canSampleFresh: Bool { canUseDepth && freshSamplingSupported == true }
+}
+struct EndpointAnalysis: Codable, Equatable {
+    struct Analysis: Codable, Equatable { var summary: String }
+    struct Frame: Codable, Equatable { var captured_at: Double?; var sampled_at: Double? }
+    struct Sources: Codable, Equatable { var a: Frame; var b: Frame }
+    struct Stage: Codable, Equatable { var status: String?; var code: String?; var quality: String? }
+    struct Auxiliary: Codable, Equatable { var status: String?; var code: String?; var depth: Stage?; var flow: Stage? }
+    var status: String; var reason: String?; var limitation: String
+    var analysis: Analysis?; var cached: Bool?; var model: String?
+    var sources: Sources?; var auxiliary: Auxiliary?; var condition: String?
+    var depthSummary: String? {
+        guard let depth = auxiliary?.depth else { return nil }
+        if depth.status == "completed" { return "已使用相对深度辅助判断，不能测量实际距离。" }
+        return condition == "C" ? "空间关系辅助分析未完成。" : "本次未使用空间关系辅助分析。"
+    }
+    var flowSummary: String? {
+        guard let flow = auxiliary?.flow else { return nil }
+        if flow.status == "completed" {
+            return flow.quality == "diagnostic_checks_passed_not_ground_truth" ?
+                "已比较相邻画面，不能据此确认物体移动。" : "画面变化分析未形成可靠判断。"
+        }
+        switch flow.code ?? auxiliary?.code {
+        case "FRAMES_NOT_ADJACENT": return "两次取样间隔较长，未分析连续变化。"
+        case "VIEW_OR_SESSION_CHANGED": return "摄像头视角或连接已变化，未比较连续变化。"
+        case "SAME_FRAME", "REPEATED_PIXELS_NOT_PROOF_OF_STILLNESS": return "缺少可比较的新画面，不能据此认定物体没有移动。"
+        case "DIMENSIONS_CHANGED": return "两张画面的尺寸不同，未比较连续变化。"
+        case "FLOW_DISABLED": return "本次未启用相邻画面变化分析。"
+        case "LIVE_SAMPLE_REQUIRED": return "没有符合要求的实时采样，未分析连续变化。"
+        case "TIME_UNKNOWN": return "无法核对取样时间，未分析连续变化。"
+        default: return "本次未取得可靠的连续变化分析。"
+        }
+    }
+}
+
 enum AssistantIdentity {
     static let name = "anker"
 }
@@ -73,6 +115,8 @@ enum ChatPresentation {
         "list_camera_events":"查看摄像头事件", "request_recheck":"重新查看现场", "read_home_report":"整理家庭报告",
         "read_proactive_context":"核对已有记录", "read_observation_image":"查看观察图片",
         "gmail_search":"查找邮件", "gmail_read":"读取邮件", "lark_chats":"查看会话列表", "lark_messages":"读取会话消息",
+        "analyze_visual_endpoints":"对照守护参考图", "sample_camera_vision":"取新画面并分析",
+        "aim_camera_at_guard_target":"准备将守护目标移到画面中央", "read_visual_control":"核对摄像头调整结果",
         "read_phone_context":"查看已共享的手机信息"
     ]
     static let controls: Set<String> = ["camera_ptz_step", "camera_goto_preset", "camera_set_night_vision", "doorbell_light_set", "doorbell_reply_play", "camera_record_clip", "device_settings_set", "camera_events_subscribe", "camera_events_unsubscribe", "camera_talk_start", "camera_talk_stop", "camera_light_set", "camera_dual_mode_set", "camera_ptz_mode_set", "camera_panorama_generate", "camera_stop", "operation_cancel"]

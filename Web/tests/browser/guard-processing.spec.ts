@@ -21,7 +21,7 @@ test('per-check diagnostics show exact flow input, original prompt, outcome and 
     event('guard.observe',{model:'test-model',content:{response:{choices:[{message:{content:'EXACT MODEL RESPONSE'}}]}}},'http_ok','model'),
     event('guard.finished',{mode:'stored_video_replay',disposition:'replay_only',judgment:{state:'unknown',reason:'无法确认目标'},alertPublished:false}),
   ];
-  const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aO1sAAAAASUVORK5CYII=','base64');
+  const pixel=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGO0nPKfAQaY4Cy8HABaFgHUSNHd4wAAAABJRU5ErkJggg==','base64');
   await page.route('**/dashboard/api/media/**',r=>r.fulfill({body:pixel,contentType:'image/png'}));
   await page.route('**/dashboard/api/info',r=>r.fulfill({json:{mode:'competition',environments:[{id:'demo',title:'手机演示'}]}}));
   await page.route('**/dashboard/api/snapshot?*',r=>r.fulfill({json:bundle}));
@@ -32,6 +32,7 @@ test('per-check diagnostics show exact flow input, original prompt, outcome and 
   await expect(section).toContainText('无法确认');
   await expect(section).toContainText('光流通过诊断检查');
   await expect(section.locator('img[alt="本次提交的光流"]')).toBeVisible();
+  await expect(section.locator('img[alt="本次提交的光流"]')).toHaveJSProperty('naturalWidth',4);
   await section.getByText(/提示词、模型正文与每步诊断/).click();
   await section.getByRole('button',{name:/查看本次提示词与模型输入/}).click();
   await expect(page.getByRole('dialog',{name:'追踪详情'})).toContainText('EXACT GUARD PROMPT');
@@ -40,6 +41,13 @@ test('per-check diagnostics show exact flow input, original prompt, outcome and 
   await expect(page.getByRole('dialog',{name:'追踪详情'})).toContainText('EXACT MODEL RESPONSE');
   await page.getByRole('button',{name:'关闭详情 ×',exact:true}).click();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  // Busy live checks must not push the replay out of the per-mode picker.
+  for(let i=0;i<14;i++)bundle.records.push({...event('guard.started',{mode:'live_guard'}),
+    id:'live-'+i,traceId:'guard-live-'+i,at:at+i+1});
+  await page.reload();
+  await section.getByRole('button',{name:'保存视频验证',exact:true}).click();
+  await expect(section).toContainText('保存视频验证 1 次');
+  await expect(section).toContainText('光流通过诊断检查');
 });
 
 test('capture failure and discarded results do not appear as successful guard alerts',async({page})=>{

@@ -24,3 +24,6 @@ swiftc EvidenceGuard/AppModels.swift Tests/ChatPresentation/main.swift -o "$chec
 
 swiftc EvidenceGuard/AppModels.swift Tests/VideoSearch/main.swift -o "$check_dir/video-search-check"
 "$check_dir/video-search-check"
+
+swiftc EvidenceGuard/AppModels.swift Tests/EndpointAnalysis/main.swift -o "$check_dir/endpoint-analysis-check"
+"$check_dir/endpoint-analysis-check"

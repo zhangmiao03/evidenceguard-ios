@@ -15,19 +15,28 @@ test('all three guided scenarios finish with baseline, change, uncertainty and a
     await expect(result).toContainText('检查中');
     await guide.getByRole('button',{name:'采样：建立基线',exact:true}).click();
     await expect(result).toContainText('已确认');
+    const baselineSource=await phone.locator('.ios-frame img').getAttribute('src');
     await guide.getByRole('button',{name:'采样：条件触发',exact:true}).click();
     await expect(result).toContainText('需关注');
+    const changedSource=await phone.locator('.ios-frame img').getAttribute('src');
+    expect(changedSource).not.toBe(baselineSource);
     if(name!=='门口包裹'){
       const frame=await phone.locator('.ios-frame-canvas').boundingBox();
-      const diagram=await phone.locator('.ios-scene-map').boundingBox();
-      expect(diagram!.width).toBeGreaterThan(frame!.width*.95);
-      expect(diagram!.height).toBeGreaterThan(frame!.height*.95);
-      await expect(phone.locator('.ios-scene-map')).toContainText('脚本状态示意 · 非采样照片');
+      const image=phone.locator('.ios-frame img');
+      await expect.poll(()=>image.evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBe(1586);
+      const bounds=await image.boundingBox();
+      expect(bounds!.width/frame!.width).toBeCloseTo(1,1);
+      expect(bounds!.width/bounds!.height).toBeCloseTo(1586/992,1);
+      await expect(phone.locator('.ios-scene-map')).toHaveCount(0);
+      await expect(phone.locator('.ios-selection')).toHaveCount(1);
+      await expect(phone.locator('.ios-frame')).toContainText('AI 场景演示');
     }
     await guide.getByRole('button',{name:'采样：画面遮挡',exact:true}).click();
     await expect(result).toContainText('无法确认');
     await guide.getByRole('button',{name:'查看提醒与追问',exact:true}).click();
     await expect(phone.locator('.ios-message').last()).toContainText('示例主动提醒');
+    await phone.locator('.ios-message').last().getByRole('button',{name:'查看提醒画面',exact:true}).click();
+    await expect(phone.locator('.ios-frame img')).toHaveAttribute('src',changedSource!);
   }
   await expect(page.getByRole('button',{name:'实拍录像与向量检索 →'})).toBeVisible();
   await page.getByRole('button',{name:'实拍录像与向量检索 →'}).click();
