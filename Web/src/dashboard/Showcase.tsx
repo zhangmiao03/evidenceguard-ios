@@ -9,7 +9,8 @@ import {JudgeTour} from './JudgeTour';
 
 export function Showcase({onMonitor,onPage}:{onMonitor:()=>void;onPage?:(page:number)=>void}) {
   const [manual,setManual]=useState(new URLSearchParams(location.search).get('tour')==='manual');
-  return <><div className="eg-tour-mode"><button aria-pressed={!manual} onClick={()=>setManual(false)}>60 秒自动导览</button><button aria-pressed={manual} onClick={()=>setManual(true)}>自己操作 App</button></div>{manual?<ManualShowcase onMonitor={onMonitor} onPage={onPage}/>:<JudgeTour onMonitor={onMonitor} onPage={onPage}/>}</>;
+  useEffect(()=>{for(const s of tourScenarios)for(const src of [s.photo,s.changedPhoto]){const image=new Image();image.src=src;}},[]);
+  return <><div className="eg-tour-mode"><button aria-pressed={!manual} onClick={()=>setManual(false)}>30 秒自动导览</button><button aria-pressed={manual} onClick={()=>setManual(true)}>自己操作 App</button></div>{manual?<ManualShowcase onMonitor={onMonitor} onPage={onPage}/>:<JudgeTour onMonitor={onMonitor} onPage={onPage}/>}</>;
 }
 
 function ManualShowcase({onMonitor,onPage}:{onMonitor:()=>void;onPage?:(page:number)=>void}) {
