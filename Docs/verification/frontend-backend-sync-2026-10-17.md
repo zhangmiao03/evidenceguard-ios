@@ -12,6 +12,18 @@ iOS 已有文本/图片/组合视频检索、事件录像导入、私有请求�
 
 ## 验证
 
-本地后端 496 项、Dashboard Python 42 项、相关 Chrome 浏览器 7 项通过；Web 单元与生产构建通过。移动契约/状态检查通过，iOS Simulator Debug 编译通过。新契约覆盖旧能力字段、独立取样请求、超时不重试及不可靠光流显示。真机摄像头和 APNs 未在本次验收。
+本地后端 496 项、Dashboard Python 42 项、相关 Chrome 浏览器 7 项通过；27 项 Web 单元与生产构建通过。移动契约/状态检查通过，iOS Simulator Debug 编译通过；独立模拟器 13 项 API 测试全部通过，测试后删除本轮临时模拟器。新契约覆盖旧能力字段、独立取样请求、超时不重试及不可靠光流显示。真机摄像头和 APNs 未在本次验收。
 
 部署和最终 Git 同步回执保留在接续工作区私有 frontend-sync-20261017 目录；不上传凭证、运行数据或安装包。
+
+## 最终运行状态
+
+手机服务已切换为 `/opt/evidenceguard-demo/releases/tools-frontend-1da0217/Cloud/server`，对应提交 `1da0217`；仍使用 `eg_dashboard.bootstrap:app` 和独立 venv。167 项包内文件校验一致。Linux 发布预检 495 项通过、1 项跳过（仓库相对路径测试权重缺失）；实际部署权重另行 SHA256 与体积校验通过。数据库迁移先在独立副本验证。
+
+当前 Dashboard Python/collector 目录为 `32f923f59f972c5c`，Web 为 `5a968a1809b13edc/web`；源码模块及全部构建静态资源与本次合并后本地逐项一致，保留已上线版本。本次没有重新发布 Dashboard，也没有改变产品静态页面。
+
+手机、团队、审核健康检查均 200；无凭据 bootstrap 均 401，已有手机身份 bootstrap 200。聊天/embedding ready，两台摄像头仍登记；已有守护 API 明确返回新取样与深度就绪。Dashboard snapshot 非过期。以上是服务与契约验证，不是实体取样或摄像头动作验收。
+
+原业务与硬件数据库所有主键保留，三个 SQLite quick_check 均 ok。cloud.env 哈希未变；团队、审核服务 PID/参数未变。遥测表仍按既有 20000 条容量滚动淘汰旧记录，不能把它描述为全部日志永久保留。没有改变用户水杯守护、重新绑定账号或触发推送。
+
+回退备份：`/var/backups/evidenceguard-demo-tools/20261017T005905281925Z`。旧运行版本与本地文件保留。此轮没有上传 TestFlight；手机现有安装不会自动获得新增 iOS 界面。
